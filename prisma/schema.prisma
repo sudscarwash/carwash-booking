@@ -1,0 +1,170 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  CUSTOMER
+  EMPLOYEE
+  OWNER
+  SPECIAL
+  ADMIN
+}
+
+enum BookingStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  REJECTED
+}
+
+model User {
+  id           String        @id @default(uuid())
+  email        String        @unique
+  name         String
+  passwordHash String
+  role         Role          @default(CUSTOMER)
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  // For Employees assigned to a business
+  businessId   String?
+  business     CarWash?      @relation("BusinessEmployees", fields: [businessId], references: [id], onDelete: SetNull)
+
+  // Owned businesses
+  ownedCarWashes CarWash[]   @relation("OwnerCarWashes")
+
+  // Customer bookings
+  bookings     Booking[]     @relation("CustomerBookings")
+  
+  // Employee assigned bookings
+  assignedBookings Booking[] @relation("EmployeeBookings")
+
+  // Audit activities
+  auditLogs    AuditLog[]
+
+  // Security Verification Codes (OTP / Password Reset)
+  verificationCodes VerificationCode[]
+
+  @@index([email])
+}
+
+model CarWash {
+  id              String        @id @default(uuid())
+  name            String
+  description     String        @db.Text
+  locationLat     Float
+  locationLng     Float
+  address         String
+  openingHours    Json          // Store WeeklySchedule JSON structured state
+  slotDuration    Int           @default(30) // in minutes
+  capacityPerSlot Int           @default(1)  // max bookings per slot
+  isActive        Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  // Ownership
+  ownerId         String
+  owner           User          @relation("OwnerCarWashes", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  // Relationships
+  employees       User[]        @relation("BusinessEmployees")
+  bookings        Booking[]
+  images          Image[]
+
+  // 🔒 Dynamic local Brunei bank configs
+  bibdAccountName     String?
+  bibdAccountNo       String?
+  bibdEnabled         Boolean       @default(false)
+  bibdQrImageUrl      String?
+  baiduriAccountName  String?
+  baiduriAccountNo    String?
+  baiduriEnabled      Boolean       @default(false)
+  baiduriQrImageUrl   String?
+  customPaymentsJson  String?       // Stored JSON array of CustomPaymentMethod
+  paymentPolicy       String        @default("PRE_PAYMENT")
+
+  @@index([ownerId])
+  @@index([locationLat, locationLng])
+}
+
+model Booking {
+  id            String        @id @default(uuid())
+  carWashId     String
+  carWash       CarWash       @relation(fields: [carWashId], references: [id], onDelete: Cascade)
+  
+  customerId    String
+  customer      User          @relation("CustomerBookings", fields: [customerId], references: [id], onDelete: Cascade)
+  
+  customerName  String
+  customerEmail String
+  date          String        // YYYY-MM-DD
+  timeSlot      String        // e.g. "09:00 - 09:30"
+  status        BookingStatus @default(PENDING)
+  notes         String?       @db.Text
+
+  // 🔒 Local Bank Payment Additions
+  paymentBank     String?      // "BIBD" or "Baiduri"
+  txnReference    String?      @unique // Unique constraint prevents duplicate submission fraud
+  receiptFilename String?      // Stores uploaded screenshot filename to minimize DB bloat
+
+  // Handled by Employee
+  employeeId    String?
+  employee      User?         @relation("EmployeeBookings", fields: [employeeId], references: [id], onDelete: SetNull)
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@unique([carWashId, date, timeSlot, customerId]) // Prevent double booking on same slot for same customer
+  @@index([carWashId, date])
+  @@index([customerId])
+  @@index([employeeId])
+}
+
+model Image {
+  id         String   @id @default(uuid())
+  url        String   // Cloudflare R2 / AWS S3 url
+  key        String   // Storage key
+  mimeType   String
+  sizeBytes  Int
+  carWashId  String
+  carWash    CarWash  @relation(fields: [carWashId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@index([carWashId])
+}
+
+model VerificationCode {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  code      String   // Hashed code for safety
+  type      String   // "PASSWORD_RESET" or "EMAIL_VERIFICATION"
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userEmail String
+  action    String
+  details   String   @db.Text
+  ipAddress String?
+  timestamp DateTime @default(now())
+
+  @@index([userId])
+  @@index([timestamp])
+}
