@@ -1,0 +1,92 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with role-based access control.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["customer", "owner", "employee", "special", "admin"] },
+        "isActive": { "type": "boolean" },
+        "passwordHash": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "businessId": { "type": "string" }
+      },
+      "required": ["id", "email", "name", "role", "isActive", "createdAt"]
+    },
+    "CarWash": {
+      "title": "CarWash",
+      "description": "Car wash location detailing setup, hours of operation, and location details.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "locationLat": { "type": "number" },
+        "locationLng": { "type": "number" },
+        "address": { "type": "string" },
+        "openingHours": { "type": "object" },
+        "slotDuration": { "type": "number" },
+        "capacityPerSlot": { "type": "number" },
+        "ownerId": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "locationLat", "locationLng", "address", "openingHours", "slotDuration", "capacityPerSlot", "ownerId", "isActive", "createdAt"]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "A scheduled car wash slot reservation by a customer.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "carWashId": { "type": "string" },
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "customerEmail": { "type": "string" },
+        "date": { "type": "string" },
+        "timeSlot": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "in_progress", "completed", "cancelled", "rejected"] },
+        "notes": { "type": "string" },
+        "employeeId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "carWashId", "customerId", "customerName", "customerEmail", "date", "timeSlot", "status", "createdAt", "updatedAt"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Cryptographically-isolated log entry for user activity and critical state transitions.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "action": { "type": "string" },
+        "details": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "userEmail", "action", "details", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Platform user profiles."
+    },
+    "/carWashes/{carWashId}": {
+      "schema": "CarWash",
+      "description": "Car wash facility setups."
+    },
+    "/bookings/{bookingId}": {
+      "schema": "Booking",
+      "description": "Reservations for wash slots."
+    },
+    "/auditLogs/{logId}": {
+      "schema": "AuditLog",
+      "description": "Security audit log database."
+    }
+  }
+}
