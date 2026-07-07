@@ -42,8 +42,12 @@ import {
   isSupabaseAuthEnabled, 
   registerSupabaseUser, 
   loginSupabaseUser, 
-  sendSupabasePasswordReset 
+  updateSupabasePassword 
 } from './server/supabaseService.js';
+import {
+  sendPasswordResetOTP,
+  sendBookingConfirmationEmail
+} from './server/emailService.js';
 import { authenticateToken, requireRoles, generateToken, AuthenticatedRequest } from './server/auth.js';
 import { generateSlotsForDate } from './server/slots.js';
 
@@ -196,7 +200,7 @@ async function startServer() {
     }
   });
 
-  // Forgot Password (Request Code / Supabase Reset Link)
+  // Forgot Password (Request Code / OTP via Resend)
   app.post('/api/auth/forgot-password', async (req, res) => {
     try {
       const { email } = req.body;
@@ -211,49 +215,21 @@ async function startServer() {
         return;
       }
 
-      // If Supabase Auth is enabled, delegate the password reset email flow to Supabase
-      if (isSupabaseAuthEnabled) {
-        try {
-          const host = req.get('host');
-          const protocol = req.protocol;
-          const redirectUrl = `${protocol}://${host}/reset-password`;
-
-          await sendSupabasePasswordReset(email, redirectUrl);
-          await addAuditLog(user.id, user.email, 'PASSWORD_RESET_REQUESTED', `Password reset link dispatched via Supabase Auth for ${user.email}`);
-
-          res.json({
-            message: 'A secure recovery link has been dispatched to your email address by Supabase Auth! Please click the link inside to set your new password.',
-            isSupabase: true
-          });
-          return;
-        } catch (supabaseError: any) {
-          res.status(400).json({ error: `Supabase Auth Reset Failed: ${supabaseError.message}` });
-          return;
-        }
-      }
-
       // Generate a secure 6-digit numeric verification code
       const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
       const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // 15 mins expiry
 
       await createPasswordReset(user.email, resetCode, expiresAt);
 
-      // Print simulated email block to developer server logs
-      console.log('========================================================');
-      console.log('📬 [EMAIL SERVICE SIMULATOR - PASSWORD RESET]');
-      console.log(`To: ${user.email}`);
-      console.log(`Subject: Password Reset Verification Code - SudsFlow`);
-      console.log(`Code: ${resetCode}`);
-      console.log(`Expires: ${new Date(expiresAt).toLocaleTimeString()}`);
-      console.log('========================================================');
+      // Send the reset OTP email using the Resend email service
+      const emailSent = await sendPasswordResetOTP(user.email, user.name, resetCode);
 
-      await addAuditLog(user.id, user.email, 'PASSWORD_RESET_REQUESTED', `Password reset token generated for ${user.email}`);
+      await addAuditLog(user.id, user.email, 'PASSWORD_RESET_REQUESTED', `Password reset OTP generated for ${user.email} (Email Dispatched: ${emailSent})`);
 
-      // Return token in response for quick sandbox developer testing,
-      // accompanied by a message indicating that in production this is sent via email APIs.
+      // Return sandboxCode in non-production for fast local testing
       res.json({
-        message: 'A 6-digit verification code has been dispatched. For rapid sandbox testing, the code is supplied directly below.',
-        sandboxCode: resetCode
+        message: 'A secure 6-digit password reset verification code has been dispatched to your email address.',
+        sandboxCode: process.env.NODE_ENV !== 'production' ? resetCode : undefined
       });
     } catch (error: any) {
       res.status(500).json({ error: error.message || 'Internal server error' });
@@ -290,8 +266,18 @@ async function startServer() {
       const salt = bcrypt.genSaltSync(10);
       const passwordHash = bcrypt.hashSync(password, salt);
 
-      // Update user password in the SQLite database
+      // 1. Update user password in local database
       await updateUser(user.id, { passwordHash });
+
+      // 2. Sync to Supabase Auth if configured
+      if (isSupabaseAuthEnabled) {
+        try {
+          await updateSupabasePassword(user.email, password);
+        } catch (supabaseError: any) {
+          console.error('[Reset Password] Failed to sync password update to Supabase Auth:', supabaseError.message);
+        }
+      }
+
       await deletePasswordReset(resetData.email);
 
       await addAuditLog(user.id, user.email, 'PASSWORD_RESET_SUCCESS', `Password reset successfully for ${user.email}`);
@@ -350,6 +336,62 @@ async function startServer() {
 
       const { passwordHash: _, ...safeUser } = updatedUser;
       res.json(safeUser);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Change Password
+  app.post('/api/auth/change-password', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+      }
+      const { currentPassword, newPassword } = req.body;
+
+      if (!currentPassword || !newPassword) {
+        res.status(400).json({ error: 'Current password and new password are required.' });
+        return;
+      }
+
+      if (newPassword.length < 6) {
+        res.status(400).json({ error: 'New password must be at least 6 characters long.' });
+        return;
+      }
+
+      const user = await getUserById(req.user.id);
+      if (!user) {
+        res.status(404).json({ error: 'User not found' });
+        return;
+      }
+
+      // 1. Verify current password
+      const valid = bcrypt.compareSync(currentPassword, user.passwordHash);
+      if (!valid) {
+        res.status(400).json({ error: 'Incorrect current password.' });
+        return;
+      }
+
+      // 2. Hash new password
+      const salt = bcrypt.genSaltSync(10);
+      const passwordHash = bcrypt.hashSync(newPassword, salt);
+
+      // 3. Update local database
+      await updateUser(req.user.id, { passwordHash });
+
+      // 4. Sync to Supabase Auth if configured
+      if (isSupabaseAuthEnabled) {
+        try {
+          await updateSupabasePassword(user.email, newPassword);
+        } catch (supabaseError: any) {
+          console.error('[Change Password] Failed to sync password update to Supabase Auth:', supabaseError.message);
+        }
+      }
+
+      await addAuditLog(user.id, user.email, 'PASSWORD_CHANGED', `User ${user.email} successfully changed their password`);
+
+      res.json({ message: 'Password updated successfully!' });
     } catch (error: any) {
       res.status(500).json({ error: error.message || 'Internal server error' });
     }
@@ -747,6 +789,23 @@ async function startServer() {
         'BOOKING_CREATE',
         `Booked slot ${timeSlot} on ${date} at ${carWash.name}${dbTxnReference ? ` with bank payment ref: ${dbTxnReference}` : ''}`
       );
+
+      // Dispatch booking confirmation email in the background
+      sendBookingConfirmationEmail({
+        customerEmail: newBooking.customerEmail,
+        customerName: newBooking.customerName,
+        bookingId: newBooking.id,
+        businessName: carWash.name,
+        address: carWash.address,
+        date: newBooking.date,
+        timeSlot: newBooking.timeSlot,
+        serviceName: newBooking.serviceName,
+        price: newBooking.price,
+        paymentBank: newBooking.paymentBank,
+        txnReference: newBooking.txnReference,
+      }).catch((err) => {
+        console.error('[EmailService] Failed to send booking confirmation email:', err);
+      });
 
       res.status(201).json(newBooking);
     } catch (error: any) {

@@ -41,6 +41,7 @@ interface AppContextType {
   logout: () => void;
   forgotPassword: (email: string) => Promise<string | null>;
   resetPassword: (token: string, password: string) => Promise<boolean>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
   fetchLocations: (search?: string, lat?: number, lng?: number, radius?: number) => Promise<void>;
   fetchBookings: () => Promise<void>;
   fetchEmployees: () => Promise<void>;
@@ -494,6 +495,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const changePassword = async (currentPassword: string, newPassword: string): Promise<boolean> => {
+    try {
+      setLoading(true);
+      await apiFetch('/api/auth/change-password', {
+        method: 'POST',
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      showNotification('Password changed successfully!', 'success');
+      return true;
+    } catch (err: any) {
+      showNotification(err.message, 'error');
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -513,6 +531,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         logout,
         forgotPassword,
         resetPassword,
+        changePassword,
         fetchLocations,
         fetchBookings,
         fetchEmployees,

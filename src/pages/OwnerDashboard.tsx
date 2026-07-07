@@ -8,7 +8,7 @@ import { useApp } from '../context/AppContext.js';
 import { MapSimulation } from '../components/MapSimulation.js';
 import {
   DollarSign, Calendar, Users, Sliders, Check, X,
-  Clock, MapPin, BarChart3, ChevronRight, Edit2, Plus, Info, Briefcase, Trash2, Edit
+  Clock, MapPin, BarChart3, ChevronRight, Edit2, Plus, Info, Briefcase, Trash2, Edit, Lock, Key
 } from 'lucide-react';
 import { BookingStatus, CarWash, Booking, WeeklySchedule, CustomPaymentMethod, WashService } from '../types.js';
 
@@ -22,6 +22,7 @@ export const OwnerDashboard: React.FC = () => {
     createEmployee,
     updateEmployee,
     deleteEmployee,
+    changePassword,
   } = useApp();
 
   // Selected owned business
@@ -99,6 +100,47 @@ export const OwnerDashboard: React.FC = () => {
   const [focusedBookingId, setFocusedBookingId] = useState<string | null>(null);
   const [logFilter, setLogFilter] = useState<string>('ALL');
   const [logSearch, setLogSearch] = useState<string>('');
+
+  // Password change states for Owner Dashboard Settings Tab
+  const [showChangePasswordSection, setShowChangePasswordSection] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [changePasswordError, setChangePasswordError] = useState('');
+  const [changePasswordSuccess, setChangePasswordSuccess] = useState('');
+
+  const handleOwnerChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setChangePasswordError('');
+    setChangePasswordSuccess('');
+
+    if (!currentPassword || !newPassword || !confirmNewPassword) {
+      setChangePasswordError('All fields are required.');
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setChangePasswordError('New password must be at least 6 characters long.');
+      return;
+    }
+
+    if (newPassword !== confirmNewPassword) {
+      setChangePasswordError('New passwords do not match.');
+      return;
+    }
+
+    setIsChangingPassword(true);
+    const success = await changePassword(currentPassword, newPassword);
+    setIsChangingPassword(false);
+
+    if (success) {
+      setChangePasswordSuccess('Password updated successfully!');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmNewPassword('');
+    }
+  };
 
   useEffect(() => {
     // Select first owned location if not already selected
@@ -1377,6 +1419,111 @@ export const OwnerDashboard: React.FC = () => {
               )}
             </div>
           )}
+
+          {/* Security & Credentials Card */}
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm relative overflow-hidden" id="owner-security-settings-card">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/5 rounded-bl-full pointer-events-none" />
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-slate-100 text-slate-700 rounded-xl">
+                  <Lock className="h-4 w-4 text-slate-600" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800 text-sm sm:text-base">Security & Credentials</h3>
+                  <p className="text-[10px] text-slate-400 font-mono uppercase">Manage owner account authentication</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowChangePasswordSection(!showChangePasswordSection);
+                  setChangePasswordError('');
+                  setChangePasswordSuccess('');
+                }}
+                className="px-4 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 hover:border-slate-300 rounded-xl text-xs font-bold text-slate-700 transition-all flex items-center gap-1.5 cursor-pointer"
+                id="owner-toggle-change-password-section-btn"
+              >
+                <Key className="h-3.5 w-3.5 text-slate-500" />
+                {showChangePasswordSection ? 'Hide Panel' : 'Change Password'}
+              </button>
+            </div>
+
+            {showChangePasswordSection ? (
+              <form onSubmit={handleOwnerChangePassword} className="space-y-4 pt-4 max-w-md animate-in fade-in slide-in-from-top-1 duration-200" id="owner-change-password-form">
+                {changePasswordError && (
+                  <div className="p-3 bg-rose-50 border border-rose-100 text-rose-800 rounded-xl text-xs font-semibold flex items-center gap-2" id="owner-password-error">
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-600 shrink-0"></span>
+                    {changePasswordError}
+                  </div>
+                )}
+                {changePasswordSuccess && (
+                  <div className="p-3 bg-emerald-50 border border-emerald-100 text-emerald-800 rounded-xl text-xs font-semibold flex items-center gap-2" id="owner-password-success">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 shrink-0"></span>
+                    {changePasswordSuccess}
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 uppercase mb-1" htmlFor="owner-current-password">
+                    Current Password
+                  </label>
+                  <input
+                    type="password"
+                    id="owner-current-password"
+                    required
+                    placeholder="••••••••"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 rounded-xl outline-none text-slate-800 text-xs transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 uppercase mb-1" htmlFor="owner-new-password">
+                    New Password
+                  </label>
+                  <input
+                    type="password"
+                    id="owner-new-password"
+                    required
+                    placeholder="Minimum 6 characters"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 rounded-xl outline-none text-slate-800 text-xs transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 uppercase mb-1" htmlFor="owner-confirm-password">
+                    Confirm New Password
+                  </label>
+                  <input
+                    type="password"
+                    id="owner-confirm-password"
+                    required
+                    placeholder="••••••••"
+                    value={confirmNewPassword}
+                    onChange={(e) => setConfirmNewPassword(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 rounded-xl outline-none text-slate-800 text-xs transition-all"
+                  />
+                </div>
+
+                <div className="flex justify-end pt-2">
+                  <button
+                    type="submit"
+                    disabled={isChangingPassword}
+                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-400 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    id="owner-submit-change-password-btn"
+                  >
+                    {isChangingPassword ? 'Updating...' : 'Update Security Password'}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <p className="text-xs text-slate-500 pt-4 leading-relaxed">
+                Ensure your owner credentials remain highly secure. We recommend using a unique password of at least 6 characters, mixing numbers and symbols.
+              </p>
+            )}
+          </div>
         </div>
       )}
 
