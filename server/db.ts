@@ -122,13 +122,19 @@ async function runExec(sql: string): Promise<void> {
 // Mappers to transform raw table representation back to application TypeScript types
 const mapUser = (row: any): UserWithPassword => {
   if (!row) return row;
+  const isActiveVal = row.isActive !== undefined ? row.isActive : row.isactive;
   return {
-    ...row,
-    isActive: row.isActive === 1 || row.isActive === true,
-    businessId: row.businessId ?? undefined,
-    dateOfBirth: row.dateOfBirth ?? undefined,
-    gender: row.gender ?? undefined,
-    profileImageUrl: row.profileImageUrl ?? undefined,
+    id: row.id,
+    email: row.email,
+    name: row.name,
+    role: row.role,
+    isActive: isActiveVal === 1 || isActiveVal === true || isActiveVal === '1',
+    businessId: row.businessId ?? row.businessid ?? undefined,
+    passwordHash: row.passwordHash ?? row.passwordhash ?? '',
+    createdAt: row.createdAt ?? row.createdat ?? '',
+    dateOfBirth: row.dateOfBirth ?? row.dateofbirth ?? undefined,
+    gender: row.gender ?? row.gender ?? undefined,
+    profileImageUrl: row.profileImageUrl ?? row.profileimageurl ?? undefined,
     address: row.address ?? undefined,
     phone: row.phone ?? undefined,
   };
@@ -136,34 +142,56 @@ const mapUser = (row: any): UserWithPassword => {
 
 const mapCarWash = (row: any): CarWash => {
   if (!row) return row;
+  const customPaymentsJson = row.customPaymentsJson ?? row.custompaymentsjson;
   let parsedCustom = [];
   try {
-    if (row.customPaymentsJson) {
-      parsedCustom = typeof row.customPaymentsJson === 'string' ? JSON.parse(row.customPaymentsJson) : row.customPaymentsJson;
+    if (customPaymentsJson) {
+      parsedCustom = typeof customPaymentsJson === 'string' ? JSON.parse(customPaymentsJson) : customPaymentsJson;
     }
   } catch (e) {
     console.error("Error parsing customPaymentsJson:", e);
   }
+  const servicesJson = row.servicesJson ?? row.servicesjson;
   let parsedServices = [];
   try {
-    if (row.servicesJson) {
-      parsedServices = typeof row.servicesJson === 'string' ? JSON.parse(row.servicesJson) : row.servicesJson;
+    if (servicesJson) {
+      parsedServices = typeof servicesJson === 'string' ? JSON.parse(servicesJson) : servicesJson;
     }
   } catch (e) {
     console.error("Error parsing servicesJson:", e);
   }
+  const isActiveVal = row.isActive !== undefined ? row.isActive : row.isactive;
+  const bibdEnabledVal = row.bibdEnabled !== undefined ? row.bibdEnabled : row.bibdenabled;
+  const baiduriEnabledVal = row.baiduriEnabled !== undefined ? row.baiduriEnabled : row.baidurienabled;
+  const openingHours = row.openingHours ?? row.openinghours;
+
   return {
-    ...row,
-    isActive: row.isActive === 1 || row.isActive === true,
-    openingHours: typeof row.openingHours === 'string' ? JSON.parse(row.openingHours) : row.openingHours,
+    id: row.id,
+    name: row.name,
+    description: row.description ?? undefined,
+    locationLat: Number(row.locationLat ?? row.locationlat),
+    locationLng: Number(row.locationLng ?? row.locationlng),
+    address: row.address,
+    openingHours: typeof openingHours === 'string' ? JSON.parse(openingHours) : openingHours,
+    slotDuration: Number(row.slotDuration ?? row.slotduration),
+    capacityPerSlot: Number(row.capacityPerSlot ?? row.capacityperslot),
+    ownerId: row.ownerId ?? row.ownerid,
+    isActive: isActiveVal === 1 || isActiveVal === true || isActiveVal === '1',
+    createdAt: row.createdAt ?? row.createdat,
     phone: row.phone ?? undefined,
     instagram: row.instagram ?? undefined,
-    bibdEnabled: row.bibdEnabled === 1 || row.bibdEnabled === true,
-    baiduriEnabled: row.baiduriEnabled === 1 || row.baiduriEnabled === true,
-    customPaymentsJson: row.customPaymentsJson ?? undefined,
+    bibdAccountName: row.bibdAccountName ?? row.bibdaccountname ?? undefined,
+    bibdAccountNo: row.bibdAccountNo ?? row.bibdaccountno ?? undefined,
+    bibdEnabled: bibdEnabledVal === 1 || bibdEnabledVal === true || bibdEnabledVal === '1',
+    baiduriAccountName: row.baiduriAccountName ?? row.baiduriaccountname ?? undefined,
+    baiduriAccountNo: row.baiduriAccountNo ?? row.baiduriaccountno ?? undefined,
+    baiduriEnabled: baiduriEnabledVal === 1 || baiduriEnabledVal === true || baiduriEnabledVal === '1',
+    bibdQrImageUrl: row.bibdQrImageUrl ?? row.bibdqrimageurl ?? undefined,
+    baiduriQrImageUrl: row.baiduriQrImageUrl ?? row.baiduriqrimageurl ?? undefined,
+    customPaymentsJson: customPaymentsJson ?? undefined,
     customPaymentMethods: parsedCustom,
-    paymentPolicy: row.paymentPolicy ?? 'PAY_ON_SITE',
-    servicesJson: row.servicesJson ?? undefined,
+    paymentPolicy: row.paymentPolicy ?? row.paymentpolicy ?? 'PAY_ON_SITE',
+    servicesJson: servicesJson ?? undefined,
     services: parsedServices,
   };
 };
@@ -171,12 +199,24 @@ const mapCarWash = (row: any): CarWash => {
 const mapBooking = (row: any): Booking => {
   if (!row) return row;
   return {
-    ...row,
+    id: row.id,
+    carWashId: row.carWashId ?? row.carwashid,
+    customerId: row.customerId ?? row.customerid,
+    customerName: row.customerName ?? row.customername,
+    customerEmail: row.customerEmail ?? row.customeremail,
+    date: row.date,
+    timeSlot: row.timeSlot ?? row.timeslot,
+    status: row.status,
     notes: row.notes ?? undefined,
-    employeeId: row.employeeId ?? undefined,
-    serviceId: row.serviceId ?? undefined,
-    serviceName: row.serviceName ?? undefined,
-    price: row.price ?? undefined,
+    employeeId: row.employeeId ?? row.employeeid ?? undefined,
+    createdAt: row.createdAt ?? row.createdat,
+    updatedAt: row.updatedAt ?? row.updatedat,
+    paymentBank: row.paymentBank ?? row.paymentbank ?? undefined,
+    txnReference: row.txnReference ?? row.txnreference ?? undefined,
+    receiptFilename: row.receiptFilename ?? row.receiptfilename ?? undefined,
+    serviceId: row.serviceId ?? row.serviceid ?? undefined,
+    serviceName: row.serviceName ?? row.servicename ?? undefined,
+    price: row.price !== undefined && row.price !== null ? Number(row.price) : undefined,
   };
 };
 
@@ -268,6 +308,8 @@ export async function seedFirestoreIfEmpty() {
   const alterColumns = [
     'ALTER TABLE users ADD COLUMN isActive INTEGER DEFAULT 1',
     'ALTER TABLE users ADD COLUMN businessId TEXT',
+    'ALTER TABLE users ADD COLUMN passwordHash TEXT',
+    'ALTER TABLE users ADD COLUMN createdAt TEXT',
     'ALTER TABLE car_washes ADD COLUMN isActive INTEGER DEFAULT 1',
     'ALTER TABLE users ADD COLUMN dateOfBirth TEXT',
     'ALTER TABLE users ADD COLUMN gender TEXT',
