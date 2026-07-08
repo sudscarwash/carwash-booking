@@ -42,7 +42,9 @@ import {
   deletePasswordReset,
   getMapPresets,
   createMapPreset,
-  deleteMapPreset
+  deleteMapPreset,
+  isUsingPostgres,
+  getPostgresConnectionError
 } from './server/db.js';
 import { 
   isSupabaseAuthEnabled, 
@@ -53,7 +55,8 @@ import {
 } from './server/supabaseService.js';
 import {
   sendPasswordResetOTP,
-  sendBookingConfirmationEmail
+  sendBookingConfirmationEmail,
+  sendEmail
 } from './server/emailService.js';
 import { authenticateToken, requireRoles, generateToken, AuthenticatedRequest } from './server/auth.js';
 import { generateSlotsForDate } from './server/slots.js';
@@ -1520,6 +1523,119 @@ async function startServer() {
   // ==========================================
   // PLATFORM ADMIN ENDPOINTS
   // ==========================================
+
+  // Admin: Get system and database connection status
+  app.get(
+    '/api/admin/system-status',
+    authenticateToken,
+    requireRoles([Role.ADMIN]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const isDbUsingPostgres = isUsingPostgres();
+        const dbError = getPostgresConnectionError();
+        const isAuthEnabled = isSupabaseAuthEnabled;
+
+        // Count of database records
+        const allUsers = await getUsers();
+        const allCarWashes = await getCarWashes();
+        const allBookings = await getBookings();
+
+        // Mask credentials in connection string for safety
+        let maskedDbUrl = 'None';
+        if (process.env.DATABASE_URL) {
+          try {
+            const urlObj = new URL(process.env.DATABASE_URL);
+            urlObj.password = '••••••••';
+            maskedDbUrl = urlObj.toString();
+          } catch (e) {
+            maskedDbUrl = 'Invalid Connection String Format';
+          }
+        }
+
+        res.json({
+          database: {
+            type: isDbUsingPostgres ? 'PostgreSQL (Supabase)' : 'SQLite (Fallback Local DB)',
+            status: isDbUsingPostgres ? 'Connected' : (process.env.DATABASE_URL ? 'Failed (Fell back to SQLite)' : 'SQLite (No DATABASE_URL supplied)'),
+            connectionString: maskedDbUrl,
+            error: dbError,
+            stats: {
+              usersCount: allUsers.length,
+              locationsCount: allCarWashes.length,
+              bookingsCount: allBookings.length,
+            }
+          },
+          supabaseAuth: {
+            enabled: isAuthEnabled,
+            url: process.env.SUPABASE_URL || 'Not Configured',
+            hasServiceKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY
+          },
+          email: {
+            status: process.env.RESEND_API_KEY ? 'Configured (Resend API)' : 'Simulated (Offline Fallback)',
+            fromAddress: process.env.EMAIL_FROM_ADDRESS || 'onboarding@resend.dev',
+            hasApiKey: !!process.env.RESEND_API_KEY
+          }
+        });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Internal server error' });
+      }
+    }
+  );
+
+  // Admin: Test send email
+  app.post(
+    '/api/admin/test-email',
+    authenticateToken,
+    requireRoles([Role.ADMIN]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { testEmail } = req.body;
+        if (!testEmail) {
+          res.status(400).json({ error: 'Recipient email address (testEmail) is required' });
+          return;
+        }
+
+        const isDbUsingPostgres = isUsingPostgres();
+        const dbType = isDbUsingPostgres ? 'PostgreSQL (Supabase)' : 'SQLite (Fallback Local DB)';
+
+        const subject = 'Test Dispatch: SudsFlow System Diagnostics - Success';
+        const html = `
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff; color: #1e293b;">
+            <div style="text-align: center; margin-bottom: 24px;">
+              <h1 style="color: #ef4444; margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.025em;">SudsFlow</h1>
+              <p style="color: #64748b; margin: 4px 0 0 0; font-size: 14px;">Platform Operator Room</p>
+            </div>
+            <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 24px 0;" />
+            <h2 style="color: #10b981; font-size: 20px; font-weight: 700; margin-top: 0; margin-bottom: 12px; text-align: center;">✅ Email Dispatch Working!</h2>
+            <p style="font-size: 15px; line-height: 1.6; color: #334155;">Hello Administrator,</p>
+            <p style="font-size: 15px; line-height: 1.6; color: #334155;">This is a system diagnostics email sent from your SudsFlow deployment. If you are reading this message, your Resend SMTP API keys are properly integrated and fully operational!</p>
+            
+            <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 20px; border-radius: 12px; margin: 28px 0; font-size: 13px;">
+              <p style="margin: 4px 0; color: #475569;"><strong>System Status Details:</strong></p>
+              <p style="margin: 2px 0; color: #334155;">• Active Database: <strong style="color: #ef4444;">${dbType}</strong></p>
+              <p style="margin: 2px 0; color: #334155;">• Resend Service: <strong style="color: #10b981;">Fully Configured (API Key Verified)</strong></p>
+              <p style="margin: 2px 0; color: #334155;">• Timestamp: ${new Date().toLocaleString()}</p>
+            </div>
+
+            <p style="font-size: 14px; line-height: 1.6; color: #475569;">You can now safely onboard customers, locations, and dispatch notifications with confidence.</p>
+            <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 30px 0;" />
+            <div style="text-align: center;">
+              <p style="color: #94a3b8; font-size: 11px; margin: 0;">&copy; ${new Date().getFullYear()} SudsFlow Car Wash. All rights reserved.</p>
+            </div>
+          </div>
+        `;
+
+        const sent = await sendEmail(testEmail, subject, html);
+        if (sent) {
+          await addAuditLog(req.user!.id, req.user!.email, 'TEST_EMAIL_DISPATCH', `Sent system diagnostics email to ${testEmail}`);
+          res.json({ success: true, message: `Test email successfully dispatched to ${testEmail}!` });
+        } else {
+          res.status(500).json({ error: 'Failed to send email. Check server console logs for exact provider rejection message.' });
+        }
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Internal server error' });
+      }
+    }
+  );
 
   // Admin: View all users
   app.get(

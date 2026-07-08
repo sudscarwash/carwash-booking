@@ -16,10 +16,20 @@ import fs from 'fs';
 import bcrypt from 'bcryptjs';
 import { Role, BookingStatus, UserWithPassword, CarWash, Booking, AuditLog, WeeklySchedule, MapPreset } from '../src/types.js';
 
-const usePostgres = !!process.env.DATABASE_URL;
+let usePostgres = !!process.env.DATABASE_URL;
+let postgresConnectionError: string | null = null;
 
 let pgPool: pg.Pool | null = null;
 let sqliteDb: Database.Database | null = null;
+
+// Always initialize SQLite database as the core of our local fallback architecture
+const dataDir = path.resolve(process.cwd(), 'data');
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true });
+}
+const dbPath = path.resolve(dataDir, 'carwash.db');
+sqliteDb = new Database(dbPath);
+sqliteDb.pragma('journal_mode = WAL');
 
 if (usePostgres) {
   console.log('Using PostgreSQL database connection for Supabase...');
@@ -34,18 +44,11 @@ if (usePostgres) {
 
   pgPool = new pg.Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false } // Always bypass strict SSL checks for local development with hosted Postgres (Supabase, Render, neon)
+    ssl: { rejectUnauthorized: false }, // Always bypass strict SSL checks for local development with hosted Postgres (Supabase, Render, neon)
+    connectionTimeoutMillis: 5000, // 5 seconds connection timeout
   });
 } else {
-  // Ensure data directory exists
-  const dataDir = path.resolve(process.cwd(), 'data');
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
-  }
-  const dbPath = path.resolve(dataDir, 'carwash.db');
   console.log('Using SQLite database at:', dbPath);
-  sqliteDb = new Database(dbPath);
-  sqliteDb.pragma('journal_mode = WAL');
 }
 
 // Convert SQLite parameter and ignore queries into PostgreSQL-friendly SQL
@@ -193,7 +196,8 @@ async function runExec(sql: string): Promise<void> {
       .filter(s => s.length > 0);
     for (const statement of statements) {
       try {
-        await pgPool!.query(statement);
+        const pgSql = convertQueryToPg(statement);
+        await pgPool!.query(pgSql);
       } catch (err: any) {
         if (!statement.includes('ALTER TABLE')) {
           console.warn('[Postgres Schema Warning]', err.message, 'on statement:', statement);
@@ -318,6 +322,24 @@ const DEFAULT_SCHEDULE: WeeklySchedule = {
 
 // Seeding engine
 export async function seedFirestoreIfEmpty() {
+  if (usePostgres && pgPool) {
+    try {
+      console.log('Testing PostgreSQL/Supabase database connection...');
+      const client = await pgPool.connect();
+      client.release();
+      console.log('✅ PostgreSQL/Supabase connection successful!');
+    } catch (err: any) {
+      postgresConnectionError = err.message || String(err);
+      console.error('❌ PostgreSQL/Supabase connection failed! Error:', postgresConnectionError);
+      console.error('👉 Automatically falling back to local SQLite database to prevent application crash.');
+      usePostgres = false;
+      try {
+        await pgPool.end();
+      } catch (e) {}
+      pgPool = null;
+    }
+  }
+
   // Initialize table schema structures safely
   await runExec(`
     CREATE TABLE IF NOT EXISTS users (
@@ -426,19 +448,26 @@ export async function seedFirestoreIfEmpty() {
   for (const query of alterColumns) {
     try {
       if (usePostgres) {
-        await pgPool!.query(query);
+        const pgSql = convertQueryToPg(query);
+        await pgPool!.query(pgSql);
       } else {
         sqliteDb!.exec(query);
       }
-    } catch (e) {
-      // Safely ignore column already exists errors
+    } catch (e: any) {
+      // Safely ignore duplicate column / column already exists errors
+      const isDuplicatePostgres = usePostgres && (e.code === '42701' || e.message?.includes('already exists'));
+      const isDuplicateSqlite = !usePostgres && e.message?.includes('duplicate column name');
+      if (!isDuplicatePostgres && !isDuplicateSqlite) {
+        console.warn(`[Schema Alter Warning] Failed to run "${query}":`, e.message || e);
+      }
     }
   }
 
   // Create standard unique index for transaction references on SQLite or Postgres
   try {
     if (usePostgres) {
-      await pgPool!.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_bookings_txnReference ON bookings(txnReference)`);
+      const indexSql = convertQueryToPg(`CREATE UNIQUE INDEX IF NOT EXISTS idx_bookings_txnReference ON bookings(txnReference)`);
+      await pgPool!.query(indexSql);
     } else {
       sqliteDb!.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_bookings_txnReference ON bookings(txnReference)`);
     }
@@ -1117,4 +1146,12 @@ export async function deleteMapPreset(id: string): Promise<void> {
     console.error('Database deleteMapPreset Error:', error);
     throw error;
   }
+}
+
+export function isUsingPostgres(): boolean {
+  return usePostgres;
+}
+
+export function getPostgresConnectionError(): string | null {
+  return postgresConnectionError;
 }
