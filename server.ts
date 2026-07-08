@@ -42,7 +42,8 @@ import {
   isSupabaseAuthEnabled, 
   registerSupabaseUser, 
   loginSupabaseUser, 
-  updateSupabasePassword 
+  updateSupabasePassword,
+  supabaseClient
 } from './server/supabaseService.js';
 import {
   sendPasswordResetOTP,
@@ -102,6 +103,7 @@ async function startServer() {
       }
 
       let userId = `usr_${Math.random().toString(36).substr(2, 9)}`;
+      let isAutoProvisioned = false;
 
       // Sync register with Supabase Auth if configured
       if (isSupabaseAuthEnabled) {
@@ -111,8 +113,36 @@ async function startServer() {
             userId = supabaseId; // Match public User id to Supabase auth user id
           }
         } catch (supabaseError: any) {
-          res.status(400).json({ error: `Supabase Auth Registration Failed: ${supabaseError.message}` });
-          return;
+          // If the user already exists in Supabase, try to check if they can authenticate with the provided password
+          const errMsg = supabaseError.message || '';
+          if (errMsg.toLowerCase().includes('already registered') || errMsg.toLowerCase().includes('already exists')) {
+            console.log(`[Register Auto-Restore] User ${email} already exists in Supabase. Verifying credentials...`);
+            try {
+              const authSuccess = await loginSupabaseUser(email, password);
+              if (authSuccess) {
+                console.log(`[Register Auto-Restore] Credentials verified on Supabase. Auto-provisioning local profile...`);
+                isAutoProvisioned = true;
+                
+                // Try to find the user in Supabase to get the correct user ID
+                if (supabaseClient) {
+                  const { data: listData } = await supabaseClient.auth.admin.listUsers().catch(() => ({ data: null }));
+                  const found = listData?.users?.find(u => u.email?.toLowerCase() === email.toLowerCase());
+                  if (found) {
+                    userId = found.id;
+                  }
+                }
+              } else {
+                res.status(400).json({ error: 'This email is already registered with a different password.' });
+                return;
+              }
+            } catch (authErr: any) {
+              res.status(400).json({ error: 'This email is already registered.' });
+              return;
+            }
+          } else {
+            res.status(400).json({ error: `Supabase Auth Registration Failed: ${supabaseError.message}` });
+            return;
+          }
         }
       }
 
@@ -135,7 +165,14 @@ async function startServer() {
 
       await createUser(newUser);
 
-      await addAuditLog(newUser.id, newUser.email, 'USER_REGISTER', `Customer account created: ${newUser.name} ${isSupabaseAuthEnabled ? '(Supabase Auth Synchronized)' : ''}`);
+      await addAuditLog(
+        newUser.id,
+        newUser.email,
+        isAutoProvisioned ? 'USER_AUTOPROVISION' : 'USER_REGISTER',
+        isAutoProvisioned 
+          ? `Customer profile auto-provisioned/restored on register from existing Supabase Auth account`
+          : `Customer account created: ${newUser.name} ${isSupabaseAuthEnabled ? '(Supabase Auth Synchronized)' : ''}`
+      );
 
       const { passwordHash: _, ...safeUser } = newUser;
       const token = generateToken(safeUser);
@@ -156,7 +193,52 @@ async function startServer() {
         return;
       }
 
-      const user = await getUserByEmail(email);
+      let user = await getUserByEmail(email);
+
+      // If user does not exist in local database but Supabase Auth is enabled,
+      // let's try authenticating with Supabase Auth to see if we can auto-provision/restore them!
+      if (!user && isSupabaseAuthEnabled) {
+        try {
+          console.log(`[Login Auto-Restore] User ${email} not found in local DB. Checking on Supabase Auth...`);
+          const authSuccess = await loginSupabaseUser(email, password);
+          if (authSuccess) {
+            console.log(`[Login Auto-Restore] User ${email} authenticated successfully on Supabase. Re-provisioning local record...`);
+            
+            // Retrieve Supabase user to get ID and Metadata
+            let name = email.split('@')[0];
+            let supabaseId = `usr_${Math.random().toString(36).substr(2, 9)}`;
+            
+            if (supabaseClient) {
+              const { data: listData } = await supabaseClient.auth.admin.listUsers().catch(() => ({ data: null }));
+              const found = listData?.users?.find(u => u.email?.toLowerCase() === email.toLowerCase());
+              if (found) {
+                supabaseId = found.id;
+                if (found.user_metadata?.full_name) {
+                  name = found.user_metadata.full_name;
+                }
+              }
+            }
+            
+            const salt = bcrypt.genSaltSync(10);
+            const passwordHash = bcrypt.hashSync(password, salt);
+            const newUser: UserWithPassword = {
+              id: supabaseId,
+              email: email.toLowerCase(),
+              name,
+              role: Role.CUSTOMER, // default role
+              isActive: true,
+              passwordHash,
+              createdAt: new Date().toISOString(),
+            };
+            
+            await createUser(newUser);
+            await addAuditLog(newUser.id, newUser.email, 'USER_AUTOPROVISION', `Customer account auto-provisioned/restored on login from Supabase Auth`);
+            user = newUser;
+          }
+        } catch (supabaseError: any) {
+          console.error('[Login Auto-Restore] Supabase direct auth failed:', supabaseError.message);
+        }
+      }
 
       if (!user) {
         res.status(400).json({ error: 'Invalid email or password.' });
@@ -168,7 +250,7 @@ async function startServer() {
         return;
       }
 
-      // Authenticate via Supabase Auth if configured
+      // Authenticate via Supabase Auth if configured (only if we didn't just authenticate them above)
       if (isSupabaseAuthEnabled) {
         try {
           const authSuccess = await loginSupabaseUser(email, password);
@@ -209,7 +291,43 @@ async function startServer() {
         return;
       }
 
-      const user = await getUserByEmail(email);
+      let user = await getUserByEmail(email);
+
+      // If user does not exist in local database but Supabase Auth is enabled,
+      // let's try checking if they exist on Supabase to auto-provision them!
+      if (!user && isSupabaseAuthEnabled) {
+        try {
+          if (supabaseClient) {
+            const { data: listData, error: listError } = await supabaseClient.auth.admin.listUsers();
+            if (!listError && listData?.users) {
+              const found = listData.users.find(u => u.email?.toLowerCase() === email.toLowerCase());
+              if (found) {
+                console.log(`[Forgot Password Auto-Restore] User ${email} found in Supabase Auth but not in local DB. Auto-provisioning...`);
+                const name = found.user_metadata?.full_name || email.split('@')[0];
+                const salt = bcrypt.genSaltSync(10);
+                const passwordHash = bcrypt.hashSync(Math.random().toString(36), salt); // temporary random password
+                
+                const newUser: UserWithPassword = {
+                  id: found.id,
+                  email: email.toLowerCase(),
+                  name,
+                  role: Role.CUSTOMER,
+                  isActive: true,
+                  passwordHash,
+                  createdAt: new Date().toISOString(),
+                };
+                
+                await createUser(newUser);
+                await addAuditLog(newUser.id, newUser.email, 'USER_AUTOPROVISION', `Customer account auto-provisioned/restored on forgot-password request from Supabase Auth`);
+                user = newUser;
+              }
+            }
+          }
+        } catch (supabaseError: any) {
+          console.error('[Forgot Password Auto-Restore] Supabase lookup failed:', supabaseError.message);
+        }
+      }
+
       if (!user) {
         res.status(404).json({ error: 'No account registered with this email address.' });
         return;
