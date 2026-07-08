@@ -39,7 +39,7 @@ export async function registerSupabaseUser(email: string, password: string, name
       if (error) {
         // If the user already exists in Supabase, try to retrieve their ID
         const errMsg = error.message.toLowerCase();
-        if (errMsg.includes('already registered') || errMsg.includes('already exists')) {
+        if (errMsg.includes('exist') || errMsg.includes('register') || errMsg.includes('conflict')) {
           console.log('[Supabase Auth] User already exists in Supabase. Retrieving existing ID...');
           const { data: listData, error: listError } = await supabaseClient.auth.admin.listUsers();
           if (!listError && listData?.users) {
@@ -124,8 +124,8 @@ export async function updateSupabasePassword(email: string, newPassword: string)
 /**
  * Authenticate a user with Supabase Auth
  */
-export async function loginSupabaseUser(email: string, password: string): Promise<boolean> {
-  if (!supabaseClient) return false;
+export async function loginSupabaseUser(email: string, password: string): Promise<any> {
+  if (!supabaseClient) return null;
 
   try {
     const { data, error } = await supabaseClient.auth.signInWithPassword({
@@ -138,7 +138,7 @@ export async function loginSupabaseUser(email: string, password: string): Promis
       throw new Error(error.message);
     }
 
-    return !!data.user;
+    return data.user || null;
   } catch (err: any) {
     console.error('[Supabase Auth] Failed to authenticate user:', err);
     throw err;
