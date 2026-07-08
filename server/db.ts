@@ -23,6 +23,15 @@ let sqliteDb: Database.Database | null = null;
 
 if (usePostgres) {
   console.log('Using PostgreSQL database connection for Supabase...');
+  const dbUrl = process.env.DATABASE_URL || '';
+  if (dbUrl.includes('.supabase.co') && (dbUrl.includes(':5432') || !dbUrl.includes(':6543'))) {
+    console.warn('\n⚠️  WARNING: DETECTED SUPABASE DIRECT CONNECTION ON PORT 5432 (or non-pooler port)!');
+    console.warn('Many hosting providers (like Render, AWS, or Google Cloud) do NOT support outbound IPv6 connections.');
+    console.warn('Your direct connection (port 5432) uses IPv6-only on newer Supabase projects, which will fail with "connect ENETUNREACH".');
+    console.warn('👉 ACTION REQUIRED: Change your DATABASE_URL in Render to use the CONNECTION POOLER (port 6543) instead.');
+    console.warn('Example format: postgres://postgres.[your-project-id]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres?pgbouncer=true\n');
+  }
+
   pgPool = new pg.Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false } // Always bypass strict SSL checks for local development with hosted Postgres (Supabase, Render, neon)
@@ -257,6 +266,9 @@ export async function seedFirestoreIfEmpty() {
 
   // Dynamically add rich user profile columns if they do not exist
   const alterColumns = [
+    'ALTER TABLE users ADD COLUMN isActive INTEGER DEFAULT 1',
+    'ALTER TABLE users ADD COLUMN businessId TEXT',
+    'ALTER TABLE car_washes ADD COLUMN isActive INTEGER DEFAULT 1',
     'ALTER TABLE users ADD COLUMN dateOfBirth TEXT',
     'ALTER TABLE users ADD COLUMN gender TEXT',
     'ALTER TABLE users ADD COLUMN profileImageUrl TEXT',
