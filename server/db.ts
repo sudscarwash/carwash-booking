@@ -3,6 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import dns from 'node:dns';
+// Force IPv4 DNS resolution first to bypass IPv6 ENETUNREACH errors in hosting environments (e.g., Render, Cloud Run, AIS)
+if (typeof dns.setDefaultResultOrder === 'function') {
+  dns.setDefaultResultOrder('ipv4first');
+}
+
 import Database from 'better-sqlite3';
 import pg from 'pg';
 import path from 'path';
