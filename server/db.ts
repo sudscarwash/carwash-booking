@@ -54,6 +54,92 @@ function convertQueryToPg(sql: string): string {
   let index = 1;
   let result = sql.replace(/\?/g, () => `$${index++}`);
 
+  // Replace camelCase and lowercase column names with snake_case column names for PostgreSQL compatibility
+  const replacements: { [key: string]: string } = {
+    passwordHash: 'password_hash',
+    passwordhash: 'password_hash',
+    isActive: 'is_active',
+    isactive: 'is_active',
+    businessId: 'business_id',
+    businessid: 'business_id',
+    createdAt: 'created_at',
+    createdat: 'created_at',
+    dateOfBirth: 'date_of_birth',
+    dateofbirth: 'date_of_birth',
+    profileImageUrl: 'profile_image_url',
+    profileimageurl: 'profile_image_url',
+    locationLat: 'location_lat',
+    locationlat: 'location_lat',
+    locationLng: 'location_lng',
+    locationlng: 'location_lng',
+    slotDuration: 'slot_duration',
+    slotduration: 'slot_duration',
+    capacityPerSlot: 'capacity_per_slot',
+    capacityperslot: 'capacity_per_slot',
+    ownerId: 'owner_id',
+    ownerid: 'owner_id',
+    carWashId: 'car_wash_id',
+    carwashid: 'car_wash_id',
+    customerId: 'customer_id',
+    customerid: 'customer_id',
+    customerName: 'customer_name',
+    customername: 'customer_name',
+    customerEmail: 'customer_email',
+    customeremail: 'customer_email',
+    timeSlot: 'time_slot',
+    timeslot: 'time_slot',
+    employeeId: 'employee_id',
+    employeeid: 'employee_id',
+    updatedAt: 'updated_at',
+    updatedat: 'updated_at',
+    paymentBank: 'payment_bank',
+    paymentbank: 'payment_bank',
+    txnReference: 'txn_reference',
+    txnreference: 'txn_reference',
+    receiptFilename: 'receipt_filename',
+    receiptfilename: 'receipt_filename',
+    serviceId: 'service_id',
+    serviceid: 'service_id',
+    serviceName: 'service_name',
+    servicename: 'service_name',
+    bibdAccountName: 'bibd_account_name',
+    bibdaccountname: 'bibd_account_name',
+    bibdAccountNo: 'bibd_account_no',
+    bibdaccountno: 'bibd_account_no',
+    bibdEnabled: 'bibd_enabled',
+    bibdenabled: 'bibd_enabled',
+    baiduriAccountName: 'baiduri_account_name',
+    baiduriaccountname: 'baiduri_account_name',
+    baiduriAccountNo: 'baiduri_account_no',
+    baiduriaccountno: 'baiduri_account_no',
+    baiduriEnabled: 'baiduri_enabled',
+    baidurienabled: 'baiduri_enabled',
+    bibdQrImageUrl: 'bibd_qr_image_url',
+    bibdqrimageurl: 'bibd_qr_image_url',
+    baiduriQrImageUrl: 'baiduri_qr_image_url',
+    baiduriqrimageurl: 'baiduri_qr_image_url',
+    customPaymentsJson: 'custom_payments_json',
+    custompaymentsjson: 'custom_payments_json',
+    paymentPolicy: 'payment_policy',
+    paymentpolicy: 'payment_policy',
+    servicesJson: 'services_json',
+    servicesjson: 'services_json',
+    userId: 'user_id',
+    userid: 'user_id',
+    userEmail: 'user_email',
+    useremail: 'user_email',
+    expiresAt: 'expires_at',
+    expiresat: 'expires_at',
+    isCustom: 'is_custom',
+    iscustom: 'is_custom',
+  };
+
+  // Perform whole-word replacements to avoid matching partial strings
+  Object.keys(replacements).forEach((key) => {
+    const regex = new RegExp(`\\b${key}\\b`, 'g');
+    result = result.replace(regex, replacements[key]);
+  });
+
   // Map SQLite-specific "INSERT OR IGNORE" to PostgreSQL's "INSERT INTO ... ON CONFLICT (id) DO NOTHING"
   if (/INSERT\s+OR\s+IGNORE\s+INTO\s+(\w+)/i.test(result)) {
     const tableName = RegExp.$1.toLowerCase();
@@ -122,19 +208,19 @@ async function runExec(sql: string): Promise<void> {
 // Mappers to transform raw table representation back to application TypeScript types
 const mapUser = (row: any): UserWithPassword => {
   if (!row) return row;
-  const isActiveVal = row.isActive !== undefined ? row.isActive : row.isactive;
+  const isActiveVal = row.isActive !== undefined ? row.isActive : (row.is_active !== undefined ? row.is_active : row.isactive);
   return {
     id: row.id,
     email: row.email,
     name: row.name,
     role: row.role,
     isActive: isActiveVal === 1 || isActiveVal === true || isActiveVal === '1',
-    businessId: row.businessId ?? row.businessid ?? undefined,
-    passwordHash: row.passwordHash ?? row.passwordhash ?? '',
-    createdAt: row.createdAt ?? row.createdat ?? '',
-    dateOfBirth: row.dateOfBirth ?? row.dateofbirth ?? undefined,
-    gender: row.gender ?? row.gender ?? undefined,
-    profileImageUrl: row.profileImageUrl ?? row.profileimageurl ?? undefined,
+    businessId: row.businessId ?? row.business_id ?? row.businessid ?? undefined,
+    passwordHash: row.passwordHash ?? row.password_hash ?? row.passwordhash ?? '',
+    createdAt: row.createdAt ?? row.created_at ?? row.createdat ?? '',
+    dateOfBirth: row.dateOfBirth ?? row.date_of_birth ?? row.dateofbirth ?? undefined,
+    gender: row.gender ?? undefined,
+    profileImageUrl: row.profileImageUrl ?? row.profile_image_url ?? row.profileimageurl ?? undefined,
     address: row.address ?? undefined,
     phone: row.phone ?? undefined,
   };
@@ -142,7 +228,7 @@ const mapUser = (row: any): UserWithPassword => {
 
 const mapCarWash = (row: any): CarWash => {
   if (!row) return row;
-  const customPaymentsJson = row.customPaymentsJson ?? row.custompaymentsjson;
+  const customPaymentsJson = row.customPaymentsJson ?? row.custom_payments_json ?? row.custompaymentsjson;
   let parsedCustom = [];
   try {
     if (customPaymentsJson) {
@@ -151,7 +237,7 @@ const mapCarWash = (row: any): CarWash => {
   } catch (e) {
     console.error("Error parsing customPaymentsJson:", e);
   }
-  const servicesJson = row.servicesJson ?? row.servicesjson;
+  const servicesJson = row.servicesJson ?? row.services_json ?? row.servicesjson;
   let parsedServices = [];
   try {
     if (servicesJson) {
@@ -160,37 +246,37 @@ const mapCarWash = (row: any): CarWash => {
   } catch (e) {
     console.error("Error parsing servicesJson:", e);
   }
-  const isActiveVal = row.isActive !== undefined ? row.isActive : row.isactive;
-  const bibdEnabledVal = row.bibdEnabled !== undefined ? row.bibdEnabled : row.bibdenabled;
-  const baiduriEnabledVal = row.baiduriEnabled !== undefined ? row.baiduriEnabled : row.baidurienabled;
-  const openingHours = row.openingHours ?? row.openinghours;
+  const isActiveVal = row.isActive !== undefined ? row.isActive : (row.is_active !== undefined ? row.is_active : row.isactive);
+  const bibdEnabledVal = row.bibdEnabled !== undefined ? row.bibdEnabled : (row.bibd_enabled !== undefined ? row.bibd_enabled : row.bibdenabled);
+  const baiduriEnabledVal = row.baiduriEnabled !== undefined ? row.baiduriEnabled : (row.baiduri_enabled !== undefined ? row.baiduri_enabled : row.baidurienabled);
+  const openingHours = row.openingHours ?? row.opening_hours ?? row.openinghours;
 
   return {
     id: row.id,
     name: row.name,
     description: row.description ?? undefined,
-    locationLat: Number(row.locationLat ?? row.locationlat),
-    locationLng: Number(row.locationLng ?? row.locationlng),
+    locationLat: Number(row.locationLat ?? row.location_lat ?? row.locationlat),
+    locationLng: Number(row.locationLng ?? row.location_lng ?? row.locationlng),
     address: row.address,
     openingHours: typeof openingHours === 'string' ? JSON.parse(openingHours) : openingHours,
-    slotDuration: Number(row.slotDuration ?? row.slotduration),
-    capacityPerSlot: Number(row.capacityPerSlot ?? row.capacityperslot),
-    ownerId: row.ownerId ?? row.ownerid,
+    slotDuration: Number(row.slotDuration ?? row.slot_duration ?? row.slotduration),
+    capacityPerSlot: Number(row.capacityPerSlot ?? row.capacity_per_slot ?? row.capacityperslot),
+    ownerId: row.ownerId ?? row.owner_id ?? row.ownerid,
     isActive: isActiveVal === 1 || isActiveVal === true || isActiveVal === '1',
-    createdAt: row.createdAt ?? row.createdat,
+    createdAt: row.createdAt ?? row.created_at ?? row.createdat,
     phone: row.phone ?? undefined,
     instagram: row.instagram ?? undefined,
-    bibdAccountName: row.bibdAccountName ?? row.bibdaccountname ?? undefined,
-    bibdAccountNo: row.bibdAccountNo ?? row.bibdaccountno ?? undefined,
+    bibdAccountName: row.bibdAccountName ?? row.bibd_account_name ?? row.bibdaccountname ?? undefined,
+    bibdAccountNo: row.bibdAccountNo ?? row.bibd_account_no ?? row.bibdaccountno ?? undefined,
     bibdEnabled: bibdEnabledVal === 1 || bibdEnabledVal === true || bibdEnabledVal === '1',
-    baiduriAccountName: row.baiduriAccountName ?? row.baiduriaccountname ?? undefined,
-    baiduriAccountNo: row.baiduriAccountNo ?? row.baiduriaccountno ?? undefined,
+    baiduriAccountName: row.baiduriAccountName ?? row.baiduri_account_name ?? row.baiduriaccountname ?? undefined,
+    baiduriAccountNo: row.baiduriAccountNo ?? row.baiduri_account_no ?? row.baiduriaccountno ?? undefined,
     baiduriEnabled: baiduriEnabledVal === 1 || baiduriEnabledVal === true || baiduriEnabledVal === '1',
-    bibdQrImageUrl: row.bibdQrImageUrl ?? row.bibdqrimageurl ?? undefined,
-    baiduriQrImageUrl: row.baiduriQrImageUrl ?? row.baiduriqrimageurl ?? undefined,
+    bibdQrImageUrl: row.bibdQrImageUrl ?? row.bibd_qr_image_url ?? row.bibdqrimageurl ?? undefined,
+    baiduriQrImageUrl: row.baiduriQrImageUrl ?? row.baiduri_qr_image_url ?? row.baiduriqrimageurl ?? undefined,
     customPaymentsJson: customPaymentsJson ?? undefined,
     customPaymentMethods: parsedCustom,
-    paymentPolicy: row.paymentPolicy ?? row.paymentpolicy ?? 'PAY_ON_SITE',
+    paymentPolicy: row.paymentPolicy ?? row.payment_policy ?? row.paymentpolicy ?? 'PAY_ON_SITE',
     servicesJson: servicesJson ?? undefined,
     services: parsedServices,
   };
@@ -200,22 +286,22 @@ const mapBooking = (row: any): Booking => {
   if (!row) return row;
   return {
     id: row.id,
-    carWashId: row.carWashId ?? row.carwashid,
-    customerId: row.customerId ?? row.customerid,
-    customerName: row.customerName ?? row.customername,
-    customerEmail: row.customerEmail ?? row.customeremail,
+    carWashId: row.carWashId ?? row.car_wash_id ?? row.carwashid,
+    customerId: row.customerId ?? row.customer_id ?? row.customerid,
+    customerName: row.customerName ?? row.customer_name ?? row.customername,
+    customerEmail: row.customerEmail ?? row.customer_email ?? row.customeremail,
     date: row.date,
-    timeSlot: row.timeSlot ?? row.timeslot,
+    timeSlot: row.timeSlot ?? row.time_slot ?? row.timeslot,
     status: row.status,
     notes: row.notes ?? undefined,
-    employeeId: row.employeeId ?? row.employeeid ?? undefined,
-    createdAt: row.createdAt ?? row.createdat,
-    updatedAt: row.updatedAt ?? row.updatedat,
-    paymentBank: row.paymentBank ?? row.paymentbank ?? undefined,
-    txnReference: row.txnReference ?? row.txnreference ?? undefined,
-    receiptFilename: row.receiptFilename ?? row.receiptfilename ?? undefined,
-    serviceId: row.serviceId ?? row.serviceid ?? undefined,
-    serviceName: row.serviceName ?? row.servicename ?? undefined,
+    employeeId: row.employeeId ?? row.employee_id ?? row.employeeid ?? undefined,
+    createdAt: row.createdAt ?? row.created_at ?? row.createdat,
+    updatedAt: row.updatedAt ?? row.updated_at ?? row.updatedat,
+    paymentBank: row.paymentBank ?? row.payment_bank ?? row.paymentbank ?? undefined,
+    txnReference: row.txnReference ?? row.txn_reference ?? row.txnreference ?? undefined,
+    receiptFilename: row.receiptFilename ?? row.receipt_filename ?? row.receiptfilename ?? undefined,
+    serviceId: row.serviceId ?? row.service_id ?? row.serviceid ?? undefined,
+    serviceName: row.serviceName ?? row.service_name ?? row.servicename ?? undefined,
     price: row.price !== undefined && row.price !== null ? Number(row.price) : undefined,
   };
 };
