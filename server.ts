@@ -121,7 +121,8 @@ async function startServer() {
         } catch (supabaseError: any) {
           // If the user already exists in Supabase, try to check if they can authenticate with the provided password
           const errMsg = supabaseError.message || '';
-          if (errMsg.toLowerCase().includes('already registered') || errMsg.toLowerCase().includes('already exists')) {
+          const errMsgLower = errMsg.toLowerCase();
+          if (errMsgLower.includes('exist') || errMsgLower.includes('register') || errMsgLower.includes('conflict')) {
             console.log(`[Register Auto-Restore] User ${email} already exists in Supabase. Verifying credentials...`);
             try {
               const authSuccess = await loginSupabaseUser(email, password);
@@ -129,8 +130,11 @@ async function startServer() {
                 console.log(`[Register Auto-Restore] Credentials verified on Supabase. Auto-provisioning local profile...`);
                 isAutoProvisioned = true;
                 
-                // Try to find the user in Supabase to get the correct user ID
-                if (supabaseClient) {
+                // Get the user ID directly from the authentication result
+                if (authSuccess.id) {
+                  userId = authSuccess.id;
+                } else if (supabaseClient) {
+                  // Fallback: Try to find the user in Supabase to get the correct user ID
                   const { data: listData } = await supabaseClient.auth.admin.listUsers().catch(() => ({ data: null }));
                   const found = listData?.users?.find(u => u.email?.toLowerCase() === email.toLowerCase());
                   if (found) {
@@ -210,11 +214,12 @@ async function startServer() {
           if (authSuccess) {
             console.log(`[Login Auto-Restore] User ${email} authenticated successfully on Supabase. Re-provisioning local record...`);
             
-            // Retrieve Supabase user to get ID and Metadata
-            let name = email.split('@')[0];
-            let supabaseId = `usr_${Math.random().toString(36).substr(2, 9)}`;
+            // Retrieve Supabase user ID and Metadata directly from the auth result
+            let name = authSuccess.user_metadata?.full_name || email.split('@')[0];
+            let supabaseId = authSuccess.id || `usr_${Math.random().toString(36).substr(2, 9)}`;
             
-            if (supabaseClient) {
+            if (!authSuccess.id && supabaseClient) {
+              // Fallback only
               const { data: listData } = await supabaseClient.auth.admin.listUsers().catch(() => ({ data: null }));
               const found = listData?.users?.find(u => u.email?.toLowerCase() === email.toLowerCase());
               if (found) {
@@ -303,34 +308,57 @@ async function startServer() {
       // let's try checking if they exist on Supabase to auto-provision them!
       if (!user && isSupabaseAuthEnabled) {
         try {
+          let found: any = null;
           if (supabaseClient) {
-            const { data: listData, error: listError } = await supabaseClient.auth.admin.listUsers();
+            const { data: listData, error: listError } = await supabaseClient.auth.admin.listUsers().catch(() => ({ data: null, error: true }));
             if (!listError && listData?.users) {
-              const found = listData.users.find(u => u.email?.toLowerCase() === email.toLowerCase());
-              if (found) {
-                console.log(`[Forgot Password Auto-Restore] User ${email} found in Supabase Auth but not in local DB. Auto-provisioning...`);
-                const name = found.user_metadata?.full_name || email.split('@')[0];
-                const salt = bcrypt.genSaltSync(10);
-                const passwordHash = bcrypt.hashSync(Math.random().toString(36), salt); // temporary random password
-                
-                const newUser: UserWithPassword = {
-                  id: found.id,
-                  email: email.toLowerCase(),
-                  name,
-                  role: Role.CUSTOMER,
-                  isActive: true,
-                  passwordHash,
-                  createdAt: new Date().toISOString(),
-                };
-                
-                await createUser(newUser);
-                await addAuditLog(newUser.id, newUser.email, 'USER_AUTOPROVISION', `Customer account auto-provisioned/restored on forgot-password request from Supabase Auth`);
-                user = newUser;
-              }
+              found = listData.users.find(u => u.email?.toLowerCase() === email.toLowerCase());
             }
           }
+
+          if (found) {
+            console.log(`[Forgot Password Auto-Restore] User ${email} found in Supabase Auth but not in local DB. Auto-provisioning...`);
+            const name = found.user_metadata?.full_name || email.split('@')[0];
+            const salt = bcrypt.genSaltSync(10);
+            const passwordHash = bcrypt.hashSync(Math.random().toString(36), salt); // temporary random password
+            
+            const newUser: UserWithPassword = {
+              id: found.id,
+              email: email.toLowerCase(),
+              name,
+              role: Role.CUSTOMER,
+              isActive: true,
+              passwordHash,
+              createdAt: new Date().toISOString(),
+            };
+            
+            await createUser(newUser);
+            await addAuditLog(newUser.id, newUser.email, 'USER_AUTOPROVISION', `Customer account auto-provisioned/restored on forgot-password request from Supabase Auth`);
+            user = newUser;
+          } else {
+            // Safe fallback: even if listUsers failed or user wasn't listed, if Supabase is enabled, 
+            // let's provision a temporary local account so they can reset their password and log in.
+            console.log(`[Forgot Password Auto-Restore Fallback] Provisioning on-the-fly local account for ${email} during forgot-password request...`);
+            const name = email.split('@')[0];
+            const salt = bcrypt.genSaltSync(10);
+            const passwordHash = bcrypt.hashSync(Math.random().toString(36), salt);
+            
+            const newUser: UserWithPassword = {
+              id: `usr_${Math.random().toString(36).substr(2, 9)}`,
+              email: email.toLowerCase(),
+              name,
+              role: Role.CUSTOMER,
+              isActive: true,
+              passwordHash,
+              createdAt: new Date().toISOString(),
+            };
+            
+            await createUser(newUser);
+            await addAuditLog(newUser.id, newUser.email, 'USER_AUTOPROVISION', `Customer account auto-provisioned/restored via fallback on forgot-password request`);
+            user = newUser;
+          }
         } catch (supabaseError: any) {
-          console.error('[Forgot Password Auto-Restore] Supabase lookup failed:', supabaseError.message);
+          console.error('[Forgot Password Auto-Restore] Supabase lookup/provision failed:', supabaseError.message);
         }
       }
 
