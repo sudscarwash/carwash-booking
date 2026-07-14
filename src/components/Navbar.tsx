@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext.js';
 import { LogOut, Shield, User as UserIcon, Calendar, Compass, Sliders, Briefcase, Sparkles, Key, Lock, X, ChevronDown } from 'lucide-react';
 import { Role } from '../types.js';
+import autoshineLogo from '../assets/images/autoshine_logo_1783916518342.jpg';
 
 interface NavbarProps {
   activeTab: string;
@@ -101,15 +102,15 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
         <div className="flex items-center justify-between h-16">
           {/* Logo Brand branding */}
           <div className="flex items-center gap-3">
-            <div className="bg-gradient-to-tr from-sky-600 to-sky-400 text-white p-2 rounded-xl shadow-md shadow-sky-100 flex items-center justify-center">
-              <Calendar className="h-5 w-5" />
+            <div className="h-10 w-10 flex items-center justify-center overflow-hidden rounded-xl bg-slate-50 border border-slate-150 shadow-xs">
+              <img src={autoshineLogo} alt="Autoshine BN Logo" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
             </div>
             <div>
-              <span className="text-base font-bold text-slate-800 tracking-tight block">
-                SudsFlow
+              <span className="text-base font-black text-slate-800 tracking-tight block">
+                Autoshine BN
               </span>
-              <span className="text-[10px] text-slate-400 font-mono tracking-wider block -mt-1 uppercase">
-                Car Wash Scheduling
+              <span className="text-[10px] text-sky-600 font-mono tracking-wider block -mt-1 uppercase font-bold">
+                Cleaner Car. Better Ride.
               </span>
             </div>
           </div>

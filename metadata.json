@@ -1,6 +1,6 @@
 {
-  "name": "Remix: Car Wash Booking system (for supabase)",
-  "description": "",
+  "name": "Autoshine BN",
+  "description": "Premium multi-location car wash booking and scheduling platform in Brunei.",
   "requestFramePermissions": [
     "geolocation"
   ],

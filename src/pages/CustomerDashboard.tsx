@@ -7,8 +7,9 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext.js';
 import { MapSimulation } from '../components/MapSimulation.js';
 import { LocalPaymentForm } from '../components/LocalPaymentForm.js';
-import { Search, Calendar, Clock, MapPin, History, CheckCircle, AlertTriangle, X, ChevronRight, Sliders, Info, Sparkles, Navigation, User, Edit3, Check, Instagram, Landmark, Lock, Key } from 'lucide-react';
+import { Search, Calendar, Clock, MapPin, History, CheckCircle, AlertTriangle, X, ChevronRight, Sliders, Info, Sparkles, Navigation, User, Edit3, Check, Instagram, Landmark, Lock, Key, FileText } from 'lucide-react';
 import { CarWash, Booking, BookingStatus } from '../types.js';
+import autoshineLogo from '../assets/images/autoshine_logo_1783916518342.jpg';
 
 interface TimeSlotItem {
   timeSlot: string;
@@ -142,7 +143,7 @@ export const CustomerDashboard: React.FC = () => {
   const [viewAllLocations, setViewAllLocations] = useState(true);
 
   // Bottom Mobile Navigation and Product Selection states
-  const [activeTab, setActiveTab] = useState<'book' | 'bookings' | 'profile'>('book');
+  const [activeTab, setActiveTab] = useState<'book' | 'bookings' | 'profile' | 'terms'>('book');
   const [selectedService, setSelectedService] = useState<any | null>(null);
   const [itemTabFilter, setItemTabFilter] = useState<'service' | 'product'>('service');
   const [showFullScreenMap, setShowFullScreenMap] = useState(false);
@@ -403,6 +404,22 @@ export const CustomerDashboard: React.FC = () => {
         >
           <User className="w-5.5 h-5.5" />
           <span className="text-[10px]">My Profile</span>
+        </button>
+
+        <button
+          onClick={() => {
+            setActiveTab('terms');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          className={`flex flex-col items-center gap-1 py-1 px-4 rounded-xl transition-all cursor-pointer ${
+            activeTab === 'terms'
+              ? 'text-sky-600 font-extrabold scale-110'
+              : 'text-slate-400 font-medium hover:text-slate-600'
+          }`}
+          id="btn-nav-terms"
+        >
+          <FileText className="w-5.5 h-5.5" />
+          <span className="text-[10px]">Terms</span>
         </button>
       </div>
 
@@ -1247,6 +1264,335 @@ export const CustomerDashboard: React.FC = () => {
                 Ensure your account credentials remain private and secure. We recommend using a unique password of at least 6 characters, mixing numbers and symbols.
               </p>
             )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'terms' && (
+        <div className="space-y-6 animate-fade-in">
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-xs relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-sky-500/5 rounded-bl-full pointer-events-none" />
+            
+            {/* Header / Brand */}
+            <div className="flex flex-col sm:flex-row items-center gap-4 pb-6 border-b border-slate-100 mb-6">
+              <div className="h-16 w-16 flex items-center justify-center overflow-hidden rounded-2xl bg-slate-50 border border-slate-200 shadow-sm">
+                <img src={autoshineLogo} alt="Autoshine BN Logo" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+              </div>
+              <div className="text-center sm:text-left">
+                <h2 className="text-2xl font-black text-slate-800 tracking-tight">
+                  AUTOSHINE BN
+                </h2>
+                <p className="text-xs text-sky-600 font-mono tracking-wider uppercase font-bold">
+                  TERMS AND CONDITIONS OF USE
+                </p>
+                <p className="text-[10px] text-slate-400 mt-0.5">
+                  Effective Date: July 12, 2026
+                </p>
+              </div>
+            </div>
+
+            {/* Intro paragraph */}
+            <div className="prose prose-slate max-w-none text-xs sm:text-sm text-slate-600 leading-relaxed space-y-4">
+              <p className="font-semibold text-slate-700">
+                These Terms and Conditions (&quot;Terms&quot;) govern your access to and use of the AUTOSHINE BN mobile application and website (&quot;Platform&quot;). By registering for an account or using the Platform, you agree to be bound by these Terms.
+              </p>
+
+              <hr className="border-slate-100 my-4" />
+
+              {/* T&C Items */}
+              <div className="space-y-6 text-left">
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-2">
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">1</span>
+                    Definitions
+                  </h3>
+                  <div className="pl-7 space-y-2 text-slate-600">
+                    <p><strong className="text-slate-800">AUTOSHINE BN</strong> means the owner and operator of the booking platform.</p>
+                    <p><strong className="text-slate-800">User</strong> means any person who registers or uses the Platform.</p>
+                    <p><strong className="text-slate-800">Service Operator</strong> means an independent car wash company offering services through the Platform.</p>
+                    <p><strong className="text-slate-800">Booking</strong> means a reservation made by a User for car wash services.</p>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-2">
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">2</span>
+                    Acceptance of Terms
+                  </h3>
+                  <div className="pl-7 space-y-2 text-slate-600">
+                    <p>By using AUTOSHINE BN, you confirm that you:</p>
+                    <ul className="list-disc pl-5 space-y-1">
+                      <li>Are at least 18 years old or have permission from a parent or legal guardian.</li>
+                      <li>Agree to comply with these Terms and all applicable laws of Brunei Darussalam.</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-2">
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">3</span>
+                    Platform Services
+                  </h3>
+                  <div className="pl-7 space-y-2 text-slate-600">
+                    <p>AUTOSHINE BN provides an online platform that enables Users to:</p>
+                    <ul className="list-disc pl-5 space-y-1">
+                      <li>Browse participating car wash operators.</li>
+                      <li>View available services and pricing.</li>
+                      <li>Schedule appointments.</li>
+                      <li>Receive booking confirmations and notifications.</li>
+                      <li>Make payments where payment services are available.</li>
+                    </ul>
+                    <p className="text-slate-500 italic mt-2">AUTOSHINE BN acts solely as a booking platform and is not the provider of the car wash services.</p>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-2">
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">4</span>
+                    User Account
+                  </h3>
+                  <div className="pl-7 space-y-2 text-slate-600">
+                    <p>Users are responsible for:</p>
+                    <ul className="list-disc pl-5 space-y-1">
+                      <li>Providing accurate and current information.</li>
+                      <li>Keeping login credentials confidential.</li>
+                      <li>Maintaining the security of their account.</li>
+                      <li>Promptly updating any changes to their contact details.</li>
+                    </ul>
+                    <p>Users are responsible for all activities conducted through their account.</p>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-2">
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">5</span>
+                    Booking Policy
+                  </h3>
+                  <div className="pl-7 space-y-2 text-slate-600">
+                    <p>Users agree to:</p>
+                    <ul className="list-disc pl-5 space-y-1">
+                      <li>Provide accurate vehicle information.</li>
+                      <li>Arrive at the scheduled appointment on time.</li>
+                      <li>Present the booking confirmation when requested.</li>
+                      <li>Inform the Service Operator if they are unable to attend.</li>
+                    </ul>
+                    <p>Bookings are subject to acceptance by the selected Service Operator.</p>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-2">
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">6</span>
+                    Pricing
+                  </h3>
+                  <div className="pl-7 space-y-2 text-slate-600">
+                    <p>Prices displayed on the Platform are determined by the respective Service Operators.</p>
+                    <p>AUTOSHINE BN does not guarantee that prices will remain unchanged and reserves the right to update pricing information provided by Service Operators.</p>
+                    <p>Additional charges may apply if the actual condition or size of the vehicle differs from the information provided during booking.</p>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-2">
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">7</span>
+                    Payments
+                  </h3>
+                  <div className="pl-7 space-y-2 text-slate-600">
+                    <p>Where online payment is available:</p>
+                    <ul className="list-disc pl-5 space-y-1">
+                      <li>Payment shall be made using approved payment methods.</li>
+                      <li>Payment confirmations will be issued electronically.</li>
+                      <li>Refunds shall be subject to the applicable cancellation and refund policy.</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-2">
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">8</span>
+                    Cancellation and Refunds
+                  </h3>
+                  <div className="pl-7 space-y-2 text-slate-600">
+                    <p>Users may cancel bookings in accordance with the cancellation policy displayed on the Platform.</p>
+                    <p>Refund eligibility depends on:</p>
+                    <ul className="list-disc pl-5 space-y-1">
+                      <li>The timing of the cancellation.</li>
+                      <li>The Service Operator&apos;s cancellation policy.</li>
+                      <li>Any applicable processing fees.</li>
+                    </ul>
+                    <p>Failure to attend a confirmed appointment without notice may result in cancellation charges or restrictions on future bookings.</p>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-2">
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">9</span>
+                    User Responsibilities
+                  </h3>
+                  <div className="pl-7 space-y-2 text-slate-600">
+                    <p>Users shall:</p>
+                    <ul className="list-disc pl-5 space-y-1">
+                      <li>Treat Service Operators and their employees respectfully.</li>
+                      <li>Ensure that vehicles are legally owned or used with the owner&apos;s permission.</li>
+                      <li>Remove valuables from the vehicle before the service.</li>
+                      <li>Disclose any special instructions relating to the vehicle.</li>
+                    </ul>
+                    <p className="text-amber-600 font-semibold mt-2">AUTOSHINE BN shall not be responsible for valuables left inside vehicles.</p>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-2">
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">10</span>
+                    Service Quality
+                  </h3>
+                  <div className="pl-7 space-y-2 text-slate-600">
+                    <p>The quality of car wash services is the responsibility of the selected Service Operator.</p>
+                    <p>Any complaints regarding service quality should first be directed to the Service Operator.</p>
+                    <p>AUTOSHINE BN may assist in facilitating communication but does not guarantee any specific outcome.</p>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-2">
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">11</span>
+                    Limitation of Liability
+                  </h3>
+                  <div className="pl-7 space-y-2 text-slate-600">
+                    <p>AUTOSHINE BN:</p>
+                    <ul className="list-disc pl-5 space-y-1">
+                      <li>Does not perform the car wash services.</li>
+                      <li>Is not responsible for damage caused during the provision of services by Service Operators.</li>
+                      <li>Is not liable for delays, cancellations, or service interruptions caused by Service Operators.</li>
+                      <li>Is not responsible for disputes between Users and Service Operators.</li>
+                    </ul>
+                    <p>To the fullest extent permitted by law, AUTOSHINE BN&apos;s liability is limited to the amount paid through the Platform for the affected booking.</p>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-2">
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">12</span>
+                    Vehicle Damage
+                  </h3>
+                  <div className="pl-7 space-y-2 text-slate-600">
+                    <p>Any claims relating to vehicle damage shall be made directly to the Service Operator responsible for providing the service.</p>
+                    <p>AUTOSHINE BN may assist in facilitating communication but accepts no liability for the acts or omissions of Service Operators.</p>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-2">
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">13</span>
+                    Intellectual Property
+                  </h3>
+                  <div className="pl-7 space-y-2 text-slate-600">
+                    <p>All content on the Platform, including trademarks, logos, graphics, software, and text, remains the property of AUTOSHINE BN or its licensors.</p>
+                    <p>Users shall not copy, reproduce, distribute, or modify any content without prior written permission.</p>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-2">
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">14</span>
+                    Privacy
+                  </h3>
+                  <div className="pl-7 space-y-2 text-slate-600">
+                    <p>AUTOSHINE BN collects and processes personal information solely for the purpose of providing booking services and improving the Platform.</p>
+                    <p>Personal information will be handled in accordance with AUTOSHINE BN&apos;s Privacy Policy and applicable laws.</p>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-2">
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">15</span>
+                    Prohibited Conduct
+                  </h3>
+                  <div className="pl-7 space-y-2 text-slate-600">
+                    <p>Users shall not:</p>
+                    <ul className="list-disc pl-5 space-y-1">
+                      <li>Use false identities.</li>
+                      <li>Make fraudulent bookings.</li>
+                      <li>Interfere with the operation of the Platform.</li>
+                      <li>Upload malicious software or harmful content.</li>
+                      <li>Misuse payment systems.</li>
+                      <li>Engage in unlawful activities through the Platform.</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-2">
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">16</span>
+                    Suspension or Termination
+                  </h3>
+                  <div className="pl-7 space-y-2 text-slate-600">
+                    <p>AUTOSHINE BN may suspend or terminate a User account without prior notice if the User:</p>
+                    <ul className="list-disc pl-5 space-y-1">
+                      <li>Breaches these Terms.</li>
+                      <li>Engages in fraudulent or illegal conduct.</li>
+                      <li>Misuses the Platform.</li>
+                      <li>Repeatedly fails to honour confirmed bookings.</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-2">
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">17</span>
+                    Platform Availability
+                  </h3>
+                  <div className="pl-7 space-y-2 text-slate-600">
+                    <p>AUTOSHINE BN aims to provide continuous service but does not guarantee uninterrupted access.</p>
+                    <p>Temporary interruptions may occur due to maintenance, upgrades, technical failures, or events beyond reasonable control.</p>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-2">
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">18</span>
+                    Changes to These Terms
+                  </h3>
+                  <div className="pl-7 space-y-2 text-slate-600">
+                    <p>AUTOSHINE BN reserves the right to amend these Terms at any time.</p>
+                    <p>Updated Terms shall become effective upon publication on the Platform. Continued use of the Platform constitutes acceptance of the revised Terms.</p>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-2">
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">19</span>
+                    Governing Law
+                  </h3>
+                  <div className="pl-7 space-y-2 text-slate-600">
+                    <p>These Terms shall be governed by and interpreted in accordance with the laws of Brunei Darussalam.</p>
+                    <p>Any disputes arising from these Terms shall be subject to the exclusive jurisdiction of the courts of Brunei Darussalam.</p>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-2">
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">20</span>
+                    Contact Information
+                  </h3>
+                  <div className="pl-7 space-y-3 text-slate-600 text-left">
+                    <p>For enquiries, support, or complaints, please contact:</p>
+                    <div className="bg-slate-50 border border-slate-200/60 rounded-2xl p-4 space-y-2 text-xs sm:text-sm">
+                      <p><strong className="text-slate-700">Name:</strong> AUTOSHINE BN</p>
+                      <p><strong className="text-slate-700">Email:</strong> support@autoshine.bn</p>
+                      <p><strong className="text-slate-700">Telephone:</strong> +673 242 1234</p>
+                      <p><strong className="text-slate-700">Business Address:</strong> Lot 1234, Jalan Gadong, Bandar Seri Begawan, BE1118, Brunei Darussalam</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-8 pt-6 border-t border-slate-100 text-center">
+                <p className="text-slate-500 text-xs font-medium">
+                  By creating an account or using the AUTOSHINE BN Platform, you acknowledge that you have read, understood, and agreed to these Terms and Conditions.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       )}

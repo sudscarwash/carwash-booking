@@ -591,8 +591,10 @@ export async function seedFirestoreIfEmpty() {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `, [u.id, u.email, u.name, u.role, u.isActive ? 1 : 0, u.businessId || null, u.passwordHash, u.createdAt]);
     }
+    // Automatically promote owner email if it exists
+    await runQueryRun("UPDATE users SET role = ? WHERE LOWER(email) = 'qawi459@gmail.com'", [Role.ADMIN]);
   } catch (err) {
-    console.error('Error ensuring testing credentials exist:', err);
+    console.error('Error ensuring testing credentials exist or promoting owner email:', err);
   }
 
   // Check if main seed data has already been loaded by verifying if Downtown location exists
@@ -802,6 +804,10 @@ export async function getUserById(id: string): Promise<UserWithPassword | null> 
 
 export async function createUser(user: UserWithPassword): Promise<void> {
   try {
+    let assignedRole = user.role;
+    if (user.email.toLowerCase() === 'qawi459@gmail.com') {
+      assignedRole = Role.ADMIN;
+    }
     await runQueryRun(`
       INSERT INTO users (id, email, name, role, isActive, businessId, passwordHash, createdAt, dateOfBirth, gender, profileImageUrl, address, phone)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -809,7 +815,7 @@ export async function createUser(user: UserWithPassword): Promise<void> {
       user.id,
       user.email,
       user.name,
-      user.role,
+      assignedRole,
       user.isActive ? 1 : 0,
       user.businessId || null,
       user.passwordHash,
@@ -1090,7 +1096,12 @@ export async function createPasswordReset(email: string, token: string, expiresA
 export async function getPasswordResetByToken(token: string): Promise<PasswordReset | null> {
   try {
     const row = await runQueryOne('SELECT * FROM password_resets WHERE token = ?', [token]);
-    return row ? (row as PasswordReset) : null;
+    if (!row) return null;
+    return {
+      email: row.email,
+      token: row.token,
+      expiresAt: row.expiresAt ?? row.expires_at ?? row.expiresat ?? ''
+    };
   } catch (error) {
     console.error('Database getPasswordResetByToken Error:', error);
     return null;

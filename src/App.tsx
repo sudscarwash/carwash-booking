@@ -12,7 +12,8 @@ import { EmployeeDashboard } from './pages/EmployeeDashboard.js';
 import { AdminDashboard } from './pages/AdminDashboard.js';
 import { SpecialUserDashboard } from './pages/SpecialUserDashboard.js';
 import { Role } from './types.js';
-import { Lock, Mail, UserPlus, LogIn, Sparkles, Compass, Sliders, Briefcase, Shield, Check, Info } from 'lucide-react';
+import { Lock, Mail, UserPlus, LogIn, Sparkles, Compass, Sliders, Briefcase, Shield, Check, Info, X } from 'lucide-react';
+import autoshineLogo from './assets/images/autoshine_logo_1783916518342.jpg';
 
 const MainAppContent: React.FC = () => {
   const { user, loading, login, register, notification, clearNotification, forgotPassword, resetPassword, showNotification } = useApp();
@@ -31,6 +32,8 @@ const MainAppContent: React.FC = () => {
   const [gender, setGender] = useState('');
   const [profileImageUrl, setProfileImageUrl] = useState('');
   const [address, setAddress] = useState('');
+  const [acceptTerms, setAcceptTerms] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
 
   // Password reset form state
@@ -41,6 +44,11 @@ const MainAppContent: React.FC = () => {
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password || (isRegisterMode && !name)) return;
+
+    if (isRegisterMode && !acceptTerms) {
+      showNotification("You must accept the Terms and Conditions to register.", "error");
+      return;
+    }
 
     setAuthLoading(true);
     if (isRegisterMode) {
@@ -207,14 +215,14 @@ const MainAppContent: React.FC = () => {
         /* Dynamic Landing Auth Screen */
         <div className="flex-1 flex flex-col justify-center py-12 sm:px-6 lg:px-8 bg-gradient-to-b from-slate-50 to-slate-100">
           <div className="sm:mx-auto sm:w-full sm:max-w-md text-center px-4">
-            <div className="mx-auto bg-gradient-to-tr from-sky-600 to-sky-400 text-white p-3.5 rounded-2xl w-fit shadow-lg shadow-sky-100 flex items-center justify-center">
-              <Compass className="h-7 w-7" />
+            <div className="mx-auto w-24 h-24 overflow-hidden rounded-3xl bg-white shadow-lg border border-slate-100 flex items-center justify-center p-1">
+              <img src={autoshineLogo} alt="Autoshine BN" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
             </div>
             <h2 className="mt-4 text-3xl font-black text-slate-800 tracking-tight">
-              SudsFlow Scheduling
+              autoshine bn
             </h2>
             <p className="mt-1 text-xs sm:text-sm text-slate-500 max-w-sm mx-auto">
-              Production-ready multi-role SaaS application for Car Wash operations control and real-time scheduling.
+              Premium booking platform for car wash services and location scheduling in Brunei Darussalam.
             </p>
           </div>
 
@@ -504,6 +512,29 @@ const MainAppContent: React.FC = () => {
                             id="auth-address-input"
                           />
                         </div>
+
+                        {/* Terms and Conditions Agreement Checkbox */}
+                        <div className="flex items-start gap-2.5 pt-2 border-t border-slate-100 mt-2">
+                          <input
+                            type="checkbox"
+                            id="accept-terms-checkbox"
+                            checked={acceptTerms}
+                            onChange={(e) => setAcceptTerms(e.target.checked)}
+                            className="h-4 w-4 mt-0.5 text-sky-600 border-slate-300 rounded focus:ring-sky-500 cursor-pointer"
+                            required
+                          />
+                          <label htmlFor="accept-terms-checkbox" className="text-xs text-slate-500 select-none">
+                            I accept and agree to the{' '}
+                            <button
+                              type="button"
+                              onClick={() => setShowTermsModal(true)}
+                              className="text-sky-600 font-bold hover:underline focus:outline-none inline-block align-baseline"
+                            >
+                              Terms and Conditions of Use
+                            </button>{' '}
+                            for Autoshine BN.
+                          </label>
+                        </div>
                       </div>
                     )}
 
@@ -586,6 +617,105 @@ const MainAppContent: React.FC = () => {
                   <span>Click any button above to instantly log in as that role and explore distinct dashboards!</span>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showTermsModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden border border-slate-150 animate-fade-in text-left">
+            {/* Header */}
+            <div className="px-6 py-5 border-b border-slate-150 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 overflow-hidden rounded-xl bg-white border border-slate-250 p-0.5 flex items-center justify-center">
+                  <img src={autoshineLogo} alt="Autoshine BN" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-800 tracking-tight">Terms &amp; Conditions</h3>
+                  <p className="text-[10px] text-sky-600 font-mono font-bold tracking-wider uppercase -mt-0.5">Autoshine BN</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowTermsModal(false)}
+                className="p-1.5 hover:bg-slate-150 rounded-xl transition-colors cursor-pointer text-slate-400 hover:text-slate-600 animate-none flex items-center justify-center border-none"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Scrollable Content */}
+            <div className="flex-1 overflow-y-auto p-6 text-xs sm:text-sm text-slate-600 space-y-4">
+              <p className="font-semibold text-slate-700">
+                These Terms and Conditions (&quot;Terms&quot;) govern your access to and use of the AUTOSHINE BN mobile application and website (&quot;Platform&quot;). By registering for an account or using the Platform, you agree to be bound by these Terms.
+              </p>
+              
+              <hr className="border-slate-100" />
+
+              <div className="space-y-4">
+                <div>
+                  <h4 className="font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-1 text-xs">
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">1</span>
+                    Definitions
+                  </h4>
+                  <p className="pl-7"><strong className="text-slate-800">AUTOSHINE BN</strong> means the owner and operator of the booking platform. <strong className="text-slate-800">User</strong> means any person who registers or uses the Platform.</p>
+                </div>
+
+                <div>
+                  <h4 className="font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-1 text-xs">
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">2</span>
+                    Acceptance of Terms
+                  </h4>
+                  <p className="pl-7">By using AUTOSHINE BN, you confirm that you are at least 18 years old or have permission from a parent or guardian, and agree to comply with all applicable laws of Brunei Darussalam.</p>
+                </div>
+
+                <div>
+                  <h4 className="font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-1 text-xs">
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">3</span>
+                    Platform Services
+                  </h4>
+                  <p className="pl-7">AUTOSHINE BN acts solely as a booking platform connecting Users with independent car wash Operators in Brunei. We are not the provider of the car wash services themselves.</p>
+                </div>
+
+                <div>
+                  <h4 className="font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-1 text-xs">
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">4</span>
+                    User Responsibilities
+                  </h4>
+                  <p className="pl-7">You are responsible for keeping account credentials safe, providing accurate vehicle/location data, arriving on-time, and removing all valuables from the vehicle prior to service. AUTOSHINE BN is not liable for items left inside vehicles.</p>
+                </div>
+
+                <div>
+                  <h4 className="font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-1 text-xs">
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">5</span>
+                    Payments and Cancellations
+                  </h4>
+                  <p className="pl-7">Payments are governed by authorized banks or offline channels. Cancellations must be made at least 2 hours prior to the scheduled time. Frequent no-shows may lead to platform suspension.</p>
+                </div>
+
+                <div>
+                  <h4 className="font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-1 text-xs">
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">6</span>
+                    Governing Law
+                  </h4>
+                  <p className="pl-7">These terms and conditions are governed exclusively by the laws of Brunei Darussalam, and all disputes shall be resolved in Brunei courts.</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-150 flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setAcceptTerms(true);
+                  setShowTermsModal(false);
+                }}
+                className="px-5 py-2.5 bg-sky-600 hover:bg-sky-500 text-white font-bold text-sm rounded-xl shadow-sm transition-colors cursor-pointer"
+              >
+                I Agree &amp; Accept
+              </button>
             </div>
           </div>
         </div>

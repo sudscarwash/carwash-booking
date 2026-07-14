@@ -60,6 +60,7 @@ import {
 } from './server/emailService.js';
 import { authenticateToken, requireRoles, generateToken, AuthenticatedRequest } from './server/auth.js';
 import { generateSlotsForDate } from './server/slots.js';
+import { authRateLimiter, apiRateLimiter } from './server/production/middleware/rateLimiter.js';
 
 dotenv.config();
 
@@ -70,6 +71,9 @@ async function startServer() {
   // Body parsing middlewares
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
+
+  // Apply general API rate limiter to protect the server
+  app.use('/api', apiRateLimiter);
 
   // Run database automatic seeding to populate Firestore on initial boot
   await seedFirestoreIfEmpty();
@@ -96,7 +100,7 @@ async function startServer() {
   // ==========================================
 
   // Register Customer
-  app.post('/api/auth/register', async (req, res) => {
+  app.post('/api/auth/register', authRateLimiter, async (req, res) => {
     try {
       const { email, password, name, dateOfBirth, gender, profileImageUrl, address, phone } = req.body;
 
@@ -197,7 +201,7 @@ async function startServer() {
   });
 
   // Login
-  app.post('/api/auth/login', async (req, res) => {
+  app.post('/api/auth/login', authRateLimiter, async (req, res) => {
     try {
       const { email, password } = req.body;
 
@@ -297,7 +301,7 @@ async function startServer() {
   });
 
   // Forgot Password (Request Code / OTP via Resend)
-  app.post('/api/auth/forgot-password', async (req, res) => {
+  app.post('/api/auth/forgot-password', authRateLimiter, async (req, res) => {
     try {
       const { email } = req.body;
       if (!email) {
@@ -392,7 +396,7 @@ async function startServer() {
   });
 
   // Reset Password (Verify & Commit)
-  app.post('/api/auth/reset-password', async (req, res) => {
+  app.post('/api/auth/reset-password', authRateLimiter, async (req, res) => {
     try {
       const { token, password } = req.body;
       if (!token || !password) {
@@ -1597,17 +1601,17 @@ async function startServer() {
         const isDbUsingPostgres = isUsingPostgres();
         const dbType = isDbUsingPostgres ? 'PostgreSQL (Supabase)' : 'SQLite (Fallback Local DB)';
 
-        const subject = 'Test Dispatch: SudsFlow System Diagnostics - Success';
+        const subject = 'Test Dispatch: Autoshine BN System Diagnostics - Success';
         const html = `
           <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff; color: #1e293b;">
             <div style="text-align: center; margin-bottom: 24px;">
-              <h1 style="color: #ef4444; margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.025em;">SudsFlow</h1>
+              <h1 style="color: #0284c7; margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.025em;">Autoshine BN</h1>
               <p style="color: #64748b; margin: 4px 0 0 0; font-size: 14px;">Platform Operator Room</p>
             </div>
             <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 24px 0;" />
             <h2 style="color: #10b981; font-size: 20px; font-weight: 700; margin-top: 0; margin-bottom: 12px; text-align: center;">✅ Email Dispatch Working!</h2>
             <p style="font-size: 15px; line-height: 1.6; color: #334155;">Hello Administrator,</p>
-            <p style="font-size: 15px; line-height: 1.6; color: #334155;">This is a system diagnostics email sent from your SudsFlow deployment. If you are reading this message, your Resend SMTP API keys are properly integrated and fully operational!</p>
+            <p style="font-size: 15px; line-height: 1.6; color: #334155;">This is a system diagnostics email sent from your Autoshine BN deployment. If you are reading this message, your Resend SMTP API keys are properly integrated and fully operational!</p>
             
             <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 20px; border-radius: 12px; margin: 28px 0; font-size: 13px;">
               <p style="margin: 4px 0; color: #475569;"><strong>System Status Details:</strong></p>
@@ -1615,11 +1619,11 @@ async function startServer() {
               <p style="margin: 2px 0; color: #334155;">• Resend Service: <strong style="color: #10b981;">Fully Configured (API Key Verified)</strong></p>
               <p style="margin: 2px 0; color: #334155;">• Timestamp: ${new Date().toLocaleString()}</p>
             </div>
-
+ 
             <p style="font-size: 14px; line-height: 1.6; color: #475569;">You can now safely onboard customers, locations, and dispatch notifications with confidence.</p>
             <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 30px 0;" />
             <div style="text-align: center;">
-              <p style="color: #94a3b8; font-size: 11px; margin: 0;">&copy; ${new Date().getFullYear()} SudsFlow Car Wash. All rights reserved.</p>
+              <p style="color: #94a3b8; font-size: 11px; margin: 0;">&copy; ${new Date().getFullYear()} Autoshine BN. All rights reserved.</p>
             </div>
           </div>
         `;

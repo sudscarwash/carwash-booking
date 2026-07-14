@@ -22,7 +22,7 @@ export async function sendEmail(to: string, subject: string, html: string): Prom
     console.log('========================================================');
     console.log('📬 [EMAIL SERVICE SIMULATOR - RESEND OFFLINE FALLBACK]');
     console.log(`To: ${to}`);
-    console.log(`From: SudsFlow <${fromAddress}>`);
+    console.log(`From: Autoshine BN <${fromAddress}>`);
     console.log(`Subject: ${subject}`);
     console.log('--------------------------------------------------------');
     console.log('HTML Content Preview:');
@@ -39,7 +39,7 @@ export async function sendEmail(to: string, subject: string, html: string): Prom
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: `SudsFlow <${fromAddress}>`,
+        from: `Autoshine BN <${fromAddress}>`,
         to: [to],
         subject,
         html,
@@ -65,11 +65,11 @@ export async function sendEmail(to: string, subject: string, html: string): Prom
  * Send a 6-digit OTP code for password reset
  */
 export async function sendPasswordResetOTP(email: string, name: string, code: string): Promise<boolean> {
-  const subject = `Your Password Reset Code: ${code} - SudsFlow`;
+  const subject = `Your Password Reset Code: ${code} - Autoshine BN`;
   const html = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff; color: #1e293b;">
       <div style="text-align: center; margin-bottom: 24px;">
-        <h1 style="color: #0ea5e9; margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.025em;">SudsFlow</h1>
+        <h1 style="color: #0284c7; margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.025em;">Autoshine BN</h1>
         <p style="color: #64748b; margin: 4px 0 0 0; font-size: 14px;">Premium Car Wash Booking System</p>
       </div>
       <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 24px 0;" />
@@ -85,7 +85,7 @@ export async function sendPasswordResetOTP(email: string, name: string, code: st
       <p style="font-size: 14px; line-height: 1.6; color: #475569;">If you did not request a password reset, you can safely ignore this email. Your password will remain unchanged.</p>
       <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 30px 0;" />
       <div style="text-align: center;">
-        <p style="color: #94a3b8; font-size: 11px; margin: 0;">&copy; ${new Date().getFullYear()} SudsFlow Car Wash. All rights reserved.</p>
+        <p style="color: #94a3b8; font-size: 11px; margin: 0;">&copy; ${new Date().getFullYear()} Autoshine BN. All rights reserved.</p>
       </div>
     </div>
   `;
@@ -108,7 +108,7 @@ export async function sendBookingConfirmationEmail(options: {
   paymentBank?: string;
   txnReference?: string;
 }): Promise<boolean> {
-  const subject = `Booking Confirmed: ${options.businessName} - SudsFlow`;
+  const subject = `Booking Confirmed: ${options.businessName} - Autoshine BN`;
   const formattedPrice = options.price ? `$${options.price.toFixed(2)}` : 'N/A';
   
   const paymentDetailsHtml = options.txnReference 
@@ -129,7 +129,7 @@ export async function sendBookingConfirmationEmail(options: {
   const html = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff; color: #1e293b;">
       <div style="text-align: center; margin-bottom: 24px;">
-        <h1 style="color: #10b981; margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.025em;">SudsFlow</h1>
+        <h1 style="color: #10b981; margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.025em;">Autoshine BN</h1>
         <p style="color: #64748b; margin: 4px 0 0 0; font-size: 14px;">Your Appointment is Confirmed!</p>
       </div>
       <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 24px 0;" />
@@ -174,10 +174,10 @@ export async function sendBookingConfirmationEmail(options: {
         ${paymentDetailsHtml}
       </div>
 
-      <p style="font-size: 14px; line-height: 1.6; color: #475569;">Need to reschedule or cancel? You can manage your booking inside your SudsFlow dashboard up to 2 hours before the start time.</p>
+      <p style="font-size: 14px; line-height: 1.6; color: #475569;">Need to reschedule or cancel? You can manage your booking inside your Autoshine BN dashboard up to 2 hours before the start time.</p>
       <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 30px 0;" />
       <div style="text-align: center;">
-        <p style="color: #94a3b8; font-size: 11px; margin: 0;">&copy; ${new Date().getFullYear()} SudsFlow Car Wash. All rights reserved.</p>
+        <p style="color: #94a3b8; font-size: 11px; margin: 0;">&copy; ${new Date().getFullYear()} Autoshine BN. All rights reserved.</p>
       </div>
     </div>
   `;
