@@ -19,9 +19,86 @@ const MainAppContent: React.FC = () => {
   const { user, loading, login, register, notification, clearNotification, forgotPassword, resetPassword, showNotification } = useApp();
 
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [isRegisterMode, setIsRegisterMode] = useState(false);
-  const [isForgotMode, setIsForgotMode] = useState(false);
-  const [isResetMode, setIsResetMode] = useState(false);
+  const [isRegisterMode, setIsRegisterMode] = useState(() => window.location.pathname === '/register');
+  const [isForgotMode, setIsForgotMode] = useState(() => window.location.pathname === '/forgot-password');
+  const [isResetMode, setIsResetMode] = useState(() => window.location.pathname === '/reset-password');
+
+  // Navigation helper
+  const navigate = (path: string, replace = false) => {
+    if (window.location.pathname !== path) {
+      if (replace) {
+        window.history.replaceState({ path }, '', path);
+      } else {
+        window.history.pushState({ path }, '', path);
+      }
+    }
+  };
+
+  // Sync route on login / role change / auth mode change
+  React.useEffect(() => {
+    if (user) {
+      let targetPath = '/customer';
+      if (user.role === Role.ADMIN) targetPath = '/admin';
+      else if (user.role === Role.OWNER) targetPath = '/owner';
+      else if (user.role === Role.EMPLOYEE) targetPath = '/employee';
+      else if (user.role === Role.SPECIAL) targetPath = '/special';
+
+      if (window.location.pathname !== targetPath) {
+        window.history.replaceState({ path: targetPath }, '', targetPath);
+      }
+    } else {
+      const path = window.location.pathname;
+      if (path === '/register') {
+        setIsRegisterMode(true);
+        setIsForgotMode(false);
+        setIsResetMode(false);
+      } else if (path === '/forgot-password') {
+        setIsForgotMode(true);
+        setIsRegisterMode(false);
+        setIsResetMode(false);
+      } else if (path === '/reset-password') {
+        setIsResetMode(true);
+        setIsForgotMode(false);
+        setIsRegisterMode(false);
+      } else if (path === '/' || path === '/login') {
+        setIsRegisterMode(false);
+        setIsForgotMode(false);
+        setIsResetMode(false);
+        if (path === '/') {
+          window.history.replaceState({ path: '/login' }, '', '/login');
+        }
+      }
+    }
+  }, [user]);
+
+  // Mobile Back button / browser popstate listener
+  React.useEffect(() => {
+    const handlePopState = () => {
+      const path = window.location.pathname;
+      if (!user) {
+        if (path === '/register') {
+          setIsRegisterMode(true);
+          setIsForgotMode(false);
+          setIsResetMode(false);
+        } else if (path === '/forgot-password') {
+          setIsForgotMode(true);
+          setIsRegisterMode(false);
+          setIsResetMode(false);
+        } else if (path === '/reset-password') {
+          setIsResetMode(true);
+          setIsForgotMode(false);
+          setIsRegisterMode(false);
+        } else {
+          setIsRegisterMode(false);
+          setIsForgotMode(false);
+          setIsResetMode(false);
+        }
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [user]);
 
   // Auth form state
   const [email, setEmail] = useState('');
@@ -264,6 +341,7 @@ const MainAppContent: React.FC = () => {
                       onClick={() => {
                         setIsForgotMode(false);
                         setIsResetMode(false);
+                        navigate('/login');
                       }}
                       className="w-full text-center text-xs text-slate-500 hover:text-slate-700 font-bold font-sans cursor-pointer pt-2 block"
                     >
@@ -348,6 +426,7 @@ const MainAppContent: React.FC = () => {
                         onClick={() => {
                           setIsForgotMode(false);
                           setIsResetMode(false);
+                          navigate('/login');
                         }}
                         className="text-xs text-sky-600 hover:text-sky-500 font-bold font-sans cursor-pointer"
                       >
@@ -361,7 +440,10 @@ const MainAppContent: React.FC = () => {
                   <div className="pb-4 mb-6 border-b border-slate-100 flex gap-4 text-sm font-bold">
                     <button
                       type="button"
-                      onClick={() => setIsRegisterMode(false)}
+                      onClick={() => {
+                        setIsRegisterMode(false);
+                        navigate('/login');
+                      }}
                       className={`pb-2 px-1 border-b-2 transition-all cursor-pointer ${
                         !isRegisterMode ? 'border-sky-600 text-sky-600 font-extrabold' : 'border-transparent text-slate-400'
                       }`}
@@ -371,7 +453,10 @@ const MainAppContent: React.FC = () => {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setIsRegisterMode(true)}
+                      onClick={() => {
+                        setIsRegisterMode(true);
+                        navigate('/register');
+                      }}
                       className={`pb-2 px-1 border-b-2 transition-all cursor-pointer ${
                         isRegisterMode ? 'border-sky-600 text-sky-600 font-extrabold' : 'border-transparent text-slate-400'
                       }`}
@@ -422,6 +507,7 @@ const MainAppContent: React.FC = () => {
                             onClick={() => {
                               setIsForgotMode(true);
                               setIsResetMode(false);
+                              navigate('/forgot-password');
                             }}
                             className="text-xs text-sky-600 hover:text-sky-500 font-bold font-sans cursor-pointer focus:outline-none"
                             id="forgot-password-trigger"
