@@ -52,7 +52,7 @@ interface BookingFlowModalProps {
     serviceId?: string,
     serviceName?: string,
     price?: number
-  ) => Promise<boolean>;
+  ) => Promise<{ success: boolean; error?: string }>;
   onBookingSuccess: (bookingData: any) => void;
 }
 
@@ -100,15 +100,20 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
   const [userLng, setUserLng] = useState<number>(location.locationLng);
   const [radiusKm, setRadiusKm] = useState<number>(10);
 
-  // Set default payment method based on location policy
+  // Check if location has bank transfer configured
+  const checkHasBankTransfer = (carWash: CarWash | null | undefined): boolean => {
+    if (!carWash) return false;
+    const isBibd = carWash.bibdEnabled === true || Boolean(carWash.bibdAccountNo && carWash.bibdAccountNo.trim().length > 0);
+    const isBaiduri = carWash.baiduriEnabled === true || Boolean(carWash.baiduriAccountNo && carWash.baiduriAccountNo.trim().length > 0);
+    const isCustom = Array.isArray(carWash.customPaymentMethods) && carWash.customPaymentMethods.some(m => m.isEnabled);
+    return isBibd || isBaiduri || isCustom;
+  };
+
+  const isBankAvailable = checkHasBankTransfer(location);
+
+  // Set default payment method to 'cash' (Pay at Counter) as requested
   useEffect(() => {
-    if (location) {
-      if (location.paymentPolicy === 'PRE_PAYMENT') {
-        setPaymentMethod('bank');
-      } else {
-        setPaymentMethod('cash');
-      }
-    }
+    setPaymentMethod('cash');
   }, [location]);
 
   // Fetch time slots when location or date changes
@@ -181,7 +186,7 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
 
     setIsSubmitting(true);
     try {
-      const success = await createBooking(
+      const res = await createBooking(
         location.id,
         bookingDate,
         selectedSlot,
@@ -191,7 +196,7 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
         selectedService?.price
       );
 
-      if (success) {
+      if (res.success) {
         const bookingData = {
           locationName: location.name,
           locationAddress: location.address,
@@ -205,7 +210,7 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
         setSuccessBooking(bookingData);
         onBookingSuccess(bookingData);
       } else {
-        setErrorMessage('Failed to create booking. The time slot may no longer be available, or session expired.');
+        setErrorMessage(res.error || 'Failed to create booking. Please try selecting another slot.');
       }
     } catch (err: any) {
       setErrorMessage(err.message || 'An unexpected error occurred while processing your booking.');
@@ -830,43 +835,65 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
 
                   {/* Payment Method Selector */}
                   <div className="space-y-2">
-                    <label className="block text-xs font-black text-slate-700 uppercase tracking-wider">
-                      Select Payment Option
+                    <label className="block text-xs font-black text-slate-700 uppercase tracking-wider flex items-center justify-between">
+                      <span>Select Payment Option</span>
+                      <span className="text-[10px] text-emerald-600 font-bold">Default: Pay at Counter</span>
                     </label>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <button
                         type="button"
                         onClick={() => setPaymentMethod('cash')}
-                        className={`p-3 rounded-2xl border text-left flex items-center gap-3 transition-all cursor-pointer ${
+                        className={`p-3.5 rounded-2xl border text-left flex items-center gap-3 transition-all cursor-pointer ${
                           paymentMethod === 'cash'
-                            ? 'border-sky-500 bg-sky-50/50 ring-2 ring-sky-100'
+                            ? 'border-emerald-500 bg-emerald-50/60 ring-2 ring-emerald-100'
                             : 'border-slate-200 bg-white hover:border-slate-300'
                         }`}
                       >
-                        <div className="bg-emerald-100 text-emerald-700 p-2 rounded-xl shrink-0">
+                        <div className="bg-emerald-100 text-emerald-700 p-2.5 rounded-xl shrink-0">
                           <CreditCard className="w-4 h-4" />
                         </div>
                         <div>
-                          <span className="font-extrabold text-slate-800 text-xs block">Pay at Counter</span>
-                          <span className="text-[10px] text-slate-500 block">Cash or local BIBD/Baiduri QR</span>
+                          <span className="font-extrabold text-slate-800 text-xs block flex items-center gap-1.5">
+                            Pay at Counter
+                            <span className="text-[9px] bg-emerald-100 text-emerald-800 border border-emerald-200 px-1.5 py-0.2 rounded font-black">
+                              Default
+                            </span>
+                          </span>
+                          <span className="text-[10px] text-slate-500 block">Cash or local QR on-site</span>
                         </div>
                       </button>
 
                       <button
                         type="button"
-                        onClick={() => setPaymentMethod('bank')}
-                        className={`p-3 rounded-2xl border text-left flex items-center gap-3 transition-all cursor-pointer ${
-                          paymentMethod === 'bank'
-                            ? 'border-sky-500 bg-sky-50/50 ring-2 ring-sky-100'
-                            : 'border-slate-200 bg-white hover:border-slate-300'
+                        disabled={!isBankAvailable}
+                        onClick={() => {
+                          if (isBankAvailable) {
+                            setPaymentMethod('bank');
+                          }
+                        }}
+                        className={`p-3.5 rounded-2xl border text-left flex items-center gap-3 transition-all ${
+                          !isBankAvailable
+                            ? 'border-slate-200 bg-slate-100/70 text-slate-400 opacity-60 cursor-not-allowed'
+                            : paymentMethod === 'bank'
+                            ? 'border-sky-500 bg-sky-50/50 ring-2 ring-sky-100 cursor-pointer'
+                            : 'border-slate-200 bg-white hover:border-slate-300 cursor-pointer'
                         }`}
                       >
-                        <div className="bg-sky-100 text-sky-700 p-2 rounded-xl shrink-0">
+                        <div className={`p-2.5 rounded-xl shrink-0 ${isBankAvailable ? 'bg-sky-100 text-sky-700' : 'bg-slate-200 text-slate-400'}`}>
                           <FileText className="w-4 h-4" />
                         </div>
                         <div>
-                          <span className="font-extrabold text-slate-800 text-xs block">Bank Transfer</span>
-                          <span className="text-[10px] text-slate-500 block">Instant receipt upload</span>
+                          <span className="font-extrabold text-slate-800 text-xs block flex items-center gap-1.5 flex-wrap">
+                            Bank Transfer
+                            {!isBankAvailable && (
+                              <span className="text-[9px] bg-amber-100 text-amber-800 border border-amber-200 px-1.5 py-0.2 rounded font-bold">
+                                Unavailable
+                              </span>
+                            )}
+                          </span>
+                          <span className="text-[10px] text-slate-500 block">
+                            {isBankAvailable ? 'Instant receipt upload' : 'Not configured for this car wash'}
+                          </span>
                         </div>
                       </button>
                     </div>

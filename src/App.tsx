@@ -12,7 +12,7 @@ import { EmployeeDashboard } from './pages/EmployeeDashboard.js';
 import { AdminDashboard } from './pages/AdminDashboard.js';
 import { SpecialUserDashboard } from './pages/SpecialUserDashboard.js';
 import { Role } from './types.js';
-import { Lock, Mail, UserPlus, LogIn, Sparkles, Compass, Sliders, Briefcase, Shield, Check, Info, X } from 'lucide-react';
+import { Lock, Mail, UserPlus, LogIn, Sparkles, Compass, Sliders, Briefcase, Shield, Check, Info, X, AlertTriangle, LogOut } from 'lucide-react';
 import autoshineLogo from './assets/images/autoshine_logo_1783916518342.jpg';
 
 const MainAppContent: React.FC = () => {
@@ -22,6 +22,19 @@ const MainAppContent: React.FC = () => {
   const [isRegisterMode, setIsRegisterMode] = useState(() => window.location.pathname === '/register');
   const [isForgotMode, setIsForgotMode] = useState(() => window.location.pathname === '/forgot-password');
   const [isResetMode, setIsResetMode] = useState(() => window.location.pathname === '/reset-password');
+  const [showExitConfirmModal, setShowExitConfirmModal] = useState(false);
+
+  // Ask for browser confirmation when closing/reloading tab or navigating away
+  React.useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+      return '';
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
 
   // Navigation helper
   const navigate = (path: string, replace = false) => {
@@ -75,6 +88,12 @@ const MainAppContent: React.FC = () => {
   React.useEffect(() => {
     const handlePopState = () => {
       const path = window.location.pathname;
+
+      if ((path === '/' || path === '/login') && !user) {
+        setShowExitConfirmModal(true);
+        window.history.pushState({ appGuarded: true }, '', path);
+      }
+
       if (!user) {
         if (path === '/register') {
           setIsRegisterMode(true);
@@ -801,6 +820,45 @@ const MainAppContent: React.FC = () => {
                 className="px-5 py-2.5 bg-sky-600 hover:bg-sky-500 text-white font-bold text-sm rounded-xl shadow-sm transition-colors cursor-pointer"
               >
                 I Agree &amp; Accept
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🚪 Exit / Leave Confirmation Modal */}
+      {showExitConfirmModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-[999] animate-fade-in">
+          <div className="relative bg-white rounded-3xl max-w-sm w-full border border-slate-200 shadow-2xl p-6 text-center space-y-4">
+            <div className="w-14 h-14 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto shadow-inner">
+              <AlertTriangle className="w-8 h-8" />
+            </div>
+
+            <div>
+              <h3 className="text-lg font-black text-slate-900">Are you sure you want to leave?</h3>
+              <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                You are about to exit AutoShine. Any unsaved changes or active progress will be lost.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowExitConfirmModal(false)}
+                className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs rounded-xl transition-all cursor-pointer"
+              >
+                Stay on App
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowExitConfirmModal(false);
+                  window.history.back();
+                }}
+                className="flex-1 py-3 bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs rounded-xl shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <LogOut className="w-4 h-4" />
+                Yes, Exit
               </button>
             </div>
           </div>

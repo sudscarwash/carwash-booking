@@ -52,7 +52,7 @@ interface AppContextType {
   fetchBookings: () => Promise<void>;
   fetchEmployees: () => Promise<void>;
   fetchLogs: () => Promise<void>;
-  createBooking: (carWashId: string, date: string, timeSlot: string, notes?: string, serviceId?: string, serviceName?: string, price?: number) => Promise<boolean>;
+  createBooking: (carWashId: string, date: string, timeSlot: string, notes?: string, serviceId?: string, serviceName?: string, price?: number) => Promise<{ success: boolean; error?: string }>;
   createManualBooking: (data: {
     carWashId: string;
     date: string;
@@ -390,7 +390,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const createBooking = async (carWashId: string, date: string, timeSlot: string, notes?: string, serviceId?: string, serviceName?: string, price?: number): Promise<boolean> => {
+  const createBooking = async (carWashId: string, date: string, timeSlot: string, notes?: string, serviceId?: string, serviceName?: string, price?: number): Promise<{ success: boolean; error?: string }> => {
     try {
       await apiFetch('/api/bookings', {
         method: 'POST',
@@ -398,10 +398,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       showNotification('Wash slot booked successfully!', 'success');
       fetchBookings();
-      return true;
+      return { success: true };
     } catch (err: any) {
-      showNotification(err.message, 'error');
-      return false;
+      const errorMsg = err.message || 'Failed to create booking. Please try again.';
+      showNotification(errorMsg, 'error');
+      return { success: false, error: errorMsg };
     }
   };
 

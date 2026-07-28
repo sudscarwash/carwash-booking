@@ -159,11 +159,8 @@ export const CustomerDashboard: React.FC = () => {
 
   useEffect(() => {
     if (selectedLocation) {
-      if (selectedLocation.paymentPolicy === 'PRE_PAYMENT') {
-        setPaymentMethod('bank');
-      } else {
-        setPaymentMethod('cash');
-      }
+      // Always default to 'cash' (Pay at Counter) as requested
+      setPaymentMethod('cash');
     }
   }, [selectedLocation]);
 
@@ -333,7 +330,7 @@ export const CustomerDashboard: React.FC = () => {
     }
 
     setIsSubmitting(true);
-    const success = await createBooking(
+    const res = await createBooking(
       selectedLocation.id,
       bookingDate,
       selectedSlot,
@@ -344,7 +341,7 @@ export const CustomerDashboard: React.FC = () => {
     );
     setIsSubmitting(false);
 
-    if (success) {
+    if (res.success) {
       // Record booked info for WhatsApp and success dialog
       setLastBookedInfo({
         locationName: selectedLocation.name,
