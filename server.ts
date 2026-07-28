@@ -16,7 +16,7 @@ import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
 import { uploadReceipt } from './server/upload.js';
 
-import { Role, BookingStatus, User, UserWithPassword, CarWash, Booking, MapPreset } from './src/types.js';
+import { Role, BookingStatus, User, UserWithPassword, CarWash, Booking, MapPreset, AppNotification } from './src/types.js';
 import { 
   seedFirestoreIfEmpty,
   getUsers,
@@ -44,14 +44,21 @@ import {
   createMapPreset,
   deleteMapPreset,
   isUsingPostgres,
-  getPostgresConnectionError
+  getPostgresConnectionError,
+  updateUserIdAcrossTables,
+  seedDecToPresentSampleData,
+  createNotification,
+  getNotificationsByUserId,
+  markNotificationAsRead,
+  markAllNotificationsAsRead
 } from './server/db.js';
 import { 
   isSupabaseAuthEnabled, 
   registerSupabaseUser, 
   loginSupabaseUser, 
   updateSupabasePassword,
-  supabaseClient
+  supabaseClient,
+  deleteSupabaseUser
 } from './server/supabaseService.js';
 import {
   sendPasswordResetOTP,
@@ -67,6 +74,37 @@ dotenv.config();
 async function startServer() {
   const app = express();
   const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+
+  // 🔒 OWASP TOP 10 SECURITY HARDENING (A05: Security Misconfiguration)
+  // Disable X-Powered-By fingerprinting header to prevent stack footprinting
+  app.disable('x-powered-by');
+
+  // Enforce HTTP security headers to protect clients (A05: Security Misconfiguration)
+  app.use((req, res, next) => {
+    // 1. Enforce HTTPS in production (HSTS)
+    if (process.env.NODE_ENV === 'production') {
+      res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+    }
+
+    // 2. Prevent MIME-type Sniffing
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+
+    // 3. Enable standard browser XSS filtering
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+
+    // 4. Protect Referrer Leakage
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+
+    // 5. Frame-ancestors CSP (Clickjacking protection that permits our preview environment securely)
+    res.setHeader(
+      'Content-Security-Policy',
+      "default-src 'self' 'unsafe-inline' 'unsafe-eval' https:; " +
+      "img-src 'self' data: https:; " +
+      "frame-ancestors 'self' https://*.google.com https://*.studio https://*.run.app https://ai.studio https://*.aistudio.google;"
+    );
+
+    next();
+  });
 
   // Body parsing middlewares
   app.use(express.json());
@@ -106,6 +144,11 @@ async function startServer() {
 
       if (!email || !password || !name) {
         res.status(400).json({ error: 'All fields (email, password, name) are required.' });
+        return;
+      }
+
+      if (password.length < 8) {
+        res.status(400).json({ error: 'Password must be at least 8 characters long.' });
         return;
       }
 
@@ -277,8 +320,49 @@ async function startServer() {
             return;
           }
         } catch (supabaseError: any) {
-          res.status(400).json({ error: `Supabase Auth Failed: ${supabaseError.message}` });
-          return;
+          // If the login failed on Supabase Auth, but the credentials entered match the local database's bcrypt hash,
+          // we can automatically synchronize/register the user on Supabase Auth with this password!
+          // This allows standard seeded testing users (like admin@carwash.com with password admin123) and out-of-sync users
+          // to log in perfectly, bypassing missing account credentials securely!
+          const localPasswordValid = bcrypt.compareSync(password, user.passwordHash);
+          if (localPasswordValid) {
+            console.log(`[Supabase Auto-Sync] Local password is valid for ${email}. Synchronizing to Supabase Auth...`);
+            try {
+              // 1. Try to register the user in Supabase Auth to ensure they exist
+              const supabaseId = await registerSupabaseUser(email, password, user.name);
+              if (supabaseId) {
+                console.log(`[Supabase Auto-Sync] User ${email} registered/found on Supabase Auth with ID: ${supabaseId}`);
+                
+                // 2. Ensure their password on Supabase Auth is fully updated and matches the local database
+                await updateSupabasePassword(email, password).catch((e) => {
+                  console.warn(`[Supabase Auto-Sync] Admin password update warning (might be new registration):`, e.message);
+                });
+
+                // 3. Update their ID across all tables to keep the foreign key references unified
+                if (user.id !== supabaseId) {
+                  await updateUserIdAcrossTables(user.id, supabaseId);
+                  user.id = supabaseId;
+                }
+
+                // 4. Confirm login on Supabase Auth now works
+                const authSuccessRetry = await loginSupabaseUser(email, password);
+                if (!authSuccessRetry) {
+                  res.status(400).json({ error: 'Invalid email or password.' });
+                  return;
+                }
+              } else {
+                res.status(400).json({ error: `Supabase Authentication Error: ${supabaseError.message}` });
+                return;
+              }
+            } catch (syncError: any) {
+              console.error(`[Supabase Auto-Sync] Failed to sync user ${email} to Supabase Auth:`, syncError);
+              res.status(400).json({ error: `Supabase Auth Synchronization Error: ${syncError.message || syncError}` });
+              return;
+            }
+          } else {
+            res.status(400).json({ error: 'Invalid email or password.' });
+            return;
+          }
         }
       } else {
         // Fallback to standard local password validation
@@ -404,6 +488,11 @@ async function startServer() {
         return;
       }
 
+      if (password.length < 8) {
+        res.status(400).json({ error: 'New password must be at least 8 characters long.' });
+        return;
+      }
+
       const resetData = await getPasswordResetByToken(token);
       if (!resetData) {
         res.status(400).json({ error: 'Invalid or incorrect verification code.' });
@@ -447,7 +536,7 @@ async function startServer() {
     }
   });
 
-  // Get Me
+  // Get Me (Auto-refresh session token)
   app.get('/api/auth/me', authenticateToken, async (req: AuthenticatedRequest, res) => {
     try {
       if (!req.user) {
@@ -460,7 +549,8 @@ async function startServer() {
         return;
       }
       const { passwordHash: _, ...safeUser } = user;
-      res.json(safeUser);
+      const newToken = generateToken(safeUser);
+      res.json({ user: safeUser, token: newToken });
     } catch (error: any) {
       res.status(500).json({ error: error.message || 'Internal server error' });
     }
@@ -514,8 +604,8 @@ async function startServer() {
         return;
       }
 
-      if (newPassword.length < 6) {
-        res.status(400).json({ error: 'New password must be at least 6 characters long.' });
+      if (newPassword.length < 8) {
+        res.status(400).json({ error: 'New password must be at least 8 characters long.' });
         return;
       }
 
@@ -553,6 +643,39 @@ async function startServer() {
       res.json({ message: 'Password updated successfully!' });
     } catch (error: any) {
       res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Delete Account (App Store Guideline compliance)
+  app.delete('/api/auth/delete-account', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+      }
+
+      const userId = req.user.id;
+      const userEmail = req.user.email;
+
+      // 1. Audit Log first before deleting user context
+      await addAuditLog(userId, userEmail, 'USER_DELETE_ACCOUNT_REQUEST', `User requested self-deletion of account: ${userEmail}`);
+
+      // 2. Synchronize to Supabase Auth if enabled
+      if (isSupabaseAuthEnabled) {
+        try {
+          await deleteSupabaseUser(userEmail);
+        } catch (supabaseError: any) {
+          console.error('[Delete Account] Failed to delete user from Supabase Auth:', supabaseError.message);
+        }
+      }
+
+      // 3. Delete from our database
+      await deleteUser(userId);
+
+      res.json({ success: true, message: 'Account and associated records deleted successfully.' });
+    } catch (error: any) {
+      console.error('Delete account error:', error);
+      res.status(500).json({ error: error.message || 'Internal server error during account deletion.' });
     }
   });
 
@@ -942,6 +1065,24 @@ async function startServer() {
 
       await createBooking(newBooking);
 
+      // Trigger in-app notification for the owner of the car wash
+      if (carWash.ownerId) {
+        try {
+          await createNotification({
+            id: `notif_${Math.random().toString(36).substr(2, 9)}`,
+            userId: carWash.ownerId,
+            title: `New Booking Received! 🚗`,
+            message: `${newBooking.customerName} booked ${newBooking.serviceName || 'Car Wash Service'} for ${newBooking.date} at ${newBooking.timeSlot}.${newBooking.txnReference ? ` (Bank Ref: ${newBooking.txnReference})` : ''}`,
+            type: 'NEW_BOOKING',
+            bookingId: newBooking.id,
+            isRead: false,
+            createdAt: new Date().toISOString(),
+          });
+        } catch (notifErr) {
+          console.error('Failed to create owner notification:', notifErr);
+        }
+      }
+
       await addAuditLog(
         req.user!.id,
         req.user!.email,
@@ -972,6 +1113,134 @@ async function startServer() {
       res.status(500).json({ error: 'An unexpected database error occurred. Your request could not be processed.' });
     }
   });
+
+  // Manual Booking Creation by Owner or Employee (for phone calls / walk-ins)
+  app.post(
+    '/api/owner/manual-booking',
+    authenticateToken,
+    requireRoles([Role.OWNER, Role.EMPLOYEE, Role.ADMIN, Role.SPECIAL]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const {
+          carWashId,
+          date,
+          timeSlot,
+          customerName,
+          customerPhone,
+          customerEmail,
+          vehicleInfo,
+          bookingSource,
+          serviceId,
+          serviceName,
+          price,
+          notes,
+          status,
+        } = req.body;
+
+        if (!carWashId || !date || !timeSlot || !customerName || !customerPhone) {
+          res.status(400).json({
+            error: 'Fields (carWashId, date, timeSlot, customerName, customerPhone) are required for manual booking creation.',
+          });
+          return;
+        }
+
+        const carWash = await getCarWashById(carWashId);
+        if (!carWash) {
+          res.status(404).json({ error: 'Car wash location not found.' });
+          return;
+        }
+
+        // Authorization check: OWNER or EMPLOYEE must belong to this carWash
+        if (req.user!.role === Role.OWNER && carWash.ownerId !== req.user!.id) {
+          res.status(403).json({ error: 'You do not own this car wash business.' });
+          return;
+        }
+
+        if (req.user!.role === Role.EMPLOYEE) {
+          const empUser = await getUserById(req.user!.id);
+          if (empUser?.businessId !== carWashId) {
+            res.status(403).json({ error: 'You are not assigned to this car wash business.' });
+            return;
+          }
+        }
+
+        const newManualBooking: Booking = {
+          id: `bk_manual_${Math.random().toString(36).substr(2, 9)}`,
+          carWashId,
+          customerId: `guest_${Math.random().toString(36).substr(2, 7)}`,
+          customerName,
+          customerEmail: customerEmail || `${customerPhone.replace(/[^0-9]/g, '')}@walkin.guest`,
+          customerPhone,
+          vehicleInfo: vehicleInfo || '',
+          bookingSource: bookingSource || 'PHONE',
+          createdByRole: req.user!.role,
+          createdByEmail: req.user!.email,
+          date,
+          timeSlot,
+          status: status || BookingStatus.COMPLETED,
+          notes: notes ? `[Manual Booking by ${req.user!.role} (${req.user!.email})] ${notes}` : `[Manual Booking by ${req.user!.role} (${req.user!.email})]`,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          serviceId: serviceId || undefined,
+          serviceName: serviceName || undefined,
+          price: price ? parseFloat(price) : undefined,
+        };
+
+        await createBooking(newManualBooking);
+
+        // Notify owner if created by employee/staff
+        if (carWash.ownerId) {
+          try {
+            await createNotification({
+              id: `notif_${Math.random().toString(36).substr(2, 9)}`,
+              userId: carWash.ownerId,
+              title: `New Manual Booking (${bookingSource || 'PHONE'})`,
+              message: `${customerName} booked ${serviceName || 'Service'} for ${date} at ${timeSlot}`,
+              type: 'NEW_BOOKING',
+              bookingId: newManualBooking.id,
+              isRead: false,
+              createdAt: new Date().toISOString(),
+            });
+          } catch (notifErr) {
+            console.error('Failed to create notification for manual booking:', notifErr);
+          }
+        }
+
+        await addAuditLog(
+          req.user!.id,
+          req.user!.email,
+          'MANUAL_BOOKING_CREATE',
+          `Created manual ${bookingSource || 'PHONE'} booking for ${customerName} (${customerPhone}) on ${date} ${timeSlot}`
+        );
+
+        res.status(201).json(newManualBooking);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Internal server error' });
+      }
+    }
+  );
+
+  // Authenticated Owner: Generate/Seed sample ledger data from Dec 2025 to present
+  app.post(
+    '/api/owner/seed-sample-ledger',
+    authenticateToken,
+    requireRoles([Role.OWNER, Role.ADMIN]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { carWashId } = req.body;
+        const count = await seedDecToPresentSampleData(carWashId || 'cw_brunei');
+        await addAuditLog(
+          req.user!.id,
+          req.user!.email,
+          'SAMPLE_LEDGER_SEED',
+          `Generated ${count} sample ledger records from Dec 2025 to present for ${carWashId || 'cw_brunei'}`
+        );
+        res.json({ success: true, count, message: `Successfully generated ${count} sample ledger transactions from Dec 2025 to present!` });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to seed sample ledger' });
+      }
+    }
+  );
 
   // Authenticated: Reschedule or update a booking (customer can reschedule, owner/admin can reschedule)
   app.put('/api/bookings/:id/reschedule', authenticateToken, async (req: AuthenticatedRequest, res) => {
@@ -1096,6 +1365,25 @@ async function startServer() {
 
       await updateBooking(booking.id, updatedData);
 
+      // Trigger notification for customer on status change
+      if (booking.customerId) {
+        try {
+          const carWash = carWashes.find((c) => c.id === booking.carWashId);
+          await createNotification({
+            id: `notif_${Math.random().toString(36).substr(2, 9)}`,
+            userId: booking.customerId,
+            title: `Booking Status Update: ${status}`,
+            message: `Your booking at ${carWash ? carWash.name : 'Car Wash'} on ${booking.date} (${booking.timeSlot}) is now marked as ${status}.`,
+            type: 'STATUS_CHANGE',
+            bookingId: booking.id,
+            isRead: false,
+            createdAt: new Date().toISOString(),
+          });
+        } catch (notifErr) {
+          console.error('Failed to create customer status notification:', notifErr);
+        }
+      }
+
       await addAuditLog(
         user.id,
         user.email,
@@ -1104,6 +1392,43 @@ async function startServer() {
       );
 
       res.json({ ...booking, ...updatedData });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // ==========================================
+  // NOTIFICATIONS ENDPOINTS
+  // ==========================================
+
+  // Get user notifications
+  app.get('/api/notifications', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const notifs = await getNotificationsByUserId(user.id);
+      res.json(notifs);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Mark single notification as read
+  app.patch('/api/notifications/:id/read', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      await markNotificationAsRead(req.params.id, user.id);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Mark all notifications as read
+  app.patch('/api/notifications/mark-all-read', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      await markAllNotificationsAsRead(user.id);
+      res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ error: error.message || 'Internal server error' });
     }

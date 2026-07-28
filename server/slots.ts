@@ -46,12 +46,12 @@ export function generateSlotsForDate(
   const slots: TimeSlotResponse[] = [];
   let currentMinutes = startMinutes;
 
-  // For checking past slots if the date is today
-  const todayStr = new Date().toISOString().split('T')[0];
+  // For checking past slots if the date is today (Brunei local time: UTC+8)
+  const nowBrunei = new Date(Date.now() + 8 * 60 * 60 * 1000);
+  const todayStr = nowBrunei.toISOString().split('T')[0];
   const isToday = dateString === todayStr;
-  const now = new Date();
-  const currentHour = now.getHours();
-  const currentMin = now.getMinutes();
+  const currentHour = nowBrunei.getUTCHours();
+  const currentMin = nowBrunei.getUTCMinutes();
   const currentTotalMinutes = currentHour * 60 + currentMin;
 
   // 3. Generate slots iteratively

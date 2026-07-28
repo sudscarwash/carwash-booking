@@ -17,8 +17,8 @@ export const SpecialUserDashboard: React.FC = () => {
   const [ownerPassword, setOwnerPassword] = useState('owner123'); // Default initial
   const [businessName, setBusinessName] = useState('');
   const [businessAddress, setBusinessAddress] = useState('');
-  const [businessLat, setBusinessLat] = useState(37.7749);
-  const [businessLng, setBusinessLng] = useState(-122.4194);
+  const [businessLat, setBusinessLat] = useState(4.8917);
+  const [businessLng, setBusinessLng] = useState(114.9401);
   const [businessDesc, setBusinessDesc] = useState('');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -197,6 +197,7 @@ export const SpecialUserDashboard: React.FC = () => {
                 }}
                 userLat={businessLat}
                 userLng={businessLng}
+                compact={true}
               />
             </div>
 

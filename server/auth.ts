@@ -5,8 +5,10 @@
 
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { Role, User } from '../src/types.js';
 
+// In production, process.env.JWT_SECRET is preferred, with a reliable fallback for dev and server container restarts.
 const JWT_SECRET = process.env.JWT_SECRET || 'car-wash-super-secure-secret-key-2026-xyz';
 
 export interface AuthenticatedRequest extends Request {
@@ -21,7 +23,7 @@ export function generateToken(user: User): string {
     role: user.role,
     businessId: user.businessId
   };
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: '30d' });
 }
 
 export function authenticateToken(req: AuthenticatedRequest, res: Response, next: NextFunction) {

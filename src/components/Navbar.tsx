@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext.js';
-import { LogOut, Shield, User as UserIcon, Calendar, Compass, Sliders, Briefcase, Sparkles, Key, Lock, X, ChevronDown } from 'lucide-react';
+import { LogOut, Shield, User as UserIcon, Calendar, Compass, Sliders, Briefcase, Sparkles, Key, Lock, X, ChevronDown, Bell, CheckCheck, Clock, MessageSquare } from 'lucide-react';
 import { Role } from '../types.js';
 import autoshineLogo from '../assets/images/autoshine_logo_1783916518342.jpg';
 
@@ -15,10 +15,23 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
-  const { user, logout, changePassword } = useApp();
+  const { user, logout, changePassword, appNotifications, unreadNotificationCount, markNotificationAsRead, markAllNotificationsAsRead } = useApp();
 
   // Profile dropdown state
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isNotifOpen, setIsNotifOpen] = useState(false);
+
+  const formatTimeAgo = (isoDate: string) => {
+    if (!isoDate) return '';
+    const diffMs = new Date().getTime() - new Date(isoDate).getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays}d ago`;
+  };
 
   // Change Password state
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
@@ -115,9 +128,100 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
             </div>
           </div>
 
-          {/* User information & controls (Unified Profile Dropdown) */}
+          {/* User information & controls */}
           {user && (
-            <div className="relative z-50">
+            <div className="flex items-center gap-3 relative z-50">
+              {/* Notification Bell Trigger */}
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    setIsNotifOpen(!isNotifOpen);
+                    setIsProfileOpen(false);
+                  }}
+                  className="p-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200/80 rounded-2xl text-slate-600 hover:text-sky-600 relative transition-all duration-150 cursor-pointer"
+                  title="In-App Notifications"
+                >
+                  <Bell className="h-5 w-5" />
+                  {unreadNotificationCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white font-black text-[10px] w-5 h-5 rounded-full flex items-center justify-center border-2 border-white animate-pulse shadow-sm">
+                      {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
+                    </span>
+                  )}
+                </button>
+
+                {/* Notification Dropdown Overlay */}
+                {isNotifOpen && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-30 cursor-default bg-transparent"
+                      onClick={() => setIsNotifOpen(false)}
+                    />
+                    <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white border border-slate-200/90 rounded-2xl shadow-xl z-40 overflow-hidden py-2 animate-in fade-in slide-in-from-top-2 duration-150">
+                      <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                        <div className="flex items-center gap-2">
+                          <Bell className="h-4 w-4 text-sky-600" />
+                          <span className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                            Notifications
+                          </span>
+                          {unreadNotificationCount > 0 && (
+                            <span className="bg-sky-100 text-sky-800 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                              {unreadNotificationCount} new
+                            </span>
+                          )}
+                        </div>
+                        {unreadNotificationCount > 0 && (
+                          <button
+                            onClick={() => markAllNotificationsAsRead()}
+                            className="text-[11px] font-bold text-sky-600 hover:text-sky-800 flex items-center gap-1 cursor-pointer transition-colors"
+                          >
+                            <CheckCheck className="h-3.5 w-3.5" /> Mark all read
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
+                        {appNotifications.length === 0 ? (
+                          <div className="p-6 text-center text-slate-400">
+                            <Bell className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                            <p className="text-xs font-medium">No notifications yet</p>
+                          </div>
+                        ) : (
+                          appNotifications.map((n) => (
+                            <div
+                              key={n.id}
+                              onClick={() => {
+                                if (!n.isRead) markNotificationAsRead(n.id);
+                              }}
+                              className={`p-3.5 text-left transition-colors cursor-pointer hover:bg-slate-50 flex gap-3 items-start ${
+                                !n.isRead ? 'bg-sky-50/40' : 'bg-white'
+                              }`}
+                            >
+                              <div
+                                className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${
+                                  !n.isRead ? 'bg-sky-500 ring-4 ring-sky-100' : 'bg-slate-200'
+                                }`}
+                              />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between gap-2 mb-0.5">
+                                  <p className="text-xs font-bold text-slate-800 truncate">{n.title}</p>
+                                  <span className="text-[10px] text-slate-400 shrink-0 font-mono flex items-center gap-0.5">
+                                    <Clock className="h-2.5 w-2.5" />
+                                    {formatTimeAgo(n.createdAt)}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-slate-600 leading-snug line-clamp-2">{n.message}</p>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Profile Menu Dropdown */}
+              <div className="relative">
               {/* Trigger button */}
               <button
                 onClick={() => setIsProfileOpen(!isProfileOpen)}
@@ -196,7 +300,8 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
                 </div>
               )}
             </div>
-          )}
+          </div>
+        )}
         </div>
       </div>
     </header>

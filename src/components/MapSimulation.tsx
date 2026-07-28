@@ -114,9 +114,9 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
   onLocationSelect,
   interactiveSelectCoords,
   onMapClickSelectCoords,
-  userLat = 37.7749,
-  userLng = -122.4194,
-  radiusKm = 10,
+  userLat = 4.8917,
+  userLng = 114.9401,
+  radiusKm = 2,
   onRadiusChange,
   onUserLocationChange,
   compact = false,
@@ -474,12 +474,13 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
   };
 
   const element = (
-    <div className={`flex flex-col bg-slate-50 rounded-2xl border border-slate-200/80 p-4 shadow-xs h-full min-h-[400px] ${
+    <div className={`flex flex-col bg-slate-50 rounded-2xl border border-slate-200/80 p-3 sm:p-4 shadow-xs h-full min-h-[250px] ${
       isMaximized ? 'fixed inset-4 bg-white z-[100] border-slate-300 shadow-2xl m-auto max-w-6xl max-h-[85vh]' : 'w-full'
     }`} id="interactive-map-root">
       
       {/* Map Search & Preset Header Block */}
-      <div className="mb-4 space-y-3">
+      {!compact && (
+        <div className="mb-4 space-y-3">
         <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
           <div>
             <h4 className="text-sm font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
@@ -508,11 +509,13 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
             ))}
           </div>
         </div>
+      </div>
+      )}
 
-        {/* Search Bar Input */}
-        <div className="relative">
-          <div className="flex gap-2">
-            <div className="relative flex-1">
+      {/* Search Bar Input */}
+      <div className={`relative ${compact ? 'mb-2' : 'mb-4'}`}>
+        <div className="flex gap-2">
+          <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
               <input
                 type="text"
@@ -594,7 +597,6 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
             </div>
           )}
         </div>
-      </div>
 
       {/* Radius adjustment slider (Only on customer view) */}
       {onRadiusChange && (
@@ -619,7 +621,7 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
       )}
 
       {/* Real Leaflet Map Canvas */}
-      <div className="relative flex-1 rounded-xl bg-slate-100/80 border border-slate-200 overflow-hidden h-[450px] md:h-auto">
+      <div className="relative flex-1 rounded-xl bg-slate-100/80 border border-slate-200 overflow-hidden min-h-[180px] h-full">
         {!leafletLoaded ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-50 gap-2">
             <div className="animate-spin h-6 w-6 border-2 border-sky-500 border-t-transparent rounded-full"></div>
@@ -630,7 +632,7 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
         )}
 
         {/* Floating Map Controls overlay */}
-        <div className="absolute top-3 right-3 flex flex-col gap-1.5 z-20 pointer-events-auto">
+        <div className="absolute bottom-3 right-3 flex flex-row gap-1 border border-slate-200/60 bg-white/95 backdrop-blur-xs p-1 rounded-xl shadow-md z-20 pointer-events-auto">
           {/* External Google Maps Link */}
           <a
             href={`https://www.google.com/maps?q=${currentCenter.lat},${currentCenter.lng}`}
@@ -681,12 +683,6 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
           >
             <ZoomOut className="h-4 w-4" />
           </button>
-        </div>
-
-        {/* HUD Overlay Helper Details */}
-        <div className="absolute top-3 left-3 pointer-events-none bg-slate-900/80 backdrop-blur-xs text-white px-2.5 py-1.5 rounded-lg text-[10px] font-sans font-medium flex items-center gap-1.5 shadow-md z-20">
-          <Navigation className="h-3.5 w-3.5 text-sky-400 animate-pulse" />
-          <span>Interactive Leaflet Map Active • OpenStreetMap Layers</span>
         </div>
       </div>
 

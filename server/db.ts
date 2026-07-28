@@ -14,7 +14,7 @@ import pg from 'pg';
 import path from 'path';
 import fs from 'fs';
 import bcrypt from 'bcryptjs';
-import { Role, BookingStatus, UserWithPassword, CarWash, Booking, AuditLog, WeeklySchedule, MapPreset } from '../src/types.js';
+import { Role, BookingStatus, UserWithPassword, CarWash, Booking, AuditLog, WeeklySchedule, MapPreset, AppNotification } from '../src/types.js';
 
 let usePostgres = !!process.env.DATABASE_URL;
 let postgresConnectionError: string | null = null;
@@ -135,6 +135,10 @@ function convertQueryToPg(sql: string): string {
     expiresat: 'expires_at',
     isCustom: 'is_custom',
     iscustom: 'is_custom',
+    bookingId: 'booking_id',
+    bookingid: 'booking_id',
+    isRead: 'is_read',
+    isread: 'is_read',
   };
 
   // Perform whole-word replacements to avoid matching partial strings
@@ -149,7 +153,7 @@ function convertQueryToPg(sql: string): string {
     result = result.replace(/INSERT\s+OR\s+IGNORE\s+INTO/gi, 'INSERT INTO');
     
     // Add primary key conflict targets
-    if (tableName === 'users' || tableName === 'car_washes' || tableName === 'bookings' || tableName === 'audit_logs' || tableName === 'map_presets') {
+    if (tableName === 'users' || tableName === 'car_washes' || tableName === 'bookings' || tableName === 'audit_logs' || tableName === 'map_presets' || tableName === 'notifications') {
       result += ' ON CONFLICT (id) DO NOTHING';
     }
   }
@@ -330,8 +334,8 @@ export async function seedFirestoreIfEmpty() {
       console.log('✅ PostgreSQL/Supabase connection successful!');
     } catch (err: any) {
       postgresConnectionError = err.message || String(err);
-      console.error('❌ PostgreSQL/Supabase connection failed! Error:', postgresConnectionError);
-      console.error('👉 Automatically falling back to local SQLite database to prevent application crash.');
+      console.warn('ℹ️ PostgreSQL/Supabase connection not active:', postgresConnectionError);
+      console.log('👉 Utilizing local SQLite database engine (carwash.db).');
       usePostgres = false;
       try {
         await pgPool.end();
@@ -408,6 +412,17 @@ export async function seedFirestoreIfEmpty() {
       lng REAL NOT NULL,
       country TEXT NOT NULL,
       isCustom INTEGER NOT NULL DEFAULT 0,
+      createdAt TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS notifications (
+      id TEXT PRIMARY KEY,
+      userId TEXT NOT NULL,
+      title TEXT NOT NULL,
+      message TEXT NOT NULL,
+      type TEXT NOT NULL,
+      bookingId TEXT,
+      isRead INTEGER NOT NULL DEFAULT 0,
       createdAt TEXT NOT NULL
     );
   `);
@@ -587,7 +602,7 @@ export async function seedFirestoreIfEmpty() {
   try {
     for (const u of users) {
       await runQueryRun(`
-        INSERT INTO users (id, email, name, role, isActive, businessId, passwordHash, createdAt)
+        INSERT OR IGNORE INTO users (id, email, name, role, isActive, businessId, passwordHash, createdAt)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `, [u.id, u.email, u.name, u.role, u.isActive ? 1 : 0, u.businessId || null, u.passwordHash, u.createdAt]);
     }
@@ -601,12 +616,21 @@ export async function seedFirestoreIfEmpty() {
   try {
     const hasDowntown = await runQueryOne("SELECT COUNT(*) AS count FROM car_washes WHERE id = 'cw_downtown'") as { count: any };
     const dtVal = hasDowntown ? parseInt(hasDowntown.count, 10) : 0;
+
+    // Check if recent ledger records (from Dec 2025 to present) exist
+    const recentBk = await runQueryOne("SELECT COUNT(*) AS count FROM bookings WHERE date >= '2025-12-01'") as { count: any };
+    const recVal = recentBk ? parseInt(recentBk.count, 10) : 0;
+    if (recVal < 20) {
+      console.log('Seeding dynamic historical sales ledger dataset (Dec 2025 to present)...');
+      await seedDecToPresentSampleData('ALL');
+    }
+
     if (dtVal > 0) {
-      console.log('Main seed data already loaded. Skipping full database seeding.');
+      console.log('Main seed data already loaded.');
       return;
     }
   } catch (e) {
-    // ignore
+    console.error('Error checking initial seed status:', e);
   }
 
   console.log('Seeding initial Car Wash Booking System database...');
@@ -769,6 +793,18 @@ export async function seedFirestoreIfEmpty() {
   } catch (err) {
     console.error('Failed to seed database:', err);
   }
+
+  // Auto-seed historical ledger dataset from Dec 2025 to present if table has < 15 records
+  try {
+    const existingBkCount = await runQueryOne('SELECT COUNT(*) AS count FROM bookings') as { count: any };
+    const bkCountVal = existingBkCount ? parseInt(existingBkCount.count, 10) : 0;
+    if (bkCountVal < 15) {
+      console.log('Seeding sample ledger dataset from December 2025 to present for all locations...');
+      await seedDecToPresentSampleData('ALL');
+    }
+  } catch (err) {
+    console.error('Error auto-seeding sample ledger dataset:', err);
+  }
 }
 
 // User Operations
@@ -853,6 +889,25 @@ export async function updateUser(id: string, data: Partial<UserWithPassword>): P
   } catch (error) {
     console.error('Database updateUser Error:', error);
     throw error;
+  }
+}
+
+export async function updateUserIdAcrossTables(oldId: string, newId: string): Promise<void> {
+  if (oldId === newId) return;
+  try {
+    console.log(`[Database Sync] Merging user ID from ${oldId} to ${newId} across all tables...`);
+    // 1. Update the main users table
+    await runQueryRun('UPDATE users SET id = ? WHERE id = ?', [newId, oldId]);
+    // 2. Update bookings associated with customerId or employeeId
+    await runQueryRun('UPDATE bookings SET customerId = ? WHERE customerId = ?', [newId, oldId]);
+    await runQueryRun('UPDATE bookings SET employeeId = ? WHERE employeeId = ?', [newId, oldId]);
+    // 3. Update car washes owned by this user
+    await runQueryRun('UPDATE car_washes SET ownerId = ? WHERE ownerId = ?', [newId, oldId]);
+    // 4. Update audit logs
+    await runQueryRun('UPDATE audit_logs SET userId = ? WHERE userId = ?', [newId, oldId]);
+  } catch (err: any) {
+    console.error(`[Database Sync] Failed to update user ID across tables from ${oldId} to ${newId}:`, err);
+    throw err;
   }
 }
 
@@ -985,7 +1040,7 @@ export async function getBookingById(id: string): Promise<Booking | null> {
 export async function createBooking(booking: Booking): Promise<void> {
   try {
     await runQueryRun(`
-      INSERT INTO bookings (
+      INSERT OR IGNORE INTO bookings (
         id, carWashId, customerId, customerName, customerEmail, 
         date, timeSlot, status, notes, employeeId, 
         createdAt, updatedAt, paymentBank, txnReference, receiptFilename,
@@ -1166,3 +1221,221 @@ export function isUsingPostgres(): boolean {
 export function getPostgresConnectionError(): string | null {
   return postgresConnectionError;
 }
+
+export async function seedDecToPresentSampleData(targetCarWashId?: string): Promise<number> {
+  const custNames = [
+    'Haji Awang Yusof', 'Siti Nurhaliza Mohamad', 'Mohammad Rizwan Shah',
+    'Dk Nurul Athirah', 'Brandon Lee', 'Sarah Tan', 'Ak Ahmad Zaki',
+    'Pg Hj Mohd Shamrim', 'Norhaslinda Abdullah', 'Lim Wei Sheng',
+    'Muhammad Faiz Hashim', 'Fiona Heng', 'Hajah Mariam Basir'
+  ];
+
+  const vehicles = [
+    'Toyota Vios (BAA 1234)', 'Honda Civic (BAB 5678)', 'BMW X5 (BAC 8888)',
+    'Mercedes A200 (BAD 9900)', 'Nissan X-Trail (BAE 4321)', 'Hyundai Creta (BAF 6789)',
+    'Ford Ranger Raptor (BAG 1122)', 'Mazda CX-5 (BAH 3344)', 'Kia Carnival (BAI 5566)',
+    'Subaru XV (BAJ 7788)'
+  ];
+
+  const services = [
+    { name: 'Standard Executive Wash', price: 15.00, type: 'service' },
+    { name: 'Full Interior Polish & Detail', price: 65.00, type: 'service' },
+    { name: 'Nano Ceramic Shield Package', price: 150.00, type: 'service' },
+    { name: 'Engine Bay Steam Clean', price: 35.00, type: 'service' },
+    { name: 'Premium Car Fragrance Refill', price: 12.00, type: 'product' },
+    { name: 'Microfiber Cloth & Detailing Kit', price: 25.00, type: 'product' },
+    { name: 'Rain-X Glass Hydrophobic Coating', price: 28.00, type: 'service' }
+  ];
+
+  const timeSlots = [
+    '08:30 - 09:00', '09:30 - 10:00', '10:30 - 11:00', '11:30 - 12:00',
+    '14:00 - 14:30', '15:00 - 15:30', '16:00 - 16:30', '17:00 - 17:30'
+  ];
+
+  const sources: ('ONLINE' | 'PHONE' | 'WALK_IN')[] = ['ONLINE', 'PHONE', 'WALK_IN'];
+  const banks = ['BIBD', 'Baiduri', null]; // null means Cash
+
+  // Get list of carwash IDs to seed
+  let targetIds: string[] = [];
+  if (targetCarWashId && targetCarWashId !== 'ALL') {
+    targetIds = [targetCarWashId];
+  } else {
+    try {
+      const cwRows = await runQueryAll('SELECT id FROM car_washes') as { id: string }[];
+      targetIds = cwRows && cwRows.length > 0 ? cwRows.map(c => c.id) : ['cw_brunei', 'cw_downtown', 'cw_bayside', 'cw_sunset'];
+    } catch (e) {
+      targetIds = ['cw_brunei', 'cw_downtown', 'cw_bayside', 'cw_sunset'];
+    }
+  }
+
+  // Calculate dynamic months from Dec 2025 up to current year/month
+  const now = new Date();
+  const curYear = now.getFullYear();
+  const curMonth = now.getMonth() + 1; // 1-12
+
+  const months: { year: number; month: number; daysCount: number; count: number }[] = [];
+
+  // Dec 2025
+  months.push({ year: 2025, month: 12, daysCount: 31, count: 12 });
+
+  // 2026 months up to current month
+  let y = 2026;
+  let m = 1;
+  while (y < curYear || (y === curYear && m <= curMonth)) {
+    const daysInM = new Date(y, m, 0).getDate();
+    const count = (y === curYear && m === curMonth) ? 18 : Math.floor(10 + Math.random() * 8);
+    months.push({ year: y, month: m, daysCount: daysInM, count });
+    m++;
+    if (m > 12) {
+      m = 1;
+      y++;
+    }
+  }
+
+  let addedCount = 0;
+
+  for (const cwId of targetIds) {
+    let globalIdx = 0;
+    for (const mObj of months) {
+      for (let i = 0; i < mObj.count; i++) {
+        globalIdx++;
+        // If current month, cap day at today's day of month or max 28
+        const maxDay = (mObj.year === curYear && mObj.month === curMonth) ? Math.max(1, now.getDate()) : mObj.daysCount;
+        const day = Math.floor(Math.random() * maxDay) + 1;
+        const dayStr = String(day).padStart(2, '0');
+        const monthStr = String(mObj.month).padStart(2, '0');
+        const dateStr = `${mObj.year}-${monthStr}-${dayStr}`;
+
+        const cust = custNames[(globalIdx + i) % custNames.length];
+        const vehicle = vehicles[(globalIdx + i) % vehicles.length];
+        const svc = services[(globalIdx + i) % services.length];
+        const slot = timeSlots[(globalIdx + i) % timeSlots.length];
+        const src = sources[(globalIdx + i) % sources.length];
+        const bank = banks[(globalIdx + i) % banks.length];
+        const txn = bank ? `${bank}-${Math.floor(100000 + Math.random() * 900000)}` : undefined;
+
+        const bkId = `bk_smp_${cwId}_${mObj.year}${monthStr}${dayStr}_${i + 1}_${Math.random().toString(36).substring(2, 6)}`;
+        const timestamp = new Date(`${dateStr}T10:00:00.000Z`).toISOString();
+
+        try {
+          await createBooking({
+            id: bkId,
+            carWashId: cwId,
+            customerId: `usr_cust_${(i % 10) + 1}`,
+            customerName: cust,
+            customerEmail: `${cust.toLowerCase().replace(/[^a-z]/g, '')}@example.com`,
+            vehicleInfo: vehicle,
+            bookingSource: src,
+            date: dateStr,
+            timeSlot: slot,
+            status: BookingStatus.COMPLETED,
+            paymentBank: bank || undefined,
+            txnReference: txn,
+            serviceId: `svc_${i % services.length}`,
+            serviceName: svc.name,
+            price: svc.price,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+            notes: `${svc.type === 'product' ? 'Over the counter product sale' : 'Completed service'} - ${vehicle}`
+          });
+          addedCount++;
+        } catch (e) {
+          // ignore duplicate
+        }
+      }
+    }
+
+    // Explicitly guarantee 5 entries for TODAY and 5 entries for YESTERDAY so current week/month views are never empty
+    const todayStr = now.toISOString().split('T')[0];
+    const yestDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const yestStr = yestDate.toISOString().split('T')[0];
+
+    for (const dStr of [todayStr, yestStr]) {
+      for (let k = 0; k < 5; k++) {
+        const cust = custNames[(k * 3) % custNames.length];
+        const vehicle = vehicles[(k * 2) % vehicles.length];
+        const svc = services[k % services.length];
+        const slot = timeSlots[k % timeSlots.length];
+        const bank = banks[k % banks.length];
+        const txn = bank ? `${bank}-${Math.floor(100000 + Math.random() * 900000)}` : undefined;
+
+        const bkId = `bk_now_${cwId}_${dStr.replace(/-/g, '')}_${k + 1}_${Math.random().toString(36).substring(2, 6)}`;
+        const timestamp = new Date(`${dStr}T${10 + k}:00:00.000Z`).toISOString();
+
+        try {
+          await createBooking({
+            id: bkId,
+            carWashId: cwId,
+            customerId: `usr_cust_${k + 1}`,
+            customerName: cust,
+            customerEmail: `${cust.toLowerCase().replace(/[^a-z]/g, '')}@example.com`,
+            vehicleInfo: vehicle,
+            bookingSource: k % 2 === 0 ? 'WALK_IN' : 'ONLINE',
+            date: dStr,
+            timeSlot: slot,
+            status: BookingStatus.COMPLETED,
+            paymentBank: bank || undefined,
+            txnReference: txn,
+            serviceId: `svc_${k % services.length}`,
+            serviceName: svc.name,
+            price: svc.price,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+            notes: `Guaranteed recent transaction - ${svc.name}`
+          });
+          addedCount++;
+        } catch (e) {
+          // ignore duplicate
+        }
+      }
+    }
+  }
+
+  return addedCount;
+}
+
+// Notifications Mapper & Database Methods
+export const mapNotification = (row: any): AppNotification => {
+  if (!row) return row;
+  const isReadVal = row.isRead !== undefined ? row.isRead : (row.is_read !== undefined ? row.is_read : row.isread);
+  return {
+    id: row.id,
+    userId: row.userId ?? row.user_id ?? row.userid,
+    title: row.title,
+    message: row.message,
+    type: row.type,
+    bookingId: row.bookingId ?? row.booking_id ?? row.bookingid ?? undefined,
+    isRead: isReadVal === 1 || isReadVal === true || isReadVal === '1',
+    createdAt: row.createdAt ?? row.created_at ?? row.createdat,
+  };
+};
+
+export async function createNotification(n: AppNotification): Promise<void> {
+  await runQueryRun(
+    `INSERT INTO notifications (id, userId, title, message, type, bookingId, isRead, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [n.id, n.userId, n.title, n.message, n.type, n.bookingId || null, n.isRead ? 1 : 0, n.createdAt]
+  );
+}
+
+export async function getNotificationsByUserId(userId: string): Promise<AppNotification[]> {
+  const rows = await runQueryAll(
+    `SELECT * FROM notifications WHERE userId = ? ORDER BY createdAt DESC LIMIT 100`,
+    [userId]
+  );
+  return rows.map(mapNotification);
+}
+
+export async function markNotificationAsRead(id: string, userId: string): Promise<void> {
+  await runQueryRun(
+    `UPDATE notifications SET isRead = 1 WHERE id = ? AND userId = ?`,
+    [id, userId]
+  );
+}
+
+export async function markAllNotificationsAsRead(userId: string): Promise<void> {
+  await runQueryRun(
+    `UPDATE notifications SET isRead = 1 WHERE userId = ?`,
+    [userId]
+  );
+}
+

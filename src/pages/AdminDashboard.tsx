@@ -44,6 +44,11 @@ export const AdminDashboard: React.FC = () => {
   const [editIsActive, setEditIsActive] = useState(true);
   const [editBusinessId, setEditBusinessId] = useState('');
 
+  // User Filter State
+  const [adminUserAlphaFilter, setAdminUserAlphaFilter] = useState<string>('ALL');
+  const [adminUserRoleFilter, setAdminUserRoleFilter] = useState<string>('ALL');
+  const [adminUserSearch, setAdminUserSearch] = useState<string>('');
+
   // Onboard Business and Owner State
   const [showOnboardModal, setShowOnboardModal] = useState(false);
   const [onboardOwnerName, setOnboardOwnerName] = useState('');
@@ -52,8 +57,8 @@ export const AdminDashboard: React.FC = () => {
   const [onboardBusinessName, setOnboardBusinessName] = useState('');
   const [onboardBusinessAddress, setOnboardBusinessAddress] = useState('');
   const [onboardBusinessDesc, setOnboardBusinessDesc] = useState('');
-  const [onboardBusinessLat, setOnboardBusinessLat] = useState(37.7749);
-  const [onboardBusinessLng, setOnboardBusinessLng] = useState(-122.4194);
+  const [onboardBusinessLat, setOnboardBusinessLat] = useState(4.8917);
+  const [onboardBusinessLng, setOnboardBusinessLng] = useState(114.9401);
   const [onboardSubmitting, setOnboardSubmitting] = useState(false);
 
   // Edit Location State
@@ -61,8 +66,8 @@ export const AdminDashboard: React.FC = () => {
   const [editLocName, setEditLocName] = useState('');
   const [editLocAddress, setEditLocAddress] = useState('');
   const [editLocDesc, setEditLocDesc] = useState('');
-  const [editLocLat, setEditLocLat] = useState(37.7749);
-  const [editLocLng, setEditLocLng] = useState(-122.4194);
+  const [editLocLat, setEditLocLat] = useState(4.8917);
+  const [editLocLng, setEditLocLng] = useState(114.9401);
   const [editLocSlotDuration, setEditLocSlotDuration] = useState(30);
   const [editLocCapacity, setEditLocCapacity] = useState(1);
   const [editLocIsActive, setEditLocIsActive] = useState(true);
@@ -444,97 +449,210 @@ export const AdminDashboard: React.FC = () => {
       </div>
 
       {/* Sub Tab: Users */}
-      {activeSubTab === 'users' && (
-        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-            <div>
-              <h2 className="text-base sm:text-lg font-bold text-slate-800">Platform Accounts</h2>
-              <p className="text-xs text-slate-400">Total accounts registered in the database</p>
-            </div>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="bg-red-600 hover:bg-red-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-md transition-colors flex items-center gap-1.5 cursor-pointer"
-              id="admin-create-user-trigger"
-            >
-              <UserPlus className="h-4 w-4" /> Create User Profile
-            </button>
-          </div>
+      {activeSubTab === 'users' && (() => {
+        const filteredAdminUsers = adminUsersList
+          .map((u) => {
+            const uName = (u.name || '').trim();
+            let firstLetter = uName.charAt(0).toUpperCase();
+            if (!/^[A-Z]$/i.test(firstLetter)) {
+              firstLetter = '#';
+            }
+            return { ...u, firstLetter };
+          })
+          .sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base', numeric: true }))
+          .filter((u) => {
+            if (adminUserRoleFilter !== 'ALL' && u.role !== adminUserRoleFilter) return false;
+            if (adminUserAlphaFilter !== 'ALL') {
+              if (adminUserAlphaFilter === '#') {
+                if (u.firstLetter !== '#') return false;
+              } else {
+                if (u.firstLetter !== adminUserAlphaFilter) return false;
+              }
+            }
+            if (adminUserSearch.trim()) {
+              const q = adminUserSearch.toLowerCase();
+              const matchName = u.name?.toLowerCase().includes(q);
+              const matchEmail = u.email?.toLowerCase().includes(q);
+              if (!matchName && !matchEmail) return false;
+            }
+            return true;
+          });
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse" id="admin-users-table">
-              <thead>
-                <tr className="border-b border-slate-100 text-xs font-bold text-slate-400 uppercase tracking-wider">
-                  <th className="py-3 px-4">User Details</th>
-                  <th className="py-3 px-4">Email</th>
-                  <th className="py-3 px-4">Role Badge</th>
-                  <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4">Created Date</th>
-                  <th className="py-3 px-4 text-right">Operations</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50 text-xs sm:text-sm">
-                {adminUsersList.map((u) => (
-                  <tr key={u.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="py-4 px-4 font-semibold text-slate-800">
-                      <div className="flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-full ${u.isActive ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                        {u.name}
-                      </div>
-                    </td>
-                    <td className="py-4 px-4 font-mono text-slate-500">{u.email}</td>
-                    <td className="py-4 px-4">
-                      <span className={`inline-flex px-2 py-0.5 rounded text-xs font-bold font-mono border ${
-                        u.role === Role.ADMIN
-                          ? 'bg-red-50 border-red-200 text-red-700'
-                          : u.role === Role.OWNER
-                          ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
-                          : u.role === Role.EMPLOYEE
-                          ? 'bg-amber-50 border-amber-200 text-amber-700'
-                          : u.role === Role.SPECIAL
-                          ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                          : 'bg-sky-50 border-sky-200 text-sky-700'
-                      }`}>
-                        {u.role}
-                      </span>
-                    </td>
-                    <td className="py-4 px-4">
-                      <span className={`inline-flex items-center gap-1 text-[11px] font-bold ${
-                        u.isActive ? 'text-emerald-600' : 'text-rose-500'
-                      }`}>
-                        {u.isActive ? <ShieldCheck className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
-                        {u.isActive ? 'ACTIVE' : 'LOCKED'}
-                      </span>
-                    </td>
-                    <td className="py-4 px-4 text-slate-400 font-mono text-xs">{u.createdAt.substring(0, 10)}</td>
-                    <td className="py-4 px-4 text-right space-x-2">
-                      <button
-                        onClick={() => handleOpenEdit(u)}
-                        className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
-                        title="Edit User Profile"
-                        id={`edit-user-btn-${u.id}`}
-                      >
-                        <Edit className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => handleToggleUserStatus(u)}
-                        className={`p-1 font-bold text-xs rounded transition-all cursor-pointer ${
-                          u.isActive
-                            ? 'text-rose-500 hover:bg-rose-50'
-                            : 'text-emerald-500 hover:bg-emerald-50'
-                        }`}
-                        title={u.isActive ? 'Lock User account' : 'Unlock User account'}
-                        id={`lock-user-btn-${u.id}`}
-                      >
-                        {u.isActive ? 'Suspend' : 'Activate'}
-                      </button>
-                    </td>
+        return (
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-base sm:text-lg font-bold text-slate-800">Platform Accounts</h2>
+                <p className="text-xs text-slate-400">Total accounts registered in the database ({adminUsersList.length} total)</p>
+              </div>
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="bg-red-600 hover:bg-red-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-md transition-colors flex items-center gap-1.5 cursor-pointer"
+                id="admin-create-user-trigger"
+              >
+                <UserPlus className="h-4 w-4" /> Create User Profile
+              </button>
+            </div>
+
+            {/* Filter controls row */}
+            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                {/* Role Filter buttons */}
+                <div className="flex items-center gap-1 overflow-x-auto pb-1 text-xs font-bold">
+                  <span className="text-slate-400 uppercase tracking-wider text-[10px] mr-1">Role:</span>
+                  {['ALL', Role.CUSTOMER, Role.OWNER, Role.EMPLOYEE, Role.SPECIAL, Role.ADMIN].map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => setAdminUserRoleFilter(r)}
+                      className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer whitespace-nowrap text-[11px] ${
+                        adminUserRoleFilter === r
+                          ? 'bg-slate-900 text-white font-extrabold'
+                          : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'
+                      }`}
+                    >
+                      {r === 'ALL' ? 'All Roles' : r}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Search input */}
+                <div className="relative w-full md:w-64">
+                  <input
+                    type="text"
+                    placeholder="Search name or email..."
+                    value={adminUserSearch}
+                    onChange={(e) => setAdminUserSearch(e.target.value)}
+                    className="w-full pl-3 pr-8 py-1.5 bg-white border border-slate-200 rounded-xl text-xs outline-none focus:border-red-500"
+                  />
+                  {adminUserSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setAdminUserSearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* A-Z Letter Bar */}
+              <div className="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap pb-2 pt-1 max-w-full touch-pan-x scrollbar-thin">
+                <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] mr-1 shrink-0">A-Z Index:</span>
+                {['ALL', '#', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')].map((letter) => {
+                  const count = letter === 'ALL'
+                    ? adminUsersList.length
+                    : letter === '#'
+                    ? adminUsersList.filter((u) => !/^[A-Z]$/i.test((u.name || '').trim().charAt(0))).length
+                    : adminUsersList.filter((u) => (u.name || '').trim().charAt(0).toUpperCase() === letter).length;
+
+                  const isSel = adminUserAlphaFilter === letter;
+
+                  return (
+                    <button
+                      key={letter}
+                      type="button"
+                      onClick={() => setAdminUserAlphaFilter(letter)}
+                      className={`min-w-7 h-7 px-1.5 rounded-lg text-[11px] font-extrabold transition-all cursor-pointer flex items-center justify-center gap-0.5 ${
+                        isSel
+                          ? 'bg-red-600 text-white shadow-xs'
+                          : count > 0
+                          ? 'bg-white hover:bg-slate-200 text-slate-800 border border-slate-200'
+                          : 'bg-slate-100 text-slate-300 cursor-not-allowed opacity-50'
+                      }`}
+                    >
+                      <span>{letter}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse" id="admin-users-table">
+                <thead>
+                  <tr className="border-b border-slate-100 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    <th className="py-3 px-4">User Details</th>
+                    <th className="py-3 px-4">Email</th>
+                    <th className="py-3 px-4">Role Badge</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4">Created Date</th>
+                    <th className="py-3 px-4 text-right">Operations</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-50 text-xs sm:text-sm">
+                  {filteredAdminUsers.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-8 text-center text-slate-400 font-bold">
+                        No users found matching current filters.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredAdminUsers.map((u) => (
+                      <tr key={u.id} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="py-4 px-4 font-semibold text-slate-800">
+                          <div className="flex items-center gap-2">
+                            <span className={`w-2 h-2 rounded-full ${u.isActive ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                            {u.name}
+                          </div>
+                        </td>
+                        <td className="py-4 px-4 font-mono text-slate-500">{u.email}</td>
+                        <td className="py-4 px-4">
+                          <span className={`inline-flex px-2 py-0.5 rounded text-xs font-bold font-mono border ${
+                            u.role === Role.ADMIN
+                              ? 'bg-red-50 border-red-200 text-red-700'
+                              : u.role === Role.OWNER
+                              ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                              : u.role === Role.EMPLOYEE
+                              ? 'bg-amber-50 border-amber-200 text-amber-700'
+                              : u.role === Role.SPECIAL
+                              ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                              : 'bg-sky-50 border-sky-200 text-sky-700'
+                          }`}>
+                            {u.role}
+                          </span>
+                        </td>
+                        <td className="py-4 px-4">
+                          <span className={`inline-flex items-center gap-1 text-[11px] font-bold ${
+                            u.isActive ? 'text-emerald-600' : 'text-rose-500'
+                          }`}>
+                            {u.isActive ? <ShieldCheck className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
+                            {u.isActive ? 'ACTIVE' : 'LOCKED'}
+                          </span>
+                        </td>
+                        <td className="py-4 px-4 text-slate-400 font-mono text-xs">{u.createdAt ? u.createdAt.substring(0, 10) : 'N/A'}</td>
+                        <td className="py-4 px-4 text-right space-x-2">
+                          <button
+                            onClick={() => handleOpenEdit(u)}
+                            className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
+                            title="Edit User Profile"
+                            id={`edit-user-btn-${u.id}`}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => handleToggleUserStatus(u)}
+                            className={`p-1 font-bold text-xs rounded transition-all cursor-pointer ${
+                              u.isActive
+                                ? 'text-rose-500 hover:bg-rose-50'
+                                : 'text-emerald-500 hover:bg-emerald-50'
+                            }`}
+                            title={u.isActive ? 'Lock User account' : 'Unlock User account'}
+                            id={`lock-user-btn-${u.id}`}
+                          >
+                            {u.isActive ? 'Suspend' : 'Activate'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Sub Tab: System Logs */}
       {activeSubTab === 'logs' && (
@@ -1193,8 +1311,8 @@ export const AdminDashboard: React.FC = () => {
 
       {/* Admin: Create User Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-sm w-full border border-slate-200 shadow-2xl p-6">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-50 overflow-y-auto">
+          <div className="relative my-auto bg-white rounded-2xl max-w-sm w-full border border-slate-200 shadow-2xl p-5 sm:p-6 text-left max-h-[85vh] overflow-y-auto overscroll-contain">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <h3 className="font-bold text-slate-800 text-base">Register Profile Panel</h3>
               <button
@@ -1285,8 +1403,8 @@ export const AdminDashboard: React.FC = () => {
 
       {/* Admin: Edit User Modal */}
       {editingUser && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-sm w-full border border-slate-200 shadow-2xl p-6">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-50 overflow-y-auto">
+          <div className="relative my-auto bg-white rounded-2xl max-w-sm w-full border border-slate-200 shadow-2xl p-5 sm:p-6 text-left max-h-[85vh] overflow-y-auto overscroll-contain">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <h3 className="font-bold text-slate-800 text-base">Edit User Profile</h3>
               <button
@@ -1376,8 +1494,8 @@ export const AdminDashboard: React.FC = () => {
 
       {/* Admin: Onboard Business and Owner Modal */}
       {showOnboardModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-2xl w-full border border-slate-200 shadow-2xl p-6 my-8 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-50 overflow-y-auto">
+          <div className="relative my-auto bg-white rounded-3xl max-w-2xl w-full border border-slate-200 shadow-2xl p-5 sm:p-6 text-left max-h-[85vh] sm:max-h-[90vh] overflow-y-auto overscroll-contain">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
               <div>
                 <h3 className="font-bold text-slate-800 text-lg flex items-center gap-1.5">
@@ -1513,7 +1631,7 @@ export const AdminDashboard: React.FC = () => {
                           min="-90"
                           max="90"
                           value={onboardBusinessLat}
-                          onChange={(e) => setOnboardBusinessLat(parseFloat(e.target.value) || 37.7749)}
+                          onChange={(e) => setOnboardBusinessLat(parseFloat(e.target.value) || 4.8917)}
                           className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-slate-800 bg-white font-mono font-bold text-xs"
                           required
                         />
@@ -1526,7 +1644,7 @@ export const AdminDashboard: React.FC = () => {
                           min="-180"
                           max="180"
                           value={onboardBusinessLng}
-                          onChange={(e) => setOnboardBusinessLng(parseFloat(e.target.value) || -122.4194)}
+                          onChange={(e) => setOnboardBusinessLng(parseFloat(e.target.value) || 114.9401)}
                           className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-slate-800 bg-white font-mono font-bold text-xs"
                           required
                         />
@@ -1563,8 +1681,8 @@ export const AdminDashboard: React.FC = () => {
 
       {/* Admin: Edit Business Location Modal */}
       {editingLocation && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-2xl w-full border border-slate-200 shadow-2xl p-6 my-8 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-50 overflow-y-auto">
+          <div className="relative my-auto bg-white rounded-3xl max-w-2xl w-full border border-slate-200 shadow-2xl p-5 sm:p-6 text-left max-h-[85vh] sm:max-h-[90vh] overflow-y-auto overscroll-contain">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
               <div>
                 <h3 className="font-bold text-slate-800 text-lg flex items-center gap-1.5">
@@ -1705,7 +1823,7 @@ export const AdminDashboard: React.FC = () => {
                           min="-90"
                           max="90"
                           value={editLocLat}
-                          onChange={(e) => setEditLocLat(parseFloat(e.target.value) || 37.7749)}
+                          onChange={(e) => setEditLocLat(parseFloat(e.target.value) || 4.8917)}
                           className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-slate-800 bg-white font-mono font-bold text-xs"
                           required
                         />
@@ -1718,7 +1836,7 @@ export const AdminDashboard: React.FC = () => {
                           min="-180"
                           max="180"
                           value={editLocLng}
-                          onChange={(e) => setEditLocLng(parseFloat(e.target.value) || -122.4194)}
+                          onChange={(e) => setEditLocLng(parseFloat(e.target.value) || 114.9401)}
                           className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-slate-800 bg-white font-mono font-bold text-xs"
                           required
                         />

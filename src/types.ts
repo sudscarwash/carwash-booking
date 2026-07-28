@@ -110,6 +110,11 @@ export interface Booking {
   customerId: string;
   customerName: string;
   customerEmail: string;
+  customerPhone?: string;
+  vehicleInfo?: string;
+  bookingSource?: 'ONLINE' | 'PHONE' | 'WALK_IN';
+  createdByRole?: string;
+  createdByEmail?: string;
   date: string; // YYYY-MM-DD
   timeSlot: string; // e.g. "09:00 - 09:30"
   status: BookingStatus;
@@ -148,6 +153,17 @@ export interface SystemStats {
   totalRevenue: number;
   totalUsers: number;
   totalBusinesses: number;
+}
+
+export interface AppNotification {
+  id: string;
+  userId: string;
+  title: string;
+  message: string;
+  type: 'NEW_BOOKING' | 'STATUS_CHANGE' | 'SYSTEM';
+  bookingId?: string;
+  isRead: boolean;
+  createdAt: string;
 }
 
 export interface MapPreset {

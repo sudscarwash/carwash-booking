@@ -7,7 +7,8 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext.js';
 import { MapSimulation } from '../components/MapSimulation.js';
 import { LocalPaymentForm } from '../components/LocalPaymentForm.js';
-import { Search, Calendar, Clock, MapPin, History, CheckCircle, AlertTriangle, X, ChevronRight, Sliders, Info, Sparkles, Navigation, User, Edit3, Check, Instagram, Landmark, Lock, Key, FileText } from 'lucide-react';
+import { BookingFlowModal } from '../components/BookingFlowModal.js';
+import { Search, Calendar, Clock, MapPin, History, CheckCircle, AlertTriangle, X, ChevronRight, ChevronLeft, ChevronDown, Sliders, Info, Sparkles, Navigation, User, Edit3, Check, Instagram, Landmark, Lock, Key, FileText, Maximize2, Filter } from 'lucide-react';
 import { CarWash, Booking, BookingStatus } from '../types.js';
 import autoshineLogo from '../assets/images/autoshine_logo_1783916518342.jpg';
 
@@ -19,6 +20,14 @@ interface TimeSlotItem {
   bookedCount: number;
   isAvailable: boolean;
 }
+
+const getTodayDateString = () => {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 export const CustomerDashboard: React.FC = () => {
   const {
@@ -32,13 +41,39 @@ export const CustomerDashboard: React.FC = () => {
     rescheduleBooking,
     updateProfile,
     changePassword,
+    deleteAccount,
     loading
   } = useApp();
 
   const [search, setSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(5);
+  const [locationAlphabetFilter, setLocationAlphabetFilter] = useState<string>('ALL');
+  const [isStep1Collapsed, setIsStep1Collapsed] = useState(false);
+  const [isHistorySectionCollapsed, setIsHistorySectionCollapsed] = useState(false);
+  const [expandedBookingIds, setExpandedBookingIds] = useState<string[]>([]);
+  const [bookingStatusFilter, setBookingStatusFilter] = useState<'ALL' | 'PENDING' | 'COMPLETED' | 'CANCELLED_REJECTED'>('ALL');
+
+  const toggleBookingExpanded = (bookingId: string) => {
+    setExpandedBookingIds(prev => 
+      prev.includes(bookingId) ? prev.filter(id => id !== bookingId) : [...prev, bookingId]
+    );
+  };
+
+  const toggleAllBookingsExpanded = () => {
+    if (expandedBookingIds.length === bookings.length) {
+      setExpandedBookingIds([]);
+    } else {
+      setExpandedBookingIds(bookings.map(b => b.id));
+    }
+  };
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, itemsPerPage, locationAlphabetFilter]);
   const [selectedLocation, setSelectedLocation] = useState<CarWash | null>(null);
   const [bookingDate, setBookingDate] = useState(() => {
-    return new Date().toISOString().split('T')[0];
+    return getTodayDateString();
   });
   const [availableSlots, setAvailableSlots] = useState<TimeSlotItem[]>([]);
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
@@ -65,6 +100,12 @@ export const CustomerDashboard: React.FC = () => {
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [changePasswordError, setChangePasswordError] = useState('');
   const [changePasswordSuccess, setChangePasswordSuccess] = useState('');
+
+  // Account deletion states
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [agreeToDelete, setAgreeToDelete] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,6 +137,13 @@ export const CustomerDashboard: React.FC = () => {
       setNewPassword('');
       setConfirmNewPassword('');
     }
+  };
+
+  const handleDeleteAccountConfirm = async () => {
+    setIsDeletingAccount(true);
+    await deleteAccount();
+    setIsDeletingAccount(false);
+    setShowDeleteModal(false);
   };
 
   useEffect(() => {
@@ -137,16 +185,17 @@ export const CustomerDashboard: React.FC = () => {
   };
 
   // Filter settings
-  const [userLat, setUserLat] = useState(37.7749); // SF center
-  const [userLng, setUserLng] = useState(-122.4194);
-  const [radiusKm, setRadiusKm] = useState(12);
+  const [userLat, setUserLat] = useState(4.8917); // BSB center
+  const [userLng, setUserLng] = useState(114.9401);
+  const [radiusKm, setRadiusKm] = useState(2);
   const [viewAllLocations, setViewAllLocations] = useState(true);
 
   // Bottom Mobile Navigation and Product Selection states
-  const [activeTab, setActiveTab] = useState<'book' | 'bookings' | 'profile' | 'terms'>('book');
+  const [activeTab, setActiveTab] = useState<'book' | 'bookings' | 'profile'>('book');
   const [selectedService, setSelectedService] = useState<any | null>(null);
   const [itemTabFilter, setItemTabFilter] = useState<'service' | 'product'>('service');
   const [showFullScreenMap, setShowFullScreenMap] = useState(false);
+  const [isMapExpanded, setIsMapExpanded] = useState(false);
   const [showFullScreenDate, setShowFullScreenDate] = useState(false);
 
   // Rescheduling modal state
@@ -336,6 +385,80 @@ export const CustomerDashboard: React.FC = () => {
     await updateBookingStatus(bookingId, BookingStatus.CANCELLED, 'Cancelled by customer self-service');
   };
 
+  const formatBookingDate = (dateStr: string) => {
+    if (!dateStr) return 'Date N/A';
+    try {
+      const parts = dateStr.split('-');
+      if (parts.length === 3) {
+        const year = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1;
+        const day = parseInt(parts[2], 10);
+        const dateObj = new Date(year, month, day);
+
+        const todayStr = getTodayDateString();
+        const isToday = dateStr === todayStr;
+
+        const formatted = dateObj.toLocaleDateString('en-US', {
+          weekday: 'short',
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric'
+        });
+
+        return isToday ? `Today (${dateObj.toLocaleDateString('en-US', { day: 'numeric', month: 'short' })})` : formatted;
+      }
+    } catch (e) {
+      // fallback
+    }
+    return dateStr;
+  };
+
+  const renderStatusBadge = (status: BookingStatus) => {
+    switch (status) {
+      case BookingStatus.PENDING:
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-black rounded-lg bg-amber-50 text-amber-800 border border-amber-200/90 uppercase tracking-wider shadow-2xs">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+            ⏳ Pending
+          </span>
+        );
+      case BookingStatus.IN_PROGRESS:
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-black rounded-lg bg-sky-50 text-sky-800 border border-sky-200/90 uppercase tracking-wider shadow-2xs">
+            <span className="w-2 h-2 rounded-full bg-sky-500 animate-ping" />
+            🧼 Washing
+          </span>
+        );
+      case BookingStatus.COMPLETED:
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-black rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200/90 uppercase tracking-wider shadow-2xs">
+            <Check className="w-3 h-3 text-emerald-600 stroke-[3]" />
+            Completed
+          </span>
+        );
+      case BookingStatus.CANCELLED:
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-black rounded-lg bg-slate-100 text-slate-600 border border-slate-200/90 uppercase tracking-wider shadow-2xs">
+            <X className="w-3 h-3 text-slate-500 stroke-[3]" />
+            Cancelled
+          </span>
+        );
+      case BookingStatus.REJECTED:
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-black rounded-lg bg-rose-50 text-rose-800 border border-rose-200/90 uppercase tracking-wider shadow-2xs">
+            <AlertTriangle className="w-3 h-3 text-rose-600" />
+            Declined
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-black rounded-lg bg-slate-100 text-slate-700 border border-slate-200 uppercase tracking-wider">
+            {status}
+          </span>
+        );
+    }
+  };
+
   const getStatusBadgeClass = (status: BookingStatus) => {
     switch (status) {
       case BookingStatus.COMPLETED:
@@ -405,612 +528,736 @@ export const CustomerDashboard: React.FC = () => {
           <User className="w-5.5 h-5.5" />
           <span className="text-[10px]">My Profile</span>
         </button>
-
-        <button
-          onClick={() => {
-            setActiveTab('terms');
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          }}
-          className={`flex flex-col items-center gap-1 py-1 px-4 rounded-xl transition-all cursor-pointer ${
-            activeTab === 'terms'
-              ? 'text-sky-600 font-extrabold scale-110'
-              : 'text-slate-400 font-medium hover:text-slate-600'
-          }`}
-          id="btn-nav-terms"
-        >
-          <FileText className="w-5.5 h-5.5" />
-          <span className="text-[10px]">Terms</span>
-        </button>
       </div>
 
       {/* TABS WORKSPACE */}
       {activeTab === 'book' && (
         <div className="space-y-6">
           {/* Unified Place & Product Selection Title / Hero */}
-          <div className="bg-gradient-to-r from-sky-600 via-sky-500 to-sky-400 rounded-3xl p-6 text-white shadow-md">
-            <span className="bg-sky-500/30 text-sky-100 text-[10px] font-extrabold px-3 py-1 rounded-full border border-white/20 uppercase tracking-widest">
+          <div className="bg-gradient-to-r from-sky-600 via-sky-500 to-sky-400 rounded-3xl p-4 sm:p-6 text-white shadow-md">
+            <span className="bg-sky-500/30 text-sky-100 text-[10px] font-extrabold px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full border border-white/20 uppercase tracking-widest inline-block">
               Quick Car Care Booking
             </span>
-            <h1 className="text-xl sm:text-2xl font-black tracking-tight mt-2 text-white">
+            <h1 className="text-base sm:text-2xl font-black tracking-tight mt-1.5 text-white leading-snug">
               Choose a location, select your service, and select date/time.
             </h1>
-            <p className="text-xs text-sky-100 mt-1">
-              Optimized for fast mobile booking with full-screen interactive maps and schedules.
+            <p className="text-[11px] sm:text-xs text-sky-100 mt-0.5 leading-normal">
+              Optimized for fast mobile booking with interactive GPS maps and dynamic schedules.
             </p>
           </div>
 
-          {/* Location / Place Selection List */}
+          {/* 🚗 STEP 1: Select Car Wash Place */}
           <div className="space-y-4">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-              <div>
-                <h2 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider">
-                  Step 1: Select Car Wash Place
-                </h2>
-                <p className="text-xs text-slate-400">Choose one of the car wash centers below</p>
-              </div>
-
-              {/* Search Bar */}
-              <div className="relative max-w-sm w-full">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 h-4 w-4" />
-                <input
-                  type="text"
-                  placeholder="Search by name, district, or service..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 border border-slate-200 focus:border-sky-500 focus:ring-1 focus:ring-sky-100 rounded-xl outline-none text-slate-800 text-xs transition-all"
-                />
-              </div>
-            </div>
-
-            {/* Places Cards Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {locations.filter(loc => 
-                loc.name.toLowerCase().includes(search.toLowerCase()) || 
-                loc.address.toLowerCase().includes(search.toLowerCase()) ||
-                (loc.services && loc.services.some(s => s.name.toLowerCase().includes(search.toLowerCase())))
-              ).length === 0 ? (
-                <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center text-slate-500 sm:col-span-2">
-                  <MapPin className="h-6 w-6 text-slate-400 mx-auto mb-1" />
-                  <p className="font-semibold text-xs">No car wash locations found.</p>
-                </div>
-              ) : (
-                locations.filter(loc => 
-                  loc.name.toLowerCase().includes(search.toLowerCase()) || 
-                  loc.address.toLowerCase().includes(search.toLowerCase()) ||
-                  (loc.services && loc.services.some(s => s.name.toLowerCase().includes(search.toLowerCase())))
-                ).map((loc) => {
-                  const isSelected = selectedLocation?.id === loc.id;
-                  return (
-                    <div
-                      key={loc.id}
-                      onClick={() => {
-                        setSelectedLocation(loc);
-                        // Reset slot and service if switched location
-                        if (selectedLocation?.id !== loc.id) {
-                          setSelectedService(null);
-                          setSelectedSlot(null);
-                        }
-                        setUserLat(loc.locationLat);
-                        setUserLng(loc.locationLng);
-                        setTimeout(() => {
-                          document.getElementById('booking-step-2')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                        }, 100);
-                      }}
-                      className={`bg-white border rounded-2xl p-4 transition-all duration-200 cursor-pointer flex gap-3 items-center ${
-                        isSelected
-                          ? 'border-sky-500 ring-2 ring-sky-50 shadow-sm'
-                          : 'border-slate-200 hover:border-slate-300'
-                      }`}
-                    >
-                      <div className={`h-10 w-10 rounded-xl flex items-center justify-center shrink-0 ${
-                        isSelected ? 'bg-sky-500 text-white' : 'bg-slate-100 text-sky-500'
-                      }`}>
-                        <MapPin className="h-5 w-5" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-bold text-slate-800 text-sm truncate">{loc.name}</h3>
-                        <p className="text-slate-400 text-xs truncate">{loc.address}</p>
-                      </div>
-                      <ChevronRight className={`h-4 w-4 transition-transform ${isSelected ? 'text-sky-500 rotate-90' : 'text-slate-300'}`} />
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-
-          {/* Selected Place Detail + Service Selection */}
-          {selectedLocation && (
-            <div id="booking-step-2" className="space-y-6 bg-slate-50 border border-slate-100 p-4 sm:p-6 rounded-2xl animate-fade-in">
-              <div className="flex items-start justify-between border-b border-slate-200 pb-3">
+            <div className="bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-5 shadow-2xs space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Selected Car Wash</h3>
-                  <h2 className="text-base font-extrabold text-slate-800">{selectedLocation.name}</h2>
-                  <p className="text-xs text-slate-400">{selectedLocation.address}</p>
+                  <h2 className="text-sm sm:text-base font-black text-slate-800 uppercase tracking-wider">
+                    Step 1: Select Car Wash Place
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-0.5">Select a location below to begin booking your wash</p>
+                  
+                  {/* Clean Dedicated Badge Row on separate line */}
+                  <div className="flex items-center gap-2 mt-2 flex-wrap">
+                    <span className="bg-sky-50 text-sky-700 text-[11px] font-extrabold px-3 py-1 rounded-full border border-sky-200/80 inline-flex items-center gap-1.5 shadow-2xs">
+                      <span className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse"></span>
+                      {locations.filter(loc => 
+                        loc.name.toLowerCase().includes(search.toLowerCase()) || 
+                        loc.address.toLowerCase().includes(search.toLowerCase()) ||
+                        (loc.services && loc.services.some(s => s.name.toLowerCase().includes(search.toLowerCase())))
+                      ).length} Available Locations
+                    </span>
+
+                    {selectedLocation && (
+                      <span className="bg-emerald-50 text-emerald-700 text-[11px] font-bold px-2.5 py-1 rounded-full border border-emerald-200/80 inline-flex items-center gap-1">
+                        <Check className="w-3 h-3 text-emerald-600" />
+                        Selected: <strong className="font-black">{selectedLocation.name}</strong>
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <button
-                  onClick={() => {
-                    setSelectedLocation(null);
-                    setSelectedService(null);
-                    setSelectedSlot(null);
-                  }}
-                  className="p-1.5 hover:bg-slate-200 rounded-lg text-slate-400 transition-colors"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+
+                <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setIsStep1Collapsed(!isStep1Collapsed)}
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 border border-slate-200 shadow-2xs"
+                  >
+                    <span>{isStep1Collapsed ? 'Show Locations List' : 'Collapse List'}</span>
+                    <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isStep1Collapsed ? '' : 'rotate-180'}`} />
+                  </button>
+                </div>
               </div>
 
-              {/* Step 2: Product / Service Selection */}
-              <div className="space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-left">
-                  <div>
-                    <h2 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider">
-                      Step 2: Select Wash Service or Product
-                    </h2>
-                    <p className="text-xs text-slate-400">Choose an available wash service or retail product</p>
-                  </div>
-
-                  {/* Dynamic Tabs: Only show if there's at least one product configured */}
-                  {selectedLocation.services && selectedLocation.services.some((s: any) => s.type === 'product') && (
-                    <div className="flex border border-slate-200 p-0.5 rounded-lg bg-slate-100 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => setItemTabFilter('service')}
-                        className={`px-3 py-1 text-[11px] font-bold rounded-md transition-all ${
-                          itemTabFilter === 'service'
-                            ? 'bg-white text-sky-600 shadow-xs'
-                            : 'text-slate-500 hover:text-slate-700'
-                        }`}
-                      >
-                        Services
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setItemTabFilter('product')}
-                        className={`px-3 py-1 text-[11px] font-bold rounded-md transition-all ${
-                          itemTabFilter === 'product'
-                            ? 'bg-white text-sky-600 shadow-xs'
-                            : 'text-slate-500 hover:text-slate-700'
-                        }`}
-                      >
-                        Products & Items
-                      </button>
+              {/* Search & Per-Page Controls (Visible when expanded) */}
+              {!isStep1Collapsed && (
+                <div className="space-y-3 pt-2 border-t border-slate-100">
+                  <div className="flex flex-col sm:flex-row items-center gap-2.5">
+                    <div className="relative flex-1 w-full">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 h-4 w-4" />
+                      <input
+                        type="text"
+                        placeholder="Search location, address, or service..."
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        className="w-full pl-9 pr-3 py-2 border border-slate-200 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 rounded-xl outline-none text-slate-800 text-xs transition-all shadow-2xs"
+                      />
                     </div>
-                  )}
-                </div>
 
-                {/* Services/Products Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {!selectedLocation.services || selectedLocation.services.length === 0 ? (
-                    /* Fallback default wash service if none is configured */
-                    <div
-                      onClick={() => {
-                        setSelectedService({
-                          id: 'default_wash',
-                          name: 'Standard Car Wash & Vacuum',
-                          price: 15.00,
-                          duration: 45,
-                          description: 'Complete exterior water jet wash with high foam shampoo, tire shine, and interior deep vacuum cleaning.'
-                        });
-                        setTimeout(() => {
-                          document.getElementById('booking-step-3')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                        }, 100);
-                      }}
-                      className={`bg-white border rounded-2xl p-4 transition-all duration-200 cursor-pointer flex justify-between items-center ${
-                        selectedService?.id === 'default_wash'
-                          ? 'border-sky-500 ring-2 ring-sky-50 shadow-sm'
-                          : 'border-slate-200 hover:border-slate-300'
-                      }`}
-                    >
-                      <div>
-                        <h4 className="font-bold text-slate-800 text-sm">Standard Car Wash & Vacuum</h4>
-                        <p className="text-xs text-slate-400">Duration: 45 mins</p>
-                        <p className="text-slate-500 text-xs mt-1">Complete exterior wash and interior vacuum</p>
-                      </div>
-                      <span className="font-extrabold text-sky-600 text-sm shrink-0">BND $15.00</span>
-                    </div>
-                  ) : (
-                    (() => {
-                      // Filter based on tab selection
-                      const hasProducts = selectedLocation.services.some((s: any) => s.type === 'product');
-                      const filtered = selectedLocation.services.filter((svc: any) => {
-                        if (!hasProducts) return true; // Show all if no products configured
-                        if (itemTabFilter === 'product') {
-                          return svc.type === 'product';
-                        } else {
-                          return svc.type !== 'product';
-                        }
-                      });
-
-                      if (filtered.length === 0) {
-                        return (
-                          <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center text-slate-400 sm:col-span-2 text-xs">
-                            No items available in this category.
-                          </div>
-                        );
-                      }
-
-                      return filtered.map((svc: any) => {
-                        const isSvcSelected = selectedService?.id === svc.id;
-                        const isProduct = svc.type === 'product';
-                        const isAvailable = svc.isAvailable !== false;
-
-                        return (
-                          <div
-                            key={svc.id}
-                            onClick={() => {
-                              if (!isAvailable) return;
-                              setSelectedService(svc);
-                              setTimeout(() => {
-                                document.getElementById('booking-step-3')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                              }, 100);
-                            }}
-                            className={`bg-white border rounded-2xl p-4 transition-all duration-200 flex justify-between items-start gap-3 ${
-                              !isAvailable
-                                ? 'opacity-60 cursor-not-allowed border-slate-100 bg-slate-50/55'
-                                : isSvcSelected
-                                ? 'border-sky-500 ring-2 ring-sky-50 shadow-sm cursor-pointer'
-                                : 'border-slate-200 hover:border-slate-300 cursor-pointer'
+                    {/* Items Per Page Selector */}
+                    <div className="flex items-center gap-1.5 self-end sm:self-center shrink-0">
+                      <span className="text-[11px] font-bold text-slate-500">Show per page:</span>
+                      <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200/80">
+                        {[5, 10, 15].map((num) => (
+                          <button
+                            key={num}
+                            type="button"
+                            onClick={() => setItemsPerPage(num)}
+                            className={`px-2.5 py-1 text-xs font-black rounded-lg transition-all ${
+                              itemsPerPage === num
+                                ? 'bg-sky-600 text-white shadow-2xs'
+                                : 'text-slate-600 hover:text-slate-900'
                             }`}
                           >
-                            <div className="flex-1 min-w-0 text-left">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <h4 className="font-bold text-slate-800 text-sm truncate">{svc.name}</h4>
-                                {svc.vehicleType && svc.vehicleType !== 'N/A' && svc.vehicleType !== 'All' && (
-                                  <span className="bg-slate-100 text-slate-600 text-[9px] font-extrabold px-1.5 py-0.5 rounded-md">
-                                    {svc.vehicleType}
-                                  </span>
-                                )}
-                                {!isAvailable && (
-                                  <span className="bg-rose-50 text-rose-600 border border-rose-100 text-[9px] font-extrabold px-1.5 py-0.5 rounded-md uppercase">
-                                    {isProduct ? 'Out of Stock' : 'Unavailable'}
-                                  </span>
-                                )}
-                              </div>
-                              
-                              {!isProduct ? (
-                                <p className="text-xs text-slate-400 mt-0.5">Duration: {svc.duration} mins</p>
-                              ) : (
-                                <p className="text-xs text-emerald-600 font-semibold mt-0.5">Physical Product</p>
-                              )}
-                              
-                              {svc.description && (
-                                <p className="text-slate-500 text-xs mt-1 line-clamp-2" title={svc.description}>
-                                  {svc.description}
-                                </p>
+                            {num}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* A-Z Alphabetical Index Filter Bar for Locations */}
+                  <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                        <Filter className="w-3 h-3 text-sky-600" />
+                        Alphabetical Location Index (A-Z)
+                      </span>
+                      {locationAlphabetFilter !== 'ALL' && (
+                        <button
+                          type="button"
+                          onClick={() => setLocationAlphabetFilter('ALL')}
+                          className="text-[10px] font-extrabold text-sky-600 hover:underline cursor-pointer"
+                        >
+                          Clear A-Z Filter
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap pb-2 pt-1 max-w-full touch-pan-x scrollbar-thin">
+                      {['ALL', '#', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')].map((letter) => {
+                        const countForLetter = letter === 'ALL'
+                          ? locations.length
+                          : letter === '#'
+                          ? locations.filter(loc => !/^[A-Z]$/i.test(loc.name.trim().charAt(0))).length
+                          : locations.filter(loc => loc.name.trim().charAt(0).toUpperCase() === letter).length;
+
+                        const isSelected = locationAlphabetFilter === letter;
+
+                        return (
+                          <button
+                            key={letter}
+                            type="button"
+                            onClick={() => setLocationAlphabetFilter(letter)}
+                            className={`min-w-8 h-8 px-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center justify-center gap-1 shrink-0 ${
+                              isSelected
+                                ? 'bg-sky-600 text-white shadow-xs ring-2 ring-sky-600/30'
+                                : countForLetter > 0
+                                ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200/80 shadow-2xs'
+                                : 'bg-slate-50 text-slate-300 border border-transparent cursor-not-allowed opacity-50'
+                            }`}
+                            title={`${letter}: ${countForLetter} location(s)`}
+                          >
+                            <span>{letter}</span>
+                            {countForLetter > 0 && letter !== 'ALL' && (
+                              <span className={`text-[9px] font-mono font-bold px-1 rounded-full ${isSelected ? 'bg-sky-800 text-sky-100' : 'bg-slate-200 text-slate-600'}`}>
+                                {countForLetter}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Places Cards Grid with Multi-Page Navigation */}
+            {!isStep1Collapsed && (() => {
+              const sortedLocations = [...locations].sort((a, b) =>
+                a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true })
+              );
+
+              const filteredLocations = sortedLocations.filter(loc => {
+                // Alphabetical Filter
+                if (locationAlphabetFilter !== 'ALL') {
+                  const rawName = loc.name.trim();
+                  let firstChar = rawName.charAt(0).toUpperCase();
+                  if (!/^[A-Z]$/i.test(firstChar)) {
+                    firstChar = '#';
+                  }
+                  if (locationAlphabetFilter === '#') {
+                    if (firstChar !== '#') return false;
+                  } else {
+                    if (firstChar !== locationAlphabetFilter) return false;
+                  }
+                }
+
+                // Search Filter
+                if (search.trim()) {
+                  const q = search.toLowerCase();
+                  const matchName = loc.name.toLowerCase().includes(q);
+                  const matchAddr = loc.address.toLowerCase().includes(q);
+                  const matchSvc = loc.services && loc.services.some(s => s.name.toLowerCase().includes(q));
+                  if (!matchName && !matchAddr && !matchSvc) return false;
+                }
+
+                return true;
+              });
+
+              const totalPages = Math.ceil(filteredLocations.length / itemsPerPage) || 1;
+              const paginatedLocations = filteredLocations.slice(
+                (currentPage - 1) * itemsPerPage,
+                currentPage * itemsPerPage
+              );
+
+              if (filteredLocations.length === 0) {
+                return (
+                  <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center text-slate-500">
+                    <MapPin className="h-6 w-6 text-slate-400 mx-auto mb-1" />
+                    <p className="font-semibold text-xs">No car wash locations found matching "{search}".</p>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {paginatedLocations.map((loc) => (
+                      <div
+                        key={loc.id}
+                        className={`bg-white border rounded-2xl p-4 transition-all shadow-2xs hover:shadow-md flex flex-col justify-between gap-3 overflow-hidden w-full ${
+                          selectedLocation?.id === loc.id
+                            ? 'border-sky-500 ring-2 ring-sky-100 bg-sky-50/20'
+                            : 'border-slate-200 hover:border-sky-300'
+                        }`}
+                      >
+                        <div className="flex gap-3 items-start min-w-0 w-full">
+                          <div className={`h-11 w-11 rounded-2xl flex items-center justify-center shrink-0 border ${
+                            selectedLocation?.id === loc.id
+                              ? 'bg-sky-600 text-white border-sky-600'
+                              : 'bg-sky-50 text-sky-600 border-sky-100'
+                          }`}>
+                            <MapPin className="h-5 w-5" />
+                          </div>
+                          <div className="min-w-0 flex-1 overflow-hidden">
+                            <h3 className="font-extrabold text-slate-900 text-sm sm:text-base break-words line-clamp-2 leading-tight">
+                              {loc.name}
+                            </h3>
+                            <p className="text-slate-500 text-xs break-words mt-1 line-clamp-2 leading-relaxed">
+                              {loc.address}
+                            </p>
+                            <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                              <span className="bg-emerald-50 text-emerald-700 text-[10px] font-extrabold px-2 py-0.5 rounded-md border border-emerald-200/80">
+                                Open Now
+                              </span>
+                              {loc.services && loc.services.length > 0 && (
+                                <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded-md border border-slate-200">
+                                  {loc.services.length} wash options
+                                </span>
                               )}
                             </div>
-                            <span className="font-black text-sky-600 text-sm shrink-0">
-                              BND ${(svc.price || 0).toFixed(2)}
-                            </span>
                           </div>
-                        );
-                      });
-                    })()
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedLocation(loc);
+                            setUserLat(loc.locationLat);
+                            setUserLng(loc.locationLng);
+                          }}
+                          className={`w-full py-3 px-4 text-white font-black text-xs rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer shrink-0 ${
+                            selectedLocation?.id === loc.id
+                              ? 'bg-emerald-600 hover:bg-emerald-500'
+                              : 'bg-sky-600 hover:bg-sky-500'
+                          }`}
+                        >
+                          <span>{selectedLocation?.id === loc.id ? 'Selected (Tap to Book)' : 'Select Location & Book'}</span>
+                          <ChevronRight className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Multi-Page Navigation Controls */}
+                  {totalPages > 1 && (
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-slate-200/80">
+                      <span className="text-xs font-bold text-slate-500">
+                        Page <strong className="text-slate-800">{currentPage}</strong> of <strong className="text-slate-800">{totalPages}</strong> ({filteredLocations.length} locations)
+                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap justify-center">
+                        <button
+                          type="button"
+                          disabled={currentPage === 1}
+                          onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                          className="px-3 py-1.5 bg-white border border-slate-200 hover:border-slate-300 disabled:opacity-40 text-slate-700 text-xs font-extrabold rounded-xl transition-all flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed shadow-2xs"
+                        >
+                          <ChevronLeft className="w-4 h-4" />
+                          <span>Prev</span>
+                        </button>
+
+                        <div className="flex items-center gap-1 px-1">
+                          {Array.from({ length: totalPages }).map((_, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => setCurrentPage(idx + 1)}
+                              className={`w-7 h-7 rounded-lg text-xs font-black transition-all ${
+                                currentPage === idx + 1
+                                  ? 'bg-sky-600 text-white shadow-2xs scale-105'
+                                  : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                              }`}
+                            >
+                              {idx + 1}
+                            </button>
+                          ))}
+                        </div>
+
+                        <button
+                          type="button"
+                          disabled={currentPage === totalPages}
+                          onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                          className="px-3 py-1.5 bg-white border border-slate-200 hover:border-slate-300 disabled:opacity-40 text-slate-700 text-xs font-extrabold rounded-xl transition-all flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed shadow-2xs"
+                        >
+                          <span>Next</span>
+                          <ChevronRight className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
                   )}
+                </div>
+              );
+            })()}
+          </div>
+
+          {/* 📍 Collapsible Interactive Map Block for Nearby Car Washes */}
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-lg transition-all">
+            <div className="p-4 sm:p-5 flex items-center justify-between gap-3 text-white flex-wrap sm:flex-nowrap">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="p-2.5 bg-sky-500/20 text-sky-400 rounded-2xl border border-sky-500/30 shrink-0">
+                  <MapPin className="w-5 h-5 animate-bounce" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="font-black text-sm sm:text-base text-white flex items-center gap-2 flex-wrap">
+                    <span>Nearby Car Washes Map</span>
+                    <span className="bg-sky-500/20 text-sky-300 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-sky-500/30">
+                      Interactive GPS
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5 truncate">
+                    {isMapExpanded ? 'Tap pins on map to select car wash' : 'Expand map to view location markers on GPS map'}
+                  </p>
                 </div>
               </div>
 
-              {/* Step 3: Immersive Map & Date/Slot Access Panels */}
-              {selectedService && (
-                <div id="booking-step-3" className="pt-4 border-t border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {/* FULL-SCREEN MAP ACTION CARD */}
-                  <div
-                    onClick={() => setShowFullScreenMap(true)}
-                    className="bg-white border border-slate-200 hover:border-sky-300 p-4 rounded-2xl shadow-xs hover:shadow-sm cursor-pointer transition-all flex items-center justify-between"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="bg-sky-50 text-sky-500 p-2 rounded-xl">
-                        <Navigation className="h-5 w-5 animate-bounce" />
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-slate-800 text-sm">Select Place Location</h4>
-                        <p className="text-[10px] text-slate-400">
-                          {userLat && userLng ? `GPS coordinates verified` : 'View simulation map in full screen'}
-                        </p>
-                      </div>
-                    </div>
-                    <ChevronRight className="h-5 w-5 text-slate-300" />
-                  </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMapExpanded(true);
+                    setShowFullScreenMap(true);
+                  }}
+                  className="px-3 py-2 bg-sky-600/20 hover:bg-sky-600 text-sky-300 hover:text-white rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 border border-sky-500/30 shadow-sm"
+                  title="Full Screen Map"
+                >
+                  <Maximize2 className="w-4 h-4" />
+                  <span className="text-xs">Full Screen</span>
+                </button>
 
-                  {/* FULL-SCREEN CALENDAR / SLOT ACTION CARD */}
-                  <div
-                    onClick={() => {
-                      setShowFullScreenDate(true);
-                      fetchAvailableSlots(selectedLocation.id, bookingDate, setAvailableSlots);
-                    }}
-                    className="bg-white border border-slate-200 hover:border-sky-300 p-4 rounded-2xl shadow-xs hover:shadow-sm cursor-pointer transition-all flex items-center justify-between"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="bg-emerald-50 text-emerald-500 p-2 rounded-xl">
-                        <Calendar className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-slate-800 text-sm">Select Date & Time</h4>
-                        <p className="text-[10px] text-slate-400">
-                          {selectedSlot ? `Slot: ${bookingDate} @ ${selectedSlot}` : 'Choose date & touch slot'}
-                        </p>
-                      </div>
-                    </div>
-                    <ChevronRight className="h-5 w-5 text-slate-300" />
-                  </div>
-                </div>
-              )}
-
-              {/* Checkout Block / Confirm Details */}
-              {selectedService && selectedSlot && (
-                <form id="booking-checkout" onSubmit={handleBookSlot} className="bg-sky-500/5 border border-sky-200/50 rounded-2xl p-4 sm:p-5 space-y-4 animate-fade-in mt-4">
-                  <h3 className="font-bold text-slate-800 text-xs uppercase tracking-wider flex items-center gap-2 border-b border-sky-100 pb-2">
-                    <Sparkles className="w-4 h-4 text-sky-500" />
-                    Review Your Booking Selection
-                  </h3>
-                  
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                    <div className="space-y-1">
-                      <span className="text-slate-400 font-bold block uppercase tracking-wider text-[9px]">Car Wash Place</span>
-                      <span className="text-slate-700 font-extrabold text-xs">{selectedLocation.name}</span>
-                    </div>
-                    <div className="space-y-1">
-                      <span className="text-slate-400 font-bold block uppercase tracking-wider text-[9px]">Wash Service (Product)</span>
-                      <span className="text-slate-700 font-extrabold text-xs">{selectedService.name}</span>
-                    </div>
-                    <div className="space-y-1">
-                      <span className="text-slate-400 font-bold block uppercase tracking-wider text-[9px]">Booking Date & Slot</span>
-                      <span className="text-slate-700 font-extrabold text-xs">{bookingDate} @ {selectedSlot}</span>
-                    </div>
-                    <div className="space-y-1">
-                      <span className="text-slate-400 font-bold block uppercase tracking-wider text-[9px]">Total Service Price</span>
-                      <span className="text-sky-600 font-black text-sm">BND ${(selectedService.price || 0).toFixed(2)}</span>
-                    </div>
-                  </div>
-
-                  {/* Booking Notes */}
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-600 block uppercase">Additional Notes / Car Model & Plate Number</label>
-                    <input
-                      type="text"
-                      placeholder="Example: Toyota Vios (Red), plate BA1234. Wash engines please."
-                      value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 focus:border-sky-500 rounded-xl outline-none text-slate-800 text-xs transition-all"
-                    />
-                  </div>
-
-                  {/* Payment Mode Selector */}
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-slate-600 block uppercase">Select Payment Mode</label>
-                    <div className="grid grid-cols-2 gap-3">
-                      {selectedLocation.paymentPolicy !== 'PRE_PAYMENT' && (
-                        <button
-                          type="button"
-                          onClick={() => setPaymentMethod('cash')}
-                          className={`p-3 rounded-xl border text-xs font-bold transition-all text-left flex items-center gap-2 cursor-pointer ${
-                            paymentMethod === 'cash'
-                              ? 'bg-sky-50 border-sky-500 text-sky-700 ring-2 ring-sky-50'
-                              : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
-                          }`}
-                        >
-                          <Landmark className="w-4 h-4 text-sky-600 shrink-0" />
-                          <div>
-                            <span className="block font-extrabold text-xs">Pay on Site</span>
-                            <span className="text-[9px] text-slate-400 font-normal">Settle at shop after wash</span>
-                          </div>
-                        </button>
-                      )}
-                      {(selectedLocation.bibdEnabled || selectedLocation.baiduriEnabled || selectedLocation.paymentPolicy === 'PRE_PAYMENT') && (
-                        <button
-                          type="button"
-                          onClick={() => setPaymentMethod('bank')}
-                          className={`p-3 rounded-xl border text-xs font-bold transition-all text-left flex items-center gap-2 cursor-pointer ${
-                            paymentMethod === 'bank'
-                              ? 'bg-sky-50 border-indigo-500 text-indigo-700 ring-2 ring-indigo-50'
-                              : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
-                          }`}
-                        >
-                          <Landmark className="w-4 h-4 text-indigo-600 shrink-0" />
-                          <div>
-                            <span className="block font-extrabold text-xs">Bank Transfer</span>
-                            <span className="text-[9px] text-slate-400 font-normal">Prepay via BIBD/Baiduri</span>
-                          </div>
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Notice Info Banner based on selection */}
-                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-left animate-fade-in">
-                      {paymentMethod === 'cash' ? (
-                        <>
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                            <span className="text-xs font-extrabold text-slate-700">Cash / Pay on Site Selected</span>
-                          </div>
-                          <p className="text-[10px] text-slate-500 leading-relaxed pl-3.5">
-                            No upfront payment details needed. Confirm your slot and make payment at the counter upon service completion.
-                          </p>
-                        </>
-                      ) : (
-                        <>
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 font-semibold" />
-                            <span className="text-xs font-extrabold text-indigo-700">Bank Transfer Prepayment Required</span>
-                          </div>
-                          <p className="text-[10px] text-slate-500 leading-relaxed pl-3.5">
-                            Please have your bank app ready. Clicking "Confirm" below will open our secure upload form to submit your transfer screenshot and reference number.
-                          </p>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Submit Button */}
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="w-full mt-4 py-3 bg-sky-600 hover:bg-sky-500 text-white font-extrabold text-xs rounded-xl shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    {isSubmitting ? 'Processing...' : 'Confirm & Book Wash Slot'}
-                  </button>
-                </form>
-              )}
+                <button
+                  type="button"
+                  onClick={() => setIsMapExpanded(!isMapExpanded)}
+                  className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-sky-400 hover:text-white rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 border border-slate-700 shrink-0 shadow-sm"
+                >
+                  <span>{isMapExpanded ? 'Hide Map' : 'Explore Map'}</span>
+                  <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isMapExpanded ? 'rotate-180' : ''}`} />
+                </button>
+              </div>
             </div>
+
+            {isMapExpanded && (
+              <div className="border-t border-slate-800 animate-fade-in">
+                <div className="h-[460px] sm:h-[580px] lg:h-[640px] relative bg-slate-950">
+                  <MapSimulation
+                    locations={locations}
+                    selectedLocationId={selectedLocation?.id}
+                    onLocationSelect={(loc) => {
+                      setSelectedLocation(loc);
+                      setUserLat(loc.locationLat);
+                      setUserLng(loc.locationLng);
+                    }}
+                    radiusKm={radiusKm}
+                    onRadiusChange={(r) => setRadiusKm(r)}
+                    userLat={userLat}
+                    userLng={userLng}
+                    onUserLocationChange={(lat, lng) => {
+                      setUserLat(lat);
+                      setUserLng(lng);
+                    }}
+                  />
+                </div>
+                <div className="bg-slate-900/90 px-4 py-3 text-xs text-slate-300 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2">
+                  <span>💡 <strong>Map Navigation:</strong> Tap any pin on the map to select that location and open booking.</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowFullScreenMap(true)}
+                    className="text-sky-400 hover:text-sky-300 text-xs font-bold underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <Maximize2 className="w-3.5 h-3.5" />
+                    <span>Open Fullscreen Interactive Map</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Full Screen Immersive Booking Flow Modal */}
+          {selectedLocation && (
+            <BookingFlowModal
+              location={selectedLocation}
+              isOpen={!!selectedLocation}
+              onClose={() => setSelectedLocation(null)}
+              user={user}
+              createBooking={createBooking}
+              onBookingSuccess={(bookingData) => {
+                setLastBookedInfo(bookingData);
+                setCustomWhatsAppPhone(bookingData.locationPhone || '');
+              }}
+            />
           )}
         </div>
       )}
 
       {activeTab === 'bookings' && (
-        <div className="space-y-6">
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4 mb-4">
+        <div className="space-y-5">
+          <div className="bg-white border border-slate-200/90 rounded-3xl p-4 sm:p-6 shadow-xs">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3.5 mb-4">
               <div>
-                <h1 className="text-base font-extrabold text-slate-800 flex items-center gap-2">
-                  <History className="h-5 w-5 text-sky-500" />
-                  Your Booking History ({bookings.length})
+                <h1 className="text-base sm:text-lg font-black text-slate-900 flex items-center gap-2">
+                  <History className="h-5 w-5 text-sky-500 shrink-0" />
+                  <span>My Booking History</span>
                 </h1>
-                <p className="text-xs text-slate-400">View current, completed, or cancelled bookings and launch chat logs</p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  View and manage your car wash reservations or contact location via WhatsApp
+                </p>
+
+                {/* Status Filter Badges (Wrapping Grid/Flex for Full Mobile Visibility) */}
+                <div className="flex flex-wrap items-center gap-1.5 mt-3 pt-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setBookingStatusFilter('ALL')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer border ${
+                      bookingStatusFilter === 'ALL'
+                        ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
+                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200/80'
+                    }`}
+                  >
+                    All ({bookings.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBookingStatusFilter('PENDING')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer border ${
+                      bookingStatusFilter === 'PENDING'
+                        ? 'bg-amber-500 text-white border-amber-500 shadow-2xs'
+                        : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-200/80'
+                    }`}
+                  >
+                    ⏳ Pending ({bookings.filter(b => b.status === BookingStatus.PENDING || b.status === BookingStatus.IN_PROGRESS).length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBookingStatusFilter('COMPLETED')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer border ${
+                      bookingStatusFilter === 'COMPLETED'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                        : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200/80'
+                    }`}
+                  >
+                    ✅ Completed ({bookings.filter(b => b.status === BookingStatus.COMPLETED).length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBookingStatusFilter('CANCELLED_REJECTED')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer border ${
+                      bookingStatusFilter === 'CANCELLED_REJECTED'
+                        ? 'bg-rose-600 text-white border-rose-600 shadow-2xs'
+                        : 'bg-rose-50 hover:bg-rose-100 text-rose-800 border-rose-200/80'
+                    }`}
+                  >
+                    ❌ Cancelled ({bookings.filter(b => b.status === BookingStatus.CANCELLED || b.status === BookingStatus.REJECTED).length})
+                  </button>
+                </div>
+              </div>
+
+              {/* Section Controls */}
+              <div className="flex items-center gap-2 self-start sm:self-center flex-wrap pt-1 sm:pt-0">
+                {!isHistorySectionCollapsed && bookings.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={toggleAllBookingsExpanded}
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-extrabold rounded-xl border border-slate-200 transition-all cursor-pointer shadow-2xs"
+                  >
+                    {expandedBookingIds.length === bookings.length ? 'Collapse All' : 'Expand All'}
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setIsHistorySectionCollapsed(!isHistorySectionCollapsed)}
+                  className="px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-extrabold rounded-xl border border-sky-200 transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
+                >
+                  <span>{isHistorySectionCollapsed ? 'Expand' : 'Hide'}</span>
+                  <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isHistorySectionCollapsed ? '' : 'rotate-180'}`} />
+                </button>
               </div>
             </div>
 
-            {bookings.length === 0 ? (
-              <div className="text-center py-12 text-slate-400">
-                <Calendar className="h-10 w-10 mx-auto mb-2 text-slate-300" />
-                <p className="font-bold text-sm">No bookings yet.</p>
+            {/* Collapsed Section Banner */}
+            {isHistorySectionCollapsed && (
+              <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 text-center text-xs text-slate-600 flex items-center justify-between gap-3">
+                <span>📁 <strong>Booking History Collapsed:</strong> {bookings.length} recorded booking(s) hidden.</span>
                 <button
-                  onClick={() => setActiveTab('book')}
-                  className="mt-3 px-4 py-1.5 bg-sky-50 text-sky-600 text-xs font-bold rounded-xl border border-sky-100 hover:bg-sky-100 transition-all cursor-pointer"
+                  type="button"
+                  onClick={() => setIsHistorySectionCollapsed(false)}
+                  className="px-3 py-1 bg-sky-600 text-white rounded-lg font-extrabold text-xs cursor-pointer hover:bg-sky-500 transition-all shrink-0"
                 >
-                  Book your first car wash slot
+                  Show Records
                 </button>
               </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead>
-                    <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider">
-                      <th className="py-3 px-2">Place / Location</th>
-                      <th className="py-3 px-2">Date & Slot</th>
-                      <th className="py-3 px-2">Service</th>
-                      <th className="py-3 px-2">Price</th>
-                      <th className="py-3 px-2">Status</th>
-                      <th className="py-3 px-2">Notes</th>
-                      <th className="py-3 px-2 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {bookings.map((bk) => (
-                      <tr key={bk.id} className="border-b border-slate-100/70 hover:bg-slate-50/50 transition-colors">
-                        <td className="py-4 px-2">
-                          <div className="font-extrabold text-slate-800">{(bk as any).carWashName || 'Car Wash'}</div>
-                          <div className="text-[10px] text-slate-400">{(bk as any).carWashAddress || 'Address N/A'}</div>
-                        </td>
-                        <td className="py-4 px-2">
-                          <div className="font-bold text-slate-700">{bk.date}</div>
-                          <div className="text-[10px] text-slate-400 flex items-center gap-1">
-                            <Clock className="w-3 h-3 text-sky-500" /> {bk.timeSlot}
-                          </div>
-                        </td>
-                        <td className="py-4 px-2">
-                          <div className="font-bold text-slate-700">{bk.serviceName || 'Standard Wash'}</div>
-                          <div className="text-[10px] mt-0.5">
-                            {bk.paymentBank ? (
-                              <span className="inline-flex items-center gap-0.5 font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-1 rounded uppercase text-[9px]">
-                                💳 {bk.paymentBank} Transfer
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-0.5 font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-1 rounded uppercase text-[9px]">
-                                💵 Cash on Site
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="py-4 px-2">
-                          <div className="font-black text-slate-800">BND ${(bk.price || 15.00).toFixed(2)}</div>
-                        </td>
-                        <td className="py-4 px-2">
-                          <span className={`px-2.5 py-1 text-[10px] font-black rounded-lg border uppercase tracking-wider ${getStatusBadgeClass(bk.status)}`}>
-                            {bk.status}
-                          </span>
-                        </td>
-                        <td className="py-4 px-2 text-slate-500 truncate max-w-xs" title={bk.notes}>
-                          {bk.notes || '—'}
-                        </td>
-                        <td className="py-4 px-2 text-right">
-                          <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
-                            <a
-                              href={`https://wa.me/${((bk as any).carWashPhone || '').replace(/[^0-9]/g, '') || ''}?text=${encodeURIComponent(
-                                `Hello! I would like to confirm my car wash booking:\n\n📍 Location: ${(bk as any).carWashName || 'Car Wash'}\n📅 Date: ${bk.date}\n⏰ Time: ${bk.timeSlot}\n👤 Customer Name: ${user?.name || 'Customer'}${
-                                  bk.notes ? `\n✉️ Notes: ${bk.notes}` : ''
-                                }\n\nThank you!`
-                              )}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="px-2 py-1 text-[10px] bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-bold rounded-lg transition-colors border border-emerald-100/60 flex items-center gap-1 cursor-pointer"
-                              title="Notify on WhatsApp"
-                            >
-                              <span>WhatsApp</span>
-                            </a>
+            )}
 
-                            {bk.status === BookingStatus.PENDING ? (
-                              cancellingBookingId === bk.id ? (
-                                <div className="flex items-center gap-1 animate-fade-in bg-rose-50 border border-rose-100 p-0.5 rounded-lg">
-                                  <span className="text-[10px] font-bold text-rose-700 px-1">Cancel?</span>
-                                  <button
-                                    onClick={async (e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      await handleCancelBooking(bk.id);
-                                      setCancellingBookingId(null);
-                                    }}
-                                    className="px-2 py-0.5 bg-rose-600 text-white text-[10px] font-bold rounded hover:bg-rose-700 transition-colors cursor-pointer"
-                                  >
-                                    Yes
-                                  </button>
-                                  <button
-                                    onClick={(e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      setCancellingBookingId(null);
-                                    }}
-                                    className="px-2 py-0.5 bg-slate-200 text-slate-700 text-[10px] font-bold rounded hover:bg-slate-300 transition-colors cursor-pointer"
-                                  >
-                                    No
-                                  </button>
+            {!isHistorySectionCollapsed && (
+              (() => {
+                const filteredBookings = bookings.filter((b) => {
+                  if (bookingStatusFilter === 'PENDING') return b.status === BookingStatus.PENDING || b.status === BookingStatus.IN_PROGRESS;
+                  if (bookingStatusFilter === 'COMPLETED') return b.status === BookingStatus.COMPLETED;
+                  if (bookingStatusFilter === 'CANCELLED_REJECTED') return b.status === BookingStatus.CANCELLED || b.status === BookingStatus.REJECTED;
+                  return true;
+                });
+
+                if (bookings.length === 0) {
+                  return (
+                    <div className="text-center py-12 text-slate-400">
+                      <Calendar className="h-10 w-10 mx-auto mb-2 text-slate-300" />
+                      <p className="font-bold text-sm">No bookings yet.</p>
+                      <button
+                        onClick={() => setActiveTab('book')}
+                        className="mt-3 px-4 py-1.5 bg-sky-50 text-sky-600 text-xs font-bold rounded-xl border border-sky-100 hover:bg-sky-100 transition-all cursor-pointer"
+                      >
+                        Book your first car wash slot
+                      </button>
+                    </div>
+                  );
+                }
+
+                if (filteredBookings.length === 0) {
+                  return (
+                    <div className="text-center py-10 bg-slate-50/70 rounded-2xl border border-slate-200/80 text-slate-500 space-y-2">
+                      <p className="font-bold text-xs">No bookings found matching filter category.</p>
+                      <button
+                        onClick={() => setBookingStatusFilter('ALL')}
+                        className="px-3 py-1 bg-sky-50 text-sky-700 text-xs font-extrabold rounded-lg border border-sky-200 hover:bg-sky-100 transition-all cursor-pointer"
+                      >
+                        Reset Filter (Show All)
+                      </button>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="space-y-3">
+                    {filteredBookings.map((bk) => {
+                      const isExpanded = expandedBookingIds.includes(bk.id);
+
+                      return (
+                        <div
+                          key={bk.id}
+                          className="bg-white border border-slate-200/90 rounded-2xl transition-all shadow-2xs hover:border-sky-300 hover:shadow-xs overflow-hidden"
+                        >
+                          {/* Minimal Collapsed Card Header */}
+                          <div
+                            onClick={() => toggleBookingExpanded(bk.id)}
+                            className="p-3.5 sm:p-4 cursor-pointer select-none hover:bg-slate-50/80 transition-colors space-y-2"
+                          >
+                            {/* Top Row: Full Uncut Car Wash Name & Status Badge */}
+                            <div className="flex items-start justify-between gap-2.5">
+                              <h4 className="font-black text-slate-900 text-sm sm:text-base leading-snug break-words flex-1 min-w-0">
+                                {(bk as any).carWashName || 'Car Wash Location'}
+                              </h4>
+
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                {renderStatusBadge(bk.status)}
+                                <div className="p-1 rounded-lg bg-slate-100 text-slate-500 hover:text-slate-800 transition-all">
+                                  <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
                                 </div>
-                              ) : (
-                                <>
-                                  <button
-                                    onClick={(e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      setReschedulingBooking(bk);
-                                      setRescheduleDate(bk.date);
-                                      setSelectedRescheduleSlot(null);
-                                    }}
-                                    className="px-2 py-1 text-[10px] border border-sky-200 text-sky-600 hover:bg-sky-50 font-bold rounded-lg transition-colors cursor-pointer"
-                                  >
-                                    Reschedule
-                                  </button>
-                                  <button
-                                    onClick={(e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      setCancellingBookingId(bk.id);
-                                    }}
-                                    className="px-2 py-1 text-[10px] border border-rose-200 text-rose-600 hover:bg-rose-50 font-bold rounded-lg transition-colors cursor-pointer"
-                                  >
-                                    Cancel
-                                  </button>
-                                </>
-                              )
-                            ) : (
-                              <span className="text-[10px] text-slate-400 font-mono italic px-1">Locked</span>
-                            )}
+                              </div>
+                            </div>
+
+                            {/* Minimal Date & Time Row */}
+                            <div className="flex items-center justify-between gap-2 text-xs text-slate-500 font-medium pt-0.5">
+                              <div className="flex items-center gap-1.5 truncate">
+                                <Calendar className="w-3.5 h-3.5 text-sky-500 shrink-0" />
+                                <span className="truncate">{formatBookingDate(bk.date)}</span>
+                                <span className="text-slate-300">•</span>
+                                <span className="text-slate-800 font-mono font-bold shrink-0">{bk.timeSlot}</span>
+                              </div>
+
+                              <span className="text-[11px] font-extrabold text-sky-600 hover:underline shrink-0 flex items-center gap-0.5">
+                                {isExpanded ? 'Less info' : 'More details'}
+                              </span>
+                            </div>
                           </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+
+                          {/* Expanded Full Card Details */}
+                          {isExpanded && (
+                            <div className="p-3.5 sm:p-4 border-t border-slate-200/80 bg-slate-50/60 space-y-3 text-xs animate-fade-in">
+                              {/* Location & Address Banner */}
+                              <div className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                <div className="space-y-0.5">
+                                  <span className="block text-[9px] text-slate-400 uppercase font-black tracking-wider">Location Address</span>
+                                  <div className="flex items-center gap-1 text-slate-800 font-medium">
+                                    <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                    <span>{(bk as any).carWashAddress || 'Location details in card'}</span>
+                                  </div>
+                                </div>
+                                <div className="text-right sm:text-right shrink-0">
+                                  <span className="block text-[9px] text-slate-400 uppercase font-black tracking-wider">Price BND</span>
+                                  <span className="font-black text-slate-900 text-sm font-mono">BND ${(bk.price || 15.00).toFixed(2)}</span>
+                                </div>
+                              </div>
+
+                              {/* Service & Payment Info */}
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 bg-white p-3 rounded-xl border border-slate-200/70 shadow-2xs">
+                                <div>
+                                  <span className="block text-[9px] text-slate-400 uppercase font-black tracking-wider mb-0.5">Service Wash Option</span>
+                                  <span className="font-extrabold text-sky-800 block text-xs">{bk.serviceName || 'Standard Wash'}</span>
+                                </div>
+                                <div>
+                                  <span className="block text-[9px] text-slate-400 uppercase font-black tracking-wider mb-0.5">Payment Method</span>
+                                  <div>
+                                    {bk.paymentBank ? (
+                                      <div className="space-y-0.5">
+                                        <span className="inline-flex items-center gap-1 font-bold text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-2 py-0.5 rounded-md text-[10px]">
+                                          💳 {bk.paymentBank} Bank Transfer
+                                        </span>
+                                        {bk.txnReference && (
+                                          <span className="block text-[10px] text-slate-500 font-mono">Ref: {bk.txnReference}</span>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1 font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-md text-[10px]">
+                                        💵 Pay Cash on Arrival
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Customer Notes */}
+                              {bk.notes && (
+                                <div className="bg-white p-3 rounded-xl border border-slate-200/70 shadow-2xs">
+                                  <span className="block text-[9px] text-slate-400 uppercase font-black tracking-wider mb-0.5">Customer Notes</span>
+                                  <p className="text-slate-700 italic text-xs">{bk.notes}</p>
+                                </div>
+                              )}
+
+                              {/* Actions Row */}
+                              <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200/60">
+                                <a
+                                  href={`https://wa.me/${((bk as any).carWashPhone || '').replace(/[^0-9]/g, '') || ''}?text=${encodeURIComponent(
+                                    `Hello! I would like to confirm my car wash booking:\n\n📍 Location: ${(bk as any).carWashName || 'Car Wash'}\n📅 Date: ${bk.date}\n⏰ Time: ${bk.timeSlot}\n👤 Customer Name: ${user?.name || 'Customer'}${
+                                      bk.notes ? `\n✉️ Notes: ${bk.notes}` : ''
+                                    }\n\nThank you!`
+                                  )}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-all shadow-2xs flex items-center gap-2 cursor-pointer text-xs"
+                                  title="Send booking update via WhatsApp"
+                                >
+                                  <span>Notify via WhatsApp</span>
+                                </a>
+
+                                <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                                  {bk.status === BookingStatus.PENDING ? (
+                                    cancellingBookingId === bk.id ? (
+                                      <div className="flex items-center gap-1.5 bg-rose-50 border border-rose-200 p-1.5 rounded-xl">
+                                        <span className="text-[10px] font-bold text-rose-700 px-1">Cancel booking?</span>
+                                        <button
+                                          onClick={async (e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            await handleCancelBooking(bk.id);
+                                            setCancellingBookingId(null);
+                                          }}
+                                          className="px-2.5 py-1 bg-rose-600 text-white text-[10px] font-black rounded-lg hover:bg-rose-700 transition-colors cursor-pointer"
+                                        >
+                                          Yes, Cancel
+                                        </button>
+                                        <button
+                                          onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            setCancellingBookingId(null);
+                                          }}
+                                          className="px-2.5 py-1 bg-slate-200 text-slate-700 text-[10px] font-black rounded-lg hover:bg-slate-300 transition-colors cursor-pointer"
+                                        >
+                                          No
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <>
+                                        <button
+                                          onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            setReschedulingBooking(bk);
+                                            setRescheduleDate(bk.date);
+                                            setSelectedRescheduleSlot(null);
+                                          }}
+                                          className="px-3.5 py-1.5 border border-sky-300 text-sky-700 hover:bg-sky-50 font-bold rounded-xl text-xs transition-all cursor-pointer shadow-2xs"
+                                        >
+                                          Reschedule
+                                        </button>
+                                        <button
+                                          onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            setCancellingBookingId(bk.id);
+                                          }}
+                                          className="px-3.5 py-1.5 border border-rose-200 text-rose-700 hover:bg-rose-50 font-bold rounded-xl text-xs transition-all cursor-pointer shadow-2xs"
+                                        >
+                                          Cancel Booking
+                                        </button>
+                                      </>
+                                    )
+                                  ) : (
+                                    <span className="text-[11px] text-slate-400 font-semibold italic px-1">
+                                      {bk.status === BookingStatus.COMPLETED ? 'Order Completed' : 'Record Locked'}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()
             )}
           </div>
         </div>
@@ -1265,39 +1512,83 @@ export const CustomerDashboard: React.FC = () => {
               </p>
             )}
           </div>
+
+          {/* Legal, Help & Account Status */}
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs relative overflow-hidden" id="legal-and-support-card">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-slate-500/5 rounded-bl-full pointer-events-none" />
+            <h3 className="font-bold text-slate-800 text-sm sm:text-base mb-1">Legal & Support</h3>
+            <p className="text-[10px] text-slate-400 font-mono uppercase mb-4">View terms and manage account state</p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Terms of Service Box */}
+              <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex flex-col justify-between gap-3">
+                <div>
+                  <h4 className="text-xs font-bold text-slate-700">Terms & Conditions</h4>
+                  <p className="text-[10px] text-slate-500 mt-1">Review the legal terms of service and usage regulations for AUTOSHINE BN.</p>
+                </div>
+                <button
+                  onClick={() => setShowTermsModal(true)}
+                  className="w-full py-2 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                  id="view-terms-btn"
+                >
+                  <FileText className="h-3.5 w-3.5 text-slate-500" />
+                  View Terms of Service
+                </button>
+              </div>
+
+              {/* Danger Zone Box */}
+              <div className="bg-rose-50/30 border border-rose-100/50 rounded-2xl p-4 flex flex-col justify-between gap-3">
+                <div>
+                  <h4 className="text-xs font-bold text-rose-800">Danger Zone</h4>
+                  <p className="text-[10px] text-rose-600/70 mt-1">Permanently delete your profile data and booking history from our system.</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setAgreeToDelete(false);
+                    setShowDeleteModal(true);
+                  }}
+                  className="w-full py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer border border-rose-200/50"
+                  id="show-delete-account-modal-btn"
+                >
+                  <AlertTriangle className="h-3.5 w-3.5 text-rose-500" />
+                  Delete Account
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
-      {activeTab === 'terms' && (
-        <div className="space-y-6 animate-fade-in">
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-xs relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-sky-500/5 rounded-bl-full pointer-events-none" />
-            
+      {showTermsModal && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in" id="terms-of-service-modal-overlay">
+          <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[85vh] border border-slate-100 shadow-2xl overflow-hidden flex flex-col" id="terms-of-service-modal-container">
             {/* Header / Brand */}
-            <div className="flex flex-col sm:flex-row items-center gap-4 pb-6 border-b border-slate-100 mb-6">
-              <div className="h-16 w-16 flex items-center justify-center overflow-hidden rounded-2xl bg-slate-50 border border-slate-200 shadow-sm">
-                <img src={autoshineLogo} alt="Autoshine BN Logo" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+            <div className="flex items-center justify-between p-6 border-b border-slate-100 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 flex items-center justify-center overflow-hidden rounded-xl bg-slate-50 border border-slate-200">
+                  <img src={autoshineLogo} alt="Autoshine BN Logo" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-800 text-sm sm:text-base">AUTOSHINE BN Terms</h3>
+                  <p className="text-[9px] text-sky-600 font-mono uppercase tracking-wide">Last updated: July 12, 2026</p>
+                </div>
               </div>
-              <div className="text-center sm:text-left">
-                <h2 className="text-2xl font-black text-slate-800 tracking-tight">
-                  AUTOSHINE BN
-                </h2>
-                <p className="text-xs text-sky-600 font-mono tracking-wider uppercase font-bold">
-                  TERMS AND CONDITIONS OF USE
-                </p>
-                <p className="text-[10px] text-slate-400 mt-0.5">
-                  Effective Date: July 12, 2026
-                </p>
-              </div>
+              <button
+                onClick={() => setShowTermsModal(false)}
+                className="bg-slate-100 hover:bg-slate-200 p-2 rounded-xl text-slate-500 hover:text-slate-700 transition-colors cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
 
-            {/* Intro paragraph */}
-            <div className="prose prose-slate max-w-none text-xs sm:text-sm text-slate-600 leading-relaxed space-y-4">
-              <p className="font-semibold text-slate-700">
-                These Terms and Conditions (&quot;Terms&quot;) govern your access to and use of the AUTOSHINE BN mobile application and website (&quot;Platform&quot;). By registering for an account or using the Platform, you agree to be bound by these Terms.
-              </p>
+            {/* Scrollable Terms Content */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              <div className="prose prose-slate max-w-none text-xs sm:text-sm text-slate-600 leading-relaxed space-y-4">
+                <p className="font-semibold text-slate-700">
+                  These Terms and Conditions (&quot;Terms&quot;) govern your access to and use of the AUTOSHINE BN mobile application and website (&quot;Platform&quot;). By registering for an account or using the Platform, you agree to be bound by these Terms.
+                </p>
 
-              <hr className="border-slate-100 my-4" />
+                <hr className="border-slate-100 my-4" />
 
               {/* T&C Items */}
               <div className="space-y-6 text-left">
@@ -1595,23 +1886,30 @@ export const CustomerDashboard: React.FC = () => {
             </div>
           </div>
         </div>
+      </div>
       )}
 
       {/* 📍 IMMERSIVE FULL SCREEN MAP DIALOG (MOBILE-FIRST) */}
-      {showFullScreenMap && selectedLocation && (
+      {showFullScreenMap && (
         <div className="fixed inset-0 z-50 bg-slate-950 flex flex-col animate-fade-in">
           {/* Header */}
-          <div className="bg-slate-900 text-white px-4 py-4 flex items-center justify-between border-b border-slate-800">
-            <div className="flex items-center gap-2">
-              <Navigation className="h-5 w-5 text-sky-400 animate-pulse" />
+          <div className="bg-slate-900 text-white px-4 py-3.5 flex items-center justify-between border-b border-slate-800 shrink-0">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-sky-500/20 text-sky-400 rounded-xl border border-sky-500/30">
+                <Navigation className="h-5 w-5 animate-pulse" />
+              </div>
               <div>
-                <h3 className="font-extrabold text-xs">{selectedLocation.name}</h3>
-                <p className="text-[10px] text-slate-400">Verifying GPS & Map Area Coordinates</p>
+                <h3 className="font-extrabold text-sm text-white">
+                  {selectedLocation ? selectedLocation.name : 'Interactive GPS Map - All Car Washes'}
+                </h3>
+                <p className="text-xs text-slate-400">
+                  {selectedLocation ? 'Tap pins on map to switch location or verify GPS route' : 'Tap any car wash pin to select location and start booking'}
+                </p>
               </div>
             </div>
             <button
               onClick={() => setShowFullScreenMap(false)}
-              className="bg-slate-800 hover:bg-slate-700 p-2 rounded-xl text-white transition-colors cursor-pointer"
+              className="bg-slate-800 hover:bg-slate-700 p-2 rounded-xl text-white transition-colors cursor-pointer border border-slate-700"
             >
               <X className="h-5 w-5" />
             </button>
@@ -1620,9 +1918,13 @@ export const CustomerDashboard: React.FC = () => {
           {/* Interactive Map Block */}
           <div className="flex-1 relative bg-slate-900">
             <MapSimulation
-              locations={[selectedLocation]}
-              selectedLocationId={selectedLocation.id}
-              onLocationSelect={() => {}}
+              locations={locations}
+              selectedLocationId={selectedLocation?.id}
+              onLocationSelect={(loc) => {
+                setSelectedLocation(loc);
+                setUserLat(loc.locationLat);
+                setUserLng(loc.locationLng);
+              }}
               radiusKm={radiusKm}
               onRadiusChange={(r) => setRadiusKm(r)}
               userLat={userLat}
@@ -1635,16 +1937,23 @@ export const CustomerDashboard: React.FC = () => {
           </div>
 
           {/* Footer Action */}
-          <div className="bg-slate-900 p-4 border-t border-slate-800 flex flex-col gap-2">
-            <div className="text-xs text-slate-300 bg-slate-800/50 p-3 rounded-xl border border-slate-800">
-              💡 <strong>GPS Simulation Note:</strong> You can drag the red customer pin on the map to calculate route, distance, and verified driving coordinates.
+          <div className="bg-slate-900 p-3.5 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
+            <div className="text-xs text-slate-300">
+              {selectedLocation ? (
+                <span>Selected: <strong className="text-sky-400 font-black">{selectedLocation.name}</strong> ({selectedLocation.address})</span>
+              ) : (
+                <span>Tap any pin on the map to select a car wash location.</span>
+              )}
             </div>
-            <button
-              onClick={() => setShowFullScreenMap(false)}
-              className="w-full py-3 bg-sky-500 hover:bg-sky-400 text-slate-950 font-black text-xs rounded-xl transition-all shadow-md cursor-pointer text-center"
-            >
-              Confirm Location & Proceed
-            </button>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={() => setShowFullScreenMap(false)}
+                className="flex-1 sm:flex-initial px-5 py-2.5 bg-sky-600 hover:bg-sky-500 text-white font-extrabold text-xs rounded-xl transition-all shadow-md cursor-pointer text-center"
+              >
+                {selectedLocation ? 'Confirm Location & Proceed' : 'Done Exploring'}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1679,7 +1988,7 @@ export const CustomerDashboard: React.FC = () => {
                 <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-slate-400" />
                 <input
                   type="date"
-                  min={new Date().toISOString().split('T')[0]}
+                  min={getTodayDateString()}
                   value={bookingDate}
                   onChange={(e) => {
                     setBookingDate(e.target.value);
@@ -1802,7 +2111,7 @@ export const CustomerDashboard: React.FC = () => {
                 <label className="block text-xs font-bold text-slate-700 uppercase mb-2">New Date</label>
                 <input
                   type="date"
-                  min={new Date().toISOString().split('T')[0]}
+                  min={getTodayDateString()}
                   value={rescheduleDate}
                   onChange={(e) => {
                     setRescheduleDate(e.target.value);
@@ -2012,6 +2321,66 @@ export const CustomerDashboard: React.FC = () => {
                 fetchAvailableSlots(selectedLocation.id, bookingDate, setAvailableSlots);
               }}
             />
+          </div>
+        </div>
+      )}
+
+      {/* Account Deletion Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in" id="delete-account-confirmation-overlay">
+          <div className="bg-white rounded-3xl max-w-md w-full border border-slate-100 shadow-2xl overflow-hidden p-6 space-y-6" id="delete-account-modal-container">
+            <div className="flex items-center gap-3 text-rose-600">
+              <div className="p-2 bg-rose-50 rounded-xl">
+                <AlertTriangle className="h-5 w-5 animate-bounce" />
+              </div>
+              <h3 className="text-base sm:text-lg font-black tracking-tight text-slate-800">Confirm Account Deletion</h3>
+            </div>
+            
+            <p className="text-xs text-slate-500 leading-relaxed font-medium font-sans">
+              Are you absolutely sure you want to delete your account? This will permanently delete your profile, and all your past bookings from our system. <strong className="text-rose-600">This action cannot be undone.</strong>
+            </p>
+
+            <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 text-xs space-y-2">
+              <p className="text-slate-600 font-extrabold uppercase tracking-wide text-[10px]">Upon confirmation, the system will:</p>
+              <ul className="list-disc pl-4 text-slate-500 space-y-1 font-medium font-sans">
+                <li>Remove your user profile and contact details</li>
+                <li>Delete your secure session tokens</li>
+                <li>Erase your bookings in both database clusters</li>
+              </ul>
+            </div>
+
+            {/* Agreement Checkbox */}
+            <div className="flex items-start gap-2.5 p-1">
+              <input
+                type="checkbox"
+                id="agree-to-delete-checkbox"
+                checked={agreeToDelete}
+                onChange={(e) => setAgreeToDelete(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500 accent-rose-600 cursor-pointer"
+              />
+              <label htmlFor="agree-to-delete-checkbox" className="text-xs text-slate-600 font-medium leading-tight cursor-pointer select-none">
+                I understand that this action is irreversible and I agree to permanently delete my account and booking history.
+              </label>
+            </div>
+
+            <div className="flex items-center gap-3 justify-end pt-2">
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                className="py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                id="cancel-delete-account-btn"
+                disabled={isDeletingAccount}
+              >
+                Cancel, Keep Account
+              </button>
+              <button
+                onClick={handleDeleteAccountConfirm}
+                className="py-2.5 px-5 bg-rose-600 hover:bg-rose-700 disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none border border-transparent disabled:border-slate-200 text-white rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shadow-md shadow-rose-600/10"
+                id="confirm-delete-account-btn"
+                disabled={isDeletingAccount || !agreeToDelete}
+              >
+                {isDeletingAccount ? 'Deleting...' : 'Yes, Delete Account'}
+              </button>
+            </div>
           </div>
         </div>
       )}

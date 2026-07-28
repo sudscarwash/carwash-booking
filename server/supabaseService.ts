@@ -167,3 +167,43 @@ export async function sendSupabasePasswordReset(email: string, redirectUrl: stri
     throw err;
   }
 }
+
+/**
+ * Administrative deletion of user in Supabase
+ */
+export async function deleteSupabaseUser(email: string): Promise<boolean> {
+  if (!supabaseClient) return false;
+
+  try {
+    const isServiceKey = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (isServiceKey) {
+      console.log(`[Supabase Auth] Admin deleting user ${email}...`);
+      // Find the user by email first
+      const { data: listData, error: listError } = await supabaseClient.auth.admin.listUsers();
+      if (listError || !listData?.users) {
+        throw new Error(listError?.message || 'Failed to retrieve Supabase user list');
+      }
+
+      const user = listData.users.find(u => u.email?.toLowerCase() === email.toLowerCase());
+      if (!user) {
+        console.warn(`[Supabase Auth] No user found in Supabase Auth matching email ${email}`);
+        return false;
+      }
+
+      // Delete user using admin API
+      const { error } = await supabaseClient.auth.admin.deleteUser(user.id);
+
+      if (error) {
+        console.error('[Supabase Auth] Admin deleteUser error:', error.message);
+        throw new Error(error.message);
+      }
+
+      console.log(`[Supabase Auth] Successfully deleted user ${email} in Supabase Auth.`);
+      return true;
+    }
+    return false;
+  } catch (err: any) {
+    console.error('[Supabase Auth] Admin user deletion failed:', err);
+    return false;
+  }
+}

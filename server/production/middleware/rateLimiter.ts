@@ -75,19 +75,43 @@ export function createRateLimiter(
 
 /**
  * Specifically hardened limiter for sensitive auth endpoints (Login, Register, OTP validation)
- * 5 attempts per minute max
+ * 15 attempts per minute in production, 100 in development/preview to prevent blocking legitimate testing
  */
-export const authRateLimiter = createRateLimiter(
-  60 * 1000, 
-  5, 
-  'Too many failed attempts or actions. Security lock triggered. Please try again after 1 minute.'
-);
+export const authRateLimiter = (req: Request, res: Response, next: NextFunction) => {
+  const isProd = process.env.NODE_ENV === 'production';
+  const host = req.headers.host || '';
+  const isDevOrPreview = !isProd || 
+    host.includes('ais-dev-') || 
+    host.includes('ais-pre-') || 
+    host.includes('localhost') || 
+    host.includes('127.0.0.1');
+
+  const maxAttempts = isDevOrPreview ? 100 : 15;
+
+  return createRateLimiter(
+    60 * 1000, 
+    maxAttempts, 
+    'Too many failed attempts or actions. Security lock triggered. Please try again after 1 minute.'
+  )(req, res, next);
+};
 
 /**
  * General global route api limiter
  */
-export const apiRateLimiter = createRateLimiter(
-  60 * 1000, 
-  60, 
-  'Standard API rate limit exceeded. Please throttle your client requests.'
-);
+export const apiRateLimiter = (req: Request, res: Response, next: NextFunction) => {
+  const isProd = process.env.NODE_ENV === 'production';
+  const host = req.headers.host || '';
+  const isDevOrPreview = !isProd || 
+    host.includes('ais-dev-') || 
+    host.includes('ais-pre-') || 
+    host.includes('localhost') || 
+    host.includes('127.0.0.1');
+
+  const maxAttempts = isDevOrPreview ? 500 : 60;
+
+  return createRateLimiter(
+    60 * 1000, 
+    maxAttempts, 
+    'Standard API rate limit exceeded. Please throttle your client requests.'
+  )(req, res, next);
+};

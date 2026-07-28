@@ -4,7 +4,7 @@
  */
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { User, CarWash, Booking, AuditLog, Role } from '../types.js';
+import { User, CarWash, Booking, AuditLog, Role, BookingStatus, AppNotification } from '../types.js';
 
 interface AppContextType {
   user: User | null;
@@ -13,10 +13,15 @@ interface AppContextType {
   bookings: Booking[];
   employees: User[];
   logs: AuditLog[];
+  appNotifications: AppNotification[];
+  unreadNotificationCount: number;
   loading: boolean;
   notification: { message: string; type: 'success' | 'error' } | null;
   showNotification: (message: string, type: 'success' | 'error') => void;
   clearNotification: () => void;
+  fetchAppNotifications: () => Promise<void>;
+  markNotificationAsRead: (id: string) => Promise<void>;
+  markAllNotificationsAsRead: () => Promise<void>;
   login: (email: string, password: string) => Promise<boolean>;
   register: (
     email: string,
@@ -42,11 +47,27 @@ interface AppContextType {
   forgotPassword: (email: string) => Promise<string | null>;
   resetPassword: (token: string, password: string) => Promise<boolean>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
+  deleteAccount: () => Promise<boolean>;
   fetchLocations: (search?: string, lat?: number, lng?: number, radius?: number) => Promise<void>;
   fetchBookings: () => Promise<void>;
   fetchEmployees: () => Promise<void>;
   fetchLogs: () => Promise<void>;
   createBooking: (carWashId: string, date: string, timeSlot: string, notes?: string, serviceId?: string, serviceName?: string, price?: number) => Promise<boolean>;
+  createManualBooking: (data: {
+    carWashId: string;
+    date: string;
+    timeSlot: string;
+    customerName: string;
+    customerPhone: string;
+    customerEmail?: string;
+    vehicleInfo?: string;
+    bookingSource?: 'PHONE' | 'WALK_IN' | 'ONLINE';
+    serviceId?: string;
+    serviceName?: string;
+    price?: number;
+    notes?: string;
+    status?: BookingStatus;
+  }) => Promise<boolean>;
   updateBookingStatus: (bookingId: string, status: string, notes?: string, employeeId?: string) => Promise<boolean>;
   rescheduleBooking: (bookingId: string, date: string, timeSlot: string) => Promise<boolean>;
   createEmployee: (email: string, name: string, businessId: string) => Promise<boolean>;
@@ -71,18 +92,52 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [employees, setEmployees] = useState<User[]>([]);
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [adminUsersList, setAdminUsersList] = useState<User[]>([]);
+  const [appNotifications, setAppNotifications] = useState<AppNotification[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
-  // Initialize Auth from LocalStorage
+  // Initialize Auth from LocalStorage and verify with server
   useEffect(() => {
-    const storedUser = localStorage.getItem('cw_user');
-    const storedToken = localStorage.getItem('cw_token');
-    if (storedUser && storedToken) {
-      setUser(JSON.parse(storedUser));
-      setToken(storedToken);
-    }
-    setLoading(false);
+    const initAuth = async () => {
+      const storedUser = localStorage.getItem('cw_user');
+      const storedToken = localStorage.getItem('cw_token');
+      if (storedUser && storedToken) {
+        try {
+          const parsedUser = JSON.parse(storedUser);
+          setUser(parsedUser);
+          setToken(storedToken);
+
+          // Silent background verification & token refresh
+          const res = await fetch('/api/auth/me', {
+            headers: {
+              'Authorization': `Bearer ${storedToken}`
+            }
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            const freshUser = data.user || data;
+            const freshToken = data.token || storedToken;
+            setUser(freshUser);
+            setToken(freshToken);
+            localStorage.setItem('cw_user', JSON.stringify(freshUser));
+            localStorage.setItem('cw_token', freshToken);
+          } else if (res.status === 401 || res.status === 403) {
+            // Token expired or invalid -> clear local storage gracefully
+            console.warn('Session expired or token invalid. Clearing session.');
+            localStorage.removeItem('cw_user');
+            localStorage.removeItem('cw_token');
+            setUser(null);
+            setToken(null);
+          }
+        } catch (err) {
+          console.error('Error restoring persistent auth session:', err);
+        }
+      }
+      setLoading(false);
+    };
+
+    initAuth();
   }, []);
 
   // Fetch initial data once logged in
@@ -90,6 +145,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (token) {
       fetchLocations();
       fetchBookings();
+      fetchAppNotifications();
       if (user?.role === Role.OWNER || user?.role === Role.ADMIN) {
         fetchEmployees();
       }
@@ -97,6 +153,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         fetchLogs();
         fetchAdminUsers();
       }
+
+      // Background poll for new notifications every 10 seconds
+      const notifInterval = setInterval(() => {
+        fetchAppNotifications();
+      }, 10000);
+
+      return () => clearInterval(notifInterval);
     } else {
       // Fetch locations public-ready
       fetchLocations();
@@ -111,6 +174,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const clearNotification = () => setNotification(null);
+
+  const fetchAppNotifications = async () => {
+    if (!token) return;
+    try {
+      const data = await apiFetch('/api/notifications');
+      if (Array.isArray(data)) {
+        setAppNotifications(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch notifications:', err);
+    }
+  };
+
+  const markNotificationAsRead = async (id: string) => {
+    try {
+      setAppNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
+      );
+      await apiFetch(`/api/notifications/${id}/read`, { method: 'PATCH' });
+    } catch (err) {
+      console.error('Failed to mark notification as read:', err);
+    }
+  };
+
+  const markAllNotificationsAsRead = async () => {
+    try {
+      setAppNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      await apiFetch('/api/notifications/mark-all-read', { method: 'PATCH' });
+    } catch (err) {
+      console.error('Failed to mark all notifications as read:', err);
+    }
+  };
+
+  const unreadNotificationCount = appNotifications.filter((n) => !n.isRead).length;
 
   const apiFetch = async (endpoint: string, options: RequestInit = {}) => {
     const headers = new Headers(options.headers || {});
@@ -300,6 +397,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         body: JSON.stringify({ carWashId, date, timeSlot, notes, serviceId, serviceName, price }),
       });
       showNotification('Wash slot booked successfully!', 'success');
+      fetchBookings();
+      return true;
+    } catch (err: any) {
+      showNotification(err.message, 'error');
+      return false;
+    }
+  };
+
+  const createManualBooking = async (data: {
+    carWashId: string;
+    date: string;
+    timeSlot: string;
+    customerName: string;
+    customerPhone: string;
+    customerEmail?: string;
+    vehicleInfo?: string;
+    bookingSource?: 'PHONE' | 'WALK_IN' | 'ONLINE';
+    serviceId?: string;
+    serviceName?: string;
+    price?: number;
+    notes?: string;
+    status?: BookingStatus;
+  }): Promise<boolean> => {
+    try {
+      await apiFetch('/api/owner/manual-booking', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+      showNotification(`Manual ${data.bookingSource === 'WALK_IN' ? 'Walk-in' : 'Phone'} booking recorded!`, 'success');
       fetchBookings();
       return true;
     } catch (err: any) {
@@ -512,6 +638,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const deleteAccount = async (): Promise<boolean> => {
+    try {
+      setLoading(true);
+      await apiFetch('/api/auth/delete-account', {
+        method: 'DELETE',
+      });
+      logout();
+      showNotification('Your account has been deleted successfully.', 'success');
+      return true;
+    } catch (err: any) {
+      showNotification(err.message, 'error');
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -521,10 +664,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         bookings,
         employees,
         logs,
+        appNotifications,
+        unreadNotificationCount,
         loading,
         notification,
         showNotification,
         clearNotification,
+        fetchAppNotifications,
+        markNotificationAsRead,
+        markAllNotificationsAsRead,
         login,
         register,
         updateProfile,
@@ -532,11 +680,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         forgotPassword,
         resetPassword,
         changePassword,
+        deleteAccount,
         fetchLocations,
         fetchBookings,
         fetchEmployees,
         fetchLogs,
         createBooking,
+        createManualBooking,
         updateBookingStatus,
         rescheduleBooking,
         createEmployee,
