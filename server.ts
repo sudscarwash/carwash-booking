@@ -807,13 +807,24 @@ async function startServer() {
         }
 
         const { 
-          name, description, locationLat, locationLng, address, openingHours, 
-          slotDuration, capacityPerSlot, isActive, phone, instagram,
+          name, description, locationLat, locationLng, address, openingHours,
+          slotDuration, capacityPerSlot, isActive, phone, instagram, logoUrl,
           bibdAccountName, bibdAccountNo, bibdEnabled, bibdQrImageUrl,
           baiduriAccountName, baiduriAccountNo, baiduriEnabled, baiduriQrImageUrl,
-          customPaymentsJson, paymentPolicy
+          customPaymentsJson, paymentPolicy, services, servicesJson, ownerId
         } = req.body;
- 
+
+        let parsedServices = carWash.services;
+        if (services !== undefined) {
+          parsedServices = services;
+        } else if (servicesJson !== undefined) {
+          try {
+            parsedServices = typeof servicesJson === 'string' ? JSON.parse(servicesJson) : servicesJson;
+          } catch (e) {
+            console.error('Error parsing servicesJson in PUT /api/car-washes/:id:', e);
+          }
+        }
+
         const updatedData: Partial<CarWash> = {
           name: name !== undefined ? name : carWash.name,
           description: description !== undefined ? description : carWash.description,
@@ -826,6 +837,7 @@ async function startServer() {
           isActive: isActive !== undefined ? !!isActive : carWash.isActive,
           phone: phone !== undefined ? phone : carWash.phone,
           instagram: instagram !== undefined ? instagram : carWash.instagram,
+          logoUrl: logoUrl !== undefined ? logoUrl : carWash.logoUrl,
           bibdAccountName: bibdAccountName !== undefined ? bibdAccountName : carWash.bibdAccountName,
           bibdAccountNo: bibdAccountNo !== undefined ? bibdAccountNo : carWash.bibdAccountNo,
           bibdEnabled: bibdEnabled !== undefined ? !!bibdEnabled : carWash.bibdEnabled,
@@ -836,6 +848,9 @@ async function startServer() {
           baiduriQrImageUrl: baiduriQrImageUrl !== undefined ? baiduriQrImageUrl : carWash.baiduriQrImageUrl,
           customPaymentsJson: customPaymentsJson !== undefined ? customPaymentsJson : carWash.customPaymentsJson,
           paymentPolicy: paymentPolicy !== undefined ? paymentPolicy : carWash.paymentPolicy,
+          services: parsedServices,
+          servicesJson: parsedServices ? JSON.stringify(parsedServices) : carWash.servicesJson,
+          ownerId: (req.user!.role === Role.ADMIN || req.user!.role === Role.SPECIAL) && ownerId ? ownerId : carWash.ownerId,
         };
 
 
@@ -985,19 +1000,23 @@ async function startServer() {
         return;
       }
 
-      // Check slot availability and capacity limits to prevent double bookings
-      const allBookings = await getBookings();
-      const slots = generateSlotsForDate(carWash, date, allBookings);
-      const targetSlot = slots.find((s) => s.timeSlot === timeSlot);
+      // Check slot availability and capacity limits (exempt Walk-in, 0-slot items, or flexible slots)
+      const isWalkInOrFlex = !timeSlot || 
+        timeSlot.toLowerCase().includes('walk-in') || 
+        timeSlot.toLowerCase().includes('anytime') || 
+        timeSlot.toLowerCase().includes('no slot') || 
+        timeSlot.toLowerCase().includes('flex') ||
+        timeSlot.includes('(0 Slots)');
 
-      if (!targetSlot) {
-        res.status(400).json({ error: 'Selected slot is outside of operating hours.' });
-        return;
-      }
+      if (!isWalkInOrFlex) {
+        const allBookings = await getBookings();
+        const slots = generateSlotsForDate(carWash, date, allBookings);
+        const targetSlot = slots.find((s) => s.timeSlot === timeSlot || (timeSlot && s.timeSlot && timeSlot.startsWith(s.timeSlot.split(' - ')[0])));
 
-      if (!targetSlot.isAvailable) {
-        res.status(400).json({ error: 'This time slot is fully booked or no longer available.' });
-        return;
+        if (targetSlot && !targetSlot.isAvailable) {
+          res.status(400).json({ error: 'This time slot is fully booked or no longer available.' });
+          return;
+        }
       }
 
       // 🔒 Local Bank Payment Processing & Sanity Checks
@@ -1005,7 +1024,7 @@ async function startServer() {
       let dbTxnReference: string | undefined = undefined;
       let dbReceiptFilename: string | undefined = undefined;
 
-      // Check if reference or payment bank is provided (indicating bank transfer flow)
+      /* Commented out upfront pre-payment restriction - all car washes use Pay at Counter on site
       const policy: string = carWash.paymentPolicy || 'PAY_ON_SITE';
       if (policy === 'PRE_PAYMENT' && !paymentBank && !txnReference && !req.file) {
         res.status(400).json({ 
@@ -1013,6 +1032,7 @@ async function startServer() {
         });
         return;
       }
+      */
 
       if (paymentBank || txnReference || req.file) {
         if (!paymentBank || !txnReference || !req.file) {
@@ -1310,6 +1330,72 @@ async function startServer() {
         'BOOKING_RESCHEDULE',
         `Rescheduled booking ${booking.id} from [${oldDate} ${oldSlot}] to [${date} ${timeSlot}]`
       );
+
+      res.json({ ...booking, ...updatedData });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Authenticated Staff/Owner: Edit booking items, services, add-ons, price, vehicle info, and notes
+  app.put('/api/bookings/:id/details', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { serviceId, serviceName, price, vehicleInfo, notes } = req.body;
+
+      const booking = await getBookingById(req.params.id);
+      if (!booking) {
+        res.status(404).json({ error: 'Booking not found.' });
+        return;
+      }
+
+      const user = req.user!;
+      const carWashes = await getCarWashes();
+      const users = await getUsers();
+
+      const isOwner = user.role === Role.OWNER && carWashes.some((cw) => cw.id === booking.carWashId && cw.ownerId === user.id);
+      const isEmployeeAtBusiness = user.role === Role.EMPLOYEE && users.some((u) => u.id === user.id && u.businessId === booking.carWashId);
+      const isAdmin = user.role === Role.ADMIN || user.role === Role.SPECIAL;
+
+      if (!isOwner && !isEmployeeAtBusiness && !isAdmin) {
+        res.status(403).json({ error: 'Only authorized business staff or owner can edit booking items and pricing.' });
+        return;
+      }
+
+      const updatedData: Partial<Booking> = {
+        serviceId: serviceId !== undefined ? serviceId : booking.serviceId,
+        serviceName: serviceName !== undefined ? serviceName : booking.serviceName,
+        price: price !== undefined ? parseFloat(price) : booking.price,
+        vehicleInfo: vehicleInfo !== undefined ? vehicleInfo : booking.vehicleInfo,
+        notes: notes !== undefined ? notes : booking.notes,
+        updatedAt: new Date().toISOString(),
+      };
+
+      await updateBooking(booking.id, updatedData);
+
+      await addAuditLog(
+        user.id,
+        user.email,
+        'BOOKING_ITEMS_UPDATE',
+        `Updated booking ${booking.id} services/add-ons: "${serviceName || booking.serviceName}" - Total: BND $${parseFloat(price !== undefined ? price : booking.price || 0).toFixed(2)}`
+      );
+
+      // Trigger notification for customer on booking modification
+      if (booking.customerId) {
+        try {
+          await createNotification({
+            id: `notif_${Math.random().toString(36).substr(2, 9)}`,
+            userId: booking.customerId,
+            title: `Booking Items Updated 📝`,
+            message: `Your booking on ${booking.date} (${booking.timeSlot}) services were updated to: ${serviceName || booking.serviceName} (Total: BND $${parseFloat(price !== undefined ? price : booking.price || 0).toFixed(2)}).`,
+            type: 'STATUS_CHANGE',
+            bookingId: booking.id,
+            isRead: false,
+            createdAt: new Date().toISOString(),
+          });
+        } catch (notifErr) {
+          console.error('Failed to notify customer on booking edit:', notifErr);
+        }
+      }
 
       res.json({ ...booking, ...updatedData });
     } catch (error: any) {
@@ -1970,7 +2056,7 @@ async function startServer() {
   app.get(
     '/api/admin/users',
     authenticateToken,
-    requireRoles([Role.ADMIN]),
+    requireRoles([Role.ADMIN, Role.SPECIAL]),
     async (req: AuthenticatedRequest, res) => {
       try {
         const users = await getUsers();

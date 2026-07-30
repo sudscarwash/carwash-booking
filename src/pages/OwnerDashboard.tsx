@@ -10,9 +10,10 @@ import {
   DollarSign, Calendar, Users, Sliders, Check, X,
   Clock, MapPin, BarChart3, ChevronRight, Edit2, Plus, Info, Briefcase, Trash2, Edit, Lock, Key,
   Phone, Car, User as UserIcon, Search, ChevronLeft, Filter, ShieldCheck, CheckCircle2, AlertCircle, CalendarDays, ChevronDown,
-  FileText, Printer, Download, TrendingUp, PieChart, CreditCard, Package, FileSpreadsheet, Tag, Layers, RefreshCw, Bell, CheckCheck, MessageCircle, Mail
+  FileText, Printer, Download, TrendingUp, PieChart, CreditCard, Package, FileSpreadsheet, Tag, Layers, RefreshCw, Bell, CheckCheck, MessageCircle, Mail, Save, Sparkles, Pencil, Upload
 } from 'lucide-react';
-import { BookingStatus, CarWash, Booking, WeeklySchedule, CustomPaymentMethod, WashService } from '../types.js';
+import { BookingStatus, CarWash, Booking, WeeklySchedule, CustomPaymentMethod, WashService, Role } from '../types.js';
+import { EditBookingModal } from '../components/EditBookingModal.js';
 
 const getTodayDateString = () => {
   const d = new Date();
@@ -24,6 +25,7 @@ const getTodayDateString = () => {
 
 export const OwnerDashboard: React.FC = () => {
   const {
+    user,
     token,
     locations,
     bookings,
@@ -43,12 +45,23 @@ export const OwnerDashboard: React.FC = () => {
     markAllNotificationsAsRead,
   } = useApp();
 
+  // Filter locations to strictly those owned by the logged-in user
+  const ownerLocations = React.useMemo(() => {
+    if (!user) return [];
+    if (user.role === Role.ADMIN) return locations;
+    return locations.filter((loc) => loc.ownerId === user.id);
+  }, [locations, user]);
+
   // Selected owned business
   const [selectedBusiness, setSelectedBusiness] = useState<CarWash | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'bookings' | 'customers' | 'calendar' | 'settings'>('overview');
   const [customerAlphabetFilter, setCustomerAlphabetFilter] = useState<string>('ALL');
   const [customerSearchQuery, setCustomerSearchQuery] = useState<string>('');
   const [isSeedingLedger, setIsSeedingLedger] = useState(false);
+
+  // Edit Booking Modal state
+  const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
+  const [showEditBookingModal, setShowEditBookingModal] = useState<boolean>(false);
 
   const openWhatsAppCustomer = (phone?: string, customerName?: string, date?: string, timeSlot?: string, serviceName?: string) => {
     if (!phone) {
@@ -97,7 +110,37 @@ export const OwnerDashboard: React.FC = () => {
   const [mbNotes, setMbNotes] = useState('');
   const [mbStatus, setMbStatus] = useState<BookingStatus>(BookingStatus.COMPLETED);
   const [mbAvailableSlots, setMbAvailableSlots] = useState<any[]>([]);
+  const [mbSelectedSlots, setMbSelectedSlots] = useState<string[]>([]);
+  const [mbIsCustomSlot, setMbIsCustomSlot] = useState(false);
+  const [mbCustomSlotText, setMbCustomSlotText] = useState('');
   const [mbIsSubmitting, setMbIsSubmitting] = useState(false);
+
+  const getFormattedSlotSummary = (slots: string[]) => {
+    if (!slots || slots.length === 0) {
+      return 'Walk-in / Immediate (No Slot Reserved)';
+    }
+    const sorted = [...slots].sort((a, b) => {
+      const tA = a.split(' - ')[0];
+      const tB = b.split(' - ')[0];
+      return tA.localeCompare(tB);
+    });
+    if (sorted.length === 1) return sorted[0];
+
+    const isContiguous = sorted.every((s, i) => {
+      if (i === 0) return true;
+      const prevEnd = sorted[i - 1].split(' - ')[1];
+      const currStart = s.split(' - ')[0];
+      return prevEnd === currStart;
+    });
+
+    if (isContiguous) {
+      const start = sorted[0].split(' - ')[0];
+      const end = sorted[sorted.length - 1].split(' - ')[1];
+      const hrs = (sorted.length * 0.5).toFixed(1);
+      return `${start} - ${end} (${sorted.length} Slots / ${hrs} Hrs)`;
+    }
+    return sorted.join(', ');
+  };
 
   // Analytics states
   const [analytics, setAnalytics] = useState<any>({
@@ -122,6 +165,8 @@ export const OwnerDashboard: React.FC = () => {
   const [editSchedule, setEditSchedule] = useState<WeeklySchedule | null>(null);
   const [editPhone, setEditPhone] = useState('');
   const [editInstagram, setEditInstagram] = useState('');
+  const [editLogoUrl, setEditLogoUrl] = useState('');
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 
   // 🔒 Dynamic Brunei local bank config states
   const [editBibdAccountName, setEditBibdAccountName] = useState('');
@@ -141,9 +186,10 @@ export const OwnerDashboard: React.FC = () => {
   const [newServicePrice, setNewServicePrice] = useState('15.00');
   const [newServiceDuration, setNewServiceDuration] = useState('30');
   const [newServiceDesc, setNewServiceDesc] = useState('');
-  const [newServiceType, setNewServiceType] = useState<'service' | 'product'>('service');
+  const [newServiceType, setNewServiceType] = useState<'service' | 'product' | 'addon'>('service');
   const [newServiceVehicleType, setNewServiceVehicleType] = useState<string>('All');
   const [newServiceIsAvailable, setNewServiceIsAvailable] = useState<boolean>(true);
+  const [newServiceSlotsRequired, setNewServiceSlotsRequired] = useState<number>(1);
 
   // Add custom payment method quick-add states
   const [newProviderName, setNewProviderName] = useState('');
@@ -157,6 +203,8 @@ export const OwnerDashboard: React.FC = () => {
   const [showEmployeeModal, setShowEmployeeModal] = useState(false);
   const [empName, setEmpName] = useState('');
   const [empEmail, setEmpEmail] = useState('');
+  const [empPassword, setEmpPassword] = useState('');
+  const [showEmpPassword, setShowEmpPassword] = useState(false);
 
   // Edit/Delete Employee states
   const [editingEmployee, setEditingEmployee] = useState<any | null>(null);
@@ -377,6 +425,22 @@ export const OwnerDashboard: React.FC = () => {
     } else {
       accPaymentMap['Other'] += price;
     }
+  });
+
+  const accSourceMap: Record<string, { count: number; totalRevenue: number }> = {
+    WALK_IN: { count: 0, totalRevenue: 0 },
+    PHONE: { count: 0, totalRevenue: 0 },
+    ONLINE: { count: 0, totalRevenue: 0 },
+  };
+  accBookingsList.forEach((b) => {
+    if (b.status === BookingStatus.CANCELLED || b.status === BookingStatus.REJECTED) return;
+    const price = Number(b.price) || 15.0;
+    const src = b.bookingSource || 'ONLINE';
+    if (!accSourceMap[src]) {
+      accSourceMap[src] = { count: 0, totalRevenue: 0 };
+    }
+    accSourceMap[src].count += 1;
+    accSourceMap[src].totalRevenue += price;
   });
 
   const handleExportPdfReport = () => {
@@ -601,6 +665,13 @@ export const OwnerDashboard: React.FC = () => {
           </div>
 
           <div class="summary-box">
+            <h4>Booking Source Channels</h4>
+            <div class="row-item"><span>🚗 Walk-In (${accSourceMap['WALK_IN']?.count || 0})</span><strong>BND $${(accSourceMap['WALK_IN']?.totalRevenue || 0).toFixed(2)}</strong></div>
+            <div class="row-item"><span>📞 Phone Calls (${accSourceMap['PHONE']?.count || 0})</span><strong>BND $${(accSourceMap['PHONE']?.totalRevenue || 0).toFixed(2)}</strong></div>
+            <div class="row-item"><span>🌐 App / Online (${accSourceMap['ONLINE']?.count || 0})</span><strong>BND $${(accSourceMap['ONLINE']?.totalRevenue || 0).toFixed(2)}</strong></div>
+          </div>
+
+          <div class="summary-box">
             <h4>Services & Products Sold</h4>
             ${
               Object.keys(accServiceBreakdown).length > 0
@@ -748,10 +819,14 @@ export const OwnerDashboard: React.FC = () => {
 
   useEffect(() => {
     // Select first owned location if not already selected
-    if (locations.length > 0 && !selectedBusiness) {
-      setSelectedBusiness(locations[0]);
+    if (ownerLocations.length > 0) {
+      if (!selectedBusiness || !ownerLocations.some((loc) => loc.id === selectedBusiness.id)) {
+        setSelectedBusiness(ownerLocations[0]);
+      }
+    } else {
+      setSelectedBusiness(null);
     }
-  }, [locations]);
+  }, [ownerLocations]);
 
   // Auto-select focused booking when selectedBusiness or bookings change
   useEffect(() => {
@@ -785,17 +860,21 @@ export const OwnerDashboard: React.FC = () => {
 
   const handleManualBookingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedBusiness || !mbName.trim() || !mbPhone.trim() || !mbDate || !mbTimeSlot) {
+    if (!selectedBusiness || !mbName.trim() || !mbPhone.trim() || !mbDate) {
       return;
     }
 
     setMbIsSubmitting(true);
     const selectedSvc = selectedBusiness.services?.find((s) => s.id === mbSelectedServiceId);
     
+    const finalSlot = mbIsCustomSlot
+      ? (mbCustomSlotText.trim() || 'Walk-in / Immediate (No Slot)')
+      : getFormattedSlotSummary(mbSelectedSlots);
+
     const success = await createManualBooking({
       carWashId: selectedBusiness.id,
       date: mbDate,
-      timeSlot: mbTimeSlot,
+      timeSlot: finalSlot,
       customerName: mbName.trim(),
       customerPhone: mbPhone.trim(),
       customerEmail: mbEmail.trim() || undefined,
@@ -817,6 +896,7 @@ export const OwnerDashboard: React.FC = () => {
       setMbEmail('');
       setMbVehicle('');
       setMbNotes('');
+      setMbSelectedSlots([]);
     }
   };
 
@@ -872,6 +952,7 @@ export const OwnerDashboard: React.FC = () => {
     setEditSchedule(JSON.parse(JSON.stringify(selectedBusiness.openingHours)));
     setEditPhone(selectedBusiness.phone || '');
     setEditInstagram(selectedBusiness.instagram || '');
+    setEditLogoUrl(selectedBusiness.logoUrl || '');
     setEditBibdAccountName(selectedBusiness.bibdAccountName || '');
     setEditBibdAccountNo(selectedBusiness.bibdAccountNo || '');
     setEditBibdEnabled(!!selectedBusiness.bibdEnabled);
@@ -884,6 +965,84 @@ export const OwnerDashboard: React.FC = () => {
     setEditPaymentPolicy(selectedBusiness.paymentPolicy || 'PAY_ON_SITE');
     setEditServices(selectedBusiness.services || []);
     setIsEditingConfig(true);
+  };
+
+  const compressLogoToMax100KB = (file: File): Promise<Blob> => {
+    return new Promise((resolve) => {
+      if (file.type === 'image/svg+xml') {
+        resolve(file);
+        return;
+      }
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          const MAX_DIM = 300;
+          if (width > MAX_DIM || height > MAX_DIM) {
+            if (width > height) {
+              height = Math.round((height * MAX_DIM) / width);
+              width = MAX_DIM;
+            } else {
+              width = Math.round((width * MAX_DIM) / height);
+              height = MAX_DIM;
+            }
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0, width, height);
+
+          canvas.toBlob(
+            (blob) => {
+              resolve(blob || file);
+            },
+            'image/jpeg',
+            0.85
+          );
+        };
+        img.onerror = () => resolve(file);
+      };
+      reader.onerror = () => resolve(file);
+    });
+  };
+
+  const handleLogoUpload = async (file: File) => {
+    setIsUploadingLogo(true);
+    try {
+      const compressedBlob = await compressLogoToMax100KB(file);
+      const compressedFile = new File([compressedBlob], `logo_${Date.now()}.jpg`, {
+        type: compressedBlob.type || 'image/jpeg',
+      });
+
+      const formData = new FormData();
+      formData.append('image', compressedFile);
+
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('cw_token')}`,
+        },
+        body: formData,
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setEditLogoUrl(data.url);
+        showNotification('Business logo uploaded & compressed under 100KB successfully!', 'success');
+      } else {
+        alert('Failed to upload logo image.');
+      }
+    } catch (err) {
+      console.error('Error uploading logo:', err);
+      alert('Error uploading business logo.');
+    } finally {
+      setIsUploadingLogo(false);
+    }
   };
 
   const handleQrUpload = async (file: File, type: 'bibd' | 'baiduri' | 'custom') => {
@@ -941,6 +1100,7 @@ export const OwnerDashboard: React.FC = () => {
       customPaymentsJson: JSON.stringify(editCustomPaymentMethods),
       paymentPolicy: editPaymentPolicy,
       services: editServices,
+      logoUrl: editLogoUrl,
     };
 
     const success = await updateLocationConfig(selectedBusiness.id, data);
@@ -960,10 +1120,11 @@ export const OwnerDashboard: React.FC = () => {
     e.preventDefault();
     if (!selectedBusiness || !empEmail || !empName) return;
 
-    const success = await createEmployee(empEmail, empName, selectedBusiness.id);
+    const success = await createEmployee(empEmail, empName, selectedBusiness.id, empPassword);
     if (success) {
       setEmpName('');
       setEmpEmail('');
+      setEmpPassword('');
       setShowEmployeeModal(false);
     }
   };
@@ -1145,13 +1306,13 @@ export const OwnerDashboard: React.FC = () => {
           <select
             value={selectedBusiness?.id || ''}
             onChange={(e) => {
-              const b = locations.find((loc) => loc.id === e.target.value);
+              const b = ownerLocations.find((loc) => loc.id === e.target.value);
               if (b) setSelectedBusiness(b);
             }}
             className="bg-white border border-slate-200 text-slate-700 text-sm font-semibold rounded-xl px-3 py-1.5 outline-none focus:border-indigo-500 shadow-xs"
             id="owner-business-selector"
           >
-            {locations.map((loc) => (
+            {ownerLocations.map((loc) => (
               <option key={loc.id} value={loc.id}>{loc.name}</option>
             ))}
           </select>
@@ -1690,24 +1851,39 @@ export const OwnerDashboard: React.FC = () => {
               </div>
             </div>
 
-            {/* Payment Method Breakdown & Search Bar Row */}
+            {/* Payment Method & Booking Source Breakdown Row */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-center">
-              <div className="lg:col-span-8 flex flex-wrap items-center gap-1.5">
-                <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider mr-1 w-full sm:w-auto block sm:inline">Payment Breakdown:</span>
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 border border-slate-200 rounded-xl text-[11px] font-bold text-slate-700">
-                  💵 Cash: <strong className="font-mono text-slate-900">${accPaymentMap['Cash'].toFixed(2)}</strong>
-                </span>
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-sky-50 border border-sky-200 rounded-xl text-[11px] font-bold text-sky-800">
-                  🏦 BIBD: <strong className="font-mono text-sky-950">${accPaymentMap['BIBD'].toFixed(2)}</strong>
-                </span>
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-purple-50 border border-purple-200 rounded-xl text-[11px] font-bold text-purple-800">
-                  🏦 Baiduri: <strong className="font-mono text-purple-950">${accPaymentMap['Baiduri'].toFixed(2)}</strong>
-                </span>
-                {accPaymentMap['Other'] > 0 && (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 border border-amber-200 rounded-xl text-[11px] font-bold text-amber-800">
-                    💳 Other: <strong className="font-mono text-amber-950">${accPaymentMap['Other'].toFixed(2)}</strong>
+              <div className="lg:col-span-8 space-y-2">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mr-1 w-full sm:w-auto block sm:inline">Payment:</span>
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 border border-slate-200 rounded-xl text-[11px] font-bold text-slate-700">
+                    💵 Cash: <strong className="font-mono text-slate-900">${accPaymentMap['Cash'].toFixed(2)}</strong>
                   </span>
-                )}
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-sky-50 border border-sky-200 rounded-xl text-[11px] font-bold text-sky-800">
+                    🏦 BIBD: <strong className="font-mono text-sky-950">${accPaymentMap['BIBD'].toFixed(2)}</strong>
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-purple-50 border border-purple-200 rounded-xl text-[11px] font-bold text-purple-800">
+                    🏦 Baiduri: <strong className="font-mono text-purple-950">${accPaymentMap['Baiduri'].toFixed(2)}</strong>
+                  </span>
+                  {accPaymentMap['Other'] > 0 && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 border border-amber-200 rounded-xl text-[11px] font-bold text-amber-800">
+                      💳 Other: <strong className="font-mono text-amber-950">${accPaymentMap['Other'].toFixed(2)}</strong>
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mr-1 w-full sm:w-auto block sm:inline">Channel:</span>
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 border border-emerald-200/90 rounded-xl text-[11px] font-bold text-emerald-800">
+                    🚗 Walk-In: <strong className="font-mono text-emerald-950">{accSourceMap['WALK_IN']?.count || 0}</strong> <span className="text-[10px] text-emerald-700 font-mono">(${ (accSourceMap['WALK_IN']?.totalRevenue || 0).toFixed(2) })</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 border border-amber-200/90 rounded-xl text-[11px] font-bold text-amber-800">
+                    📞 Phone: <strong className="font-mono text-amber-950">{accSourceMap['PHONE']?.count || 0}</strong> <span className="text-[10px] text-amber-700 font-mono">(${ (accSourceMap['PHONE']?.totalRevenue || 0).toFixed(2) })</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-sky-50 border border-sky-200/90 rounded-xl text-[11px] font-bold text-sky-800">
+                    🌐 App: <strong className="font-mono text-sky-950">{accSourceMap['ONLINE']?.count || 0}</strong> <span className="text-[10px] text-sky-700 font-mono">(${ (accSourceMap['ONLINE']?.totalRevenue || 0).toFixed(2) })</span>
+                  </span>
+                </div>
               </div>
 
               {/* Search Bar */}
@@ -1746,6 +1922,7 @@ export const OwnerDashboard: React.FC = () => {
                       <th className="p-3">Source</th>
                       <th className="p-3">Payment</th>
                       <th className="p-3">Status</th>
+                      <th className="p-3">Action</th>
                       <th className="p-3 pr-4 text-right">Amount (BND)</th>
                     </tr>
                   </thead>
@@ -1840,6 +2017,20 @@ export const OwnerDashboard: React.FC = () => {
                                 {bk.status}
                               </span>
                             </td>
+                            <td className="p-3">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingBooking(bk);
+                                  setShowEditBookingModal(true);
+                                }}
+                                className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 rounded-lg text-[10px] font-extrabold flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
+                                title="Edit Services, Add-ons & Total Price"
+                              >
+                                <Pencil className="w-3 h-3 text-indigo-600" />
+                                <span>Edit</span>
+                              </button>
+                            </td>
                             <td className="p-3 pr-4 text-right font-mono font-black text-slate-900 text-sm">
                               ${(Number(bk.price) || 15.0).toFixed(2)}
                             </td>
@@ -1848,7 +2039,7 @@ export const OwnerDashboard: React.FC = () => {
                       })
                     ) : (
                       <tr>
-                        <td colSpan={8} className="p-8 text-center text-slate-400">
+                        <td colSpan={9} className="p-8 text-center text-slate-400">
                           No accounting records found matching current criteria.
                         </td>
                       </tr>
@@ -1858,7 +2049,7 @@ export const OwnerDashboard: React.FC = () => {
                   {accBookingsList.length > 0 && (
                     <tfoot>
                       <tr className="bg-indigo-50/90 border-t-2 border-indigo-500/30 text-indigo-950 font-black text-xs">
-                        <td colSpan={7} className="p-3.5 pl-4 uppercase tracking-wider">
+                        <td colSpan={8} className="p-3.5 pl-4 uppercase tracking-wider">
                           Accounting Summary ({accBookingsList.length} total entries)
                         </td>
                         <td className="p-3.5 pr-4 text-right font-mono text-base text-emerald-700">
@@ -1958,7 +2149,7 @@ export const OwnerDashboard: React.FC = () => {
                             )}
                           </div>
 
-                          <div>
+                          <div className="flex items-center gap-2">
                             {bk.paymentBank ? (
                               <span className="font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded text-[10px]">
                                 🏦 {bk.paymentBank} Transfer
@@ -1968,6 +2159,19 @@ export const OwnerDashboard: React.FC = () => {
                                 💵 Cash on Site
                               </span>
                             )}
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingBooking(bk);
+                                setShowEditBookingModal(true);
+                              }}
+                              className="px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 rounded-md text-[10px] font-extrabold flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
+                              title="Edit Services, Add-ons & Total Price"
+                            >
+                              <Pencil className="w-3 h-3 text-indigo-600" />
+                              <span>Edit</span>
+                            </button>
                           </div>
                         </div>
                       </div>
@@ -2240,6 +2444,32 @@ export const OwnerDashboard: React.FC = () => {
 
               {!isEditingConfig ? (
                 <div className="mt-4 space-y-4 text-sm text-slate-600">
+                  {selectedBusiness.logoUrl ? (
+                    <div className="flex items-center gap-3.5 bg-slate-50 border border-slate-200/80 p-3.5 rounded-2xl">
+                      <img
+                        src={selectedBusiness.logoUrl}
+                        alt={selectedBusiness.name}
+                        className="w-14 h-14 object-cover rounded-xl border border-slate-200 shadow-xs shrink-0"
+                      />
+                      <div>
+                        <span className="text-xs font-bold text-slate-800 block">Official Business Logo</span>
+                        <span className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1 mt-0.5">
+                          <CheckCheck className="w-3.5 h-3.5" /> Displayed on customer portal & receipts
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-3.5 bg-slate-50/60 border border-dashed border-slate-200 p-3.5 rounded-2xl">
+                      <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-black text-xs shrink-0">
+                        Logo
+                      </div>
+                      <div>
+                        <span className="text-xs font-bold text-slate-700 block">No Business Logo Uploaded</span>
+                        <span className="text-[10px] text-slate-400 block">Click "Edit Config" to upload your brand logo (&lt;100KB)</span>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="bg-slate-50 border border-slate-150 p-4 rounded-xl space-y-2">
                     <div className="flex justify-between">
                       <span className="text-slate-400 font-medium">Business Name</span>
@@ -2283,6 +2513,51 @@ export const OwnerDashboard: React.FC = () => {
                 </div>
               ) : (
                 <form onSubmit={handleSaveConfig} className="mt-4 space-y-4">
+                  <div className="bg-slate-50 border border-slate-200/80 p-4 rounded-2xl space-y-2 text-left">
+                    <label className="block text-xs font-bold text-slate-700 uppercase">
+                      Business Branding Logo (Enforced &lt;100KB)
+                    </label>
+                    <p className="text-[10px] text-slate-400 leading-relaxed">
+                      Upload your car wash logo. Images are automatically resized and compressed client-side to ensure the file size stays under 100KB.
+                    </p>
+                    <div className="flex items-center gap-4 pt-1">
+                      {editLogoUrl ? (
+                        <div className="flex items-center gap-3 bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
+                          <img src={editLogoUrl} className="w-14 h-14 object-cover rounded-lg border border-slate-200 shadow-xs" alt="Business Logo" />
+                          <div className="text-left">
+                            <span className="text-xs font-bold text-slate-800 block">Logo Uploaded</span>
+                            <span className="text-[10px] text-emerald-600 font-bold block">Optimized &lt;100KB</span>
+                            <button
+                              type="button"
+                              onClick={() => setEditLogoUrl('')}
+                              className="text-[10px] text-rose-600 hover:text-rose-700 font-bold hover:underline cursor-pointer mt-0.5"
+                            >
+                              Remove Logo
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <label className="flex-1 flex items-center justify-center border-2 border-dashed border-slate-200 hover:border-indigo-400 bg-white hover:bg-indigo-50/20 cursor-pointer rounded-2xl py-3 px-4 text-center transition-all">
+                          <span className="text-xs text-slate-700 font-bold flex items-center gap-2">
+                            <Upload className="w-4 h-4 text-indigo-600" />
+                            {isUploadingLogo ? 'Compressing & Uploading Logo...' : 'Upload Business Logo (Auto-Compress <100KB)'}
+                          </span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            disabled={isUploadingLogo}
+                            className="hidden"
+                            onChange={(e) => {
+                              if (e.target.files && e.target.files[0]) {
+                                handleLogoUpload(e.target.files[0]);
+                              }
+                            }}
+                          />
+                        </label>
+                      )}
+                    </div>
+                  </div>
+
                   <div>
                     <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Business Name</label>
                     <input
@@ -2380,7 +2655,7 @@ export const OwnerDashboard: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Brunei Local Bank Payment Information Settings */}
+                  {/* Bank transfer settings commented out for now - using Pay at Counter on site
                   <div className="bg-sky-50/50 border border-sky-100 rounded-2xl p-4 space-y-4">
                     <div className="flex items-center gap-2">
                       <div className="p-1.5 bg-sky-100 rounded-lg text-sky-700">
@@ -2393,7 +2668,6 @@ export const OwnerDashboard: React.FC = () => {
                     </div>
 
                     <div className="space-y-3">
-                      {/* BIBD */}
                       <div className="bg-white border border-slate-200/80 p-3 rounded-xl space-y-2.5">
                         <div className="flex items-center justify-between">
                           <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5 cursor-pointer">
@@ -2475,7 +2749,6 @@ export const OwnerDashboard: React.FC = () => {
                         )}
                       </div>
 
-                      {/* Baiduri */}
                       <div className="bg-white border border-slate-200/80 p-3 rounded-xl space-y-2.5">
                         <div className="flex items-center justify-between">
                           <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5 cursor-pointer">
@@ -2557,7 +2830,6 @@ export const OwnerDashboard: React.FC = () => {
                         )}
                       </div>
 
-                      {/* Custom & Other Banks / E-Wallets */}
                       <div className="border-t border-slate-100 pt-3 mt-3">
                         <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                           Other Brunei Local Banks & E-Wallets
@@ -2566,7 +2838,6 @@ export const OwnerDashboard: React.FC = () => {
                           Add custom local payment options such as <strong>TARUS Instant Transfer</strong>, <strong>DST Pocket</strong>, <strong>Progresif Pay</strong>, Standard Chartered, or Maybank.
                         </p>
 
-                        {/* Existing Custom Methods List */}
                         {editCustomPaymentMethods.length > 0 && (
                           <div className="space-y-2 mb-4">
                             {editCustomPaymentMethods.map((method) => (
@@ -2607,7 +2878,6 @@ export const OwnerDashboard: React.FC = () => {
                           </div>
                         )}
 
-                        {/* Quick Add Form */}
                         <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2.5">
                           <span className="text-[10px] font-bold text-slate-700 block uppercase tracking-wider">Add a New Local Payment Method</span>
                           
@@ -2725,6 +2995,7 @@ export const OwnerDashboard: React.FC = () => {
                       </div>
                     </div>
                   </div>
+                  */}
 
 
                   <div className="h-[480px] sm:h-[400px] relative rounded-xl border border-slate-200 overflow-hidden">
@@ -2747,11 +3018,14 @@ export const OwnerDashboard: React.FC = () => {
                       <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Latitude (GPS Coordinate)</label>
                       <input
                         type="number"
-                        step="0.0001"
+                        step="any"
                         min="-90"
                         max="90"
                         value={editLat}
-                        onChange={(e) => setEditLat(parseFloat(e.target.value) || 4.8917)}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          if (!isNaN(val)) setEditLat(val);
+                        }}
                         className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-mono font-bold bg-white"
                         required
                       />
@@ -2760,11 +3034,14 @@ export const OwnerDashboard: React.FC = () => {
                       <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Longitude (GPS Coordinate)</label>
                       <input
                         type="number"
-                        step="0.0001"
+                        step="any"
                         min="-180"
                         max="180"
                         value={editLng}
-                        onChange={(e) => setEditLng(parseFloat(e.target.value) || 114.9401)}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          if (!isNaN(val)) setEditLng(val);
+                        }}
                         className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-mono font-bold bg-white"
                         required
                       />
@@ -2881,14 +3158,36 @@ export const OwnerDashboard: React.FC = () => {
 
                   {/* Dynamic Services Creator Section */}
                   <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-4">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 bg-indigo-100 text-indigo-700 rounded-lg">
-                        <Briefcase className="w-4 h-4" />
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 bg-indigo-100 text-indigo-700 rounded-lg">
+                          <Briefcase className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-xs text-slate-800 uppercase tracking-wider">Dynamic Services, Add-ons & Products</h4>
+                          <p className="text-[10px] text-slate-400">Define customized wash services, add-ons (headlight polish, engine wash) and products for your business.</p>
+                        </div>
                       </div>
-                      <div>
-                        <h4 className="font-bold text-xs text-slate-800 uppercase tracking-wider">Dynamic Products & Services</h4>
-                        <p className="text-[10px] text-slate-400">Define the customized wash services and products (e.g. shampoo, wax) customers can buy or book.</p>
-                      </div>
+
+                      {selectedBusiness && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!selectedBusiness) return;
+                            const success = await updateLocationConfig(selectedBusiness.id, {
+                              ...selectedBusiness,
+                              services: editServices,
+                            });
+                            if (success) {
+                              showNotification('Services & Add-ons updated and saved to database!', 'success');
+                            }
+                          }}
+                          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Save className="w-3.5 h-3.5" />
+                          <span>Save Services to DB</span>
+                        </button>
+                      )}
                     </div>
 
                     {/* Services List */}
@@ -2901,6 +3200,7 @@ export const OwnerDashboard: React.FC = () => {
                         <div className="grid grid-cols-1 gap-2 max-h-60 overflow-y-auto pr-1 text-left">
                           {editServices.map((svc) => {
                             const isProduct = svc.type === 'product';
+                            const isAddon = svc.type === 'addon';
                             const isAvailable = svc.isAvailable !== false;
                             return (
                               <div key={svc.id} className="bg-white border border-slate-200/80 p-3 rounded-xl flex items-center justify-between gap-4">
@@ -2909,6 +3209,8 @@ export const OwnerDashboard: React.FC = () => {
                                     <span className="font-bold text-slate-700 text-xs">{svc.name}</span>
                                     {isProduct ? (
                                       <span className="bg-emerald-50 text-emerald-700 border border-emerald-100 font-extrabold text-[9px] px-1.5 py-0.5 rounded-md uppercase">Product</span>
+                                    ) : isAddon ? (
+                                      <span className="bg-purple-50 text-purple-700 border border-purple-100 font-extrabold text-[9px] px-1.5 py-0.5 rounded-md uppercase">Add-on</span>
                                     ) : (
                                       <span className="bg-blue-50 text-blue-700 border border-blue-100 font-extrabold text-[9px] px-1.5 py-0.5 rounded-md uppercase">Service</span>
                                     )}
@@ -2923,9 +3225,15 @@ export const OwnerDashboard: React.FC = () => {
                                   </div>
                                   {svc.description && <span className="text-[10px] text-slate-400 block mt-0.5 line-clamp-1">{svc.description}</span>}
                                   {!isProduct ? (
-                                    <span className="text-[10px] text-slate-500 font-mono mt-0.5 block">{svc.duration} min duration</span>
+                                    <span className="text-[10px] text-slate-500 font-mono mt-0.5 flex items-center gap-1.5 flex-wrap">
+                                      <span>{svc.duration} min duration</span>
+                                      <span>•</span>
+                                      <span className="font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">
+                                        {svc.slotsRequired === 0 ? '0 Bay Slots (Takes No Capacity)' : `${svc.slotsRequired || 1} Bay Slot(s)`}
+                                      </span>
+                                    </span>
                                   ) : (
-                                    <span className="text-[10px] text-emerald-600 font-medium mt-0.5 block">Physical Product</span>
+                                    <span className="text-[10px] text-emerald-600 font-medium mt-0.5 block">Physical Product (0 Bay Slots)</span>
                                   )}
                                 </div>
                                 <div className="flex items-center gap-3 shrink-0">
@@ -2948,35 +3256,51 @@ export const OwnerDashboard: React.FC = () => {
 
                     {/* Quick-Add Service Form */}
                     <div className="bg-white border border-slate-200 p-3.5 rounded-xl space-y-3 text-left">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Add New Customized Service or Product</span>
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Add New Customized Service, Add-on or Product</span>
                       
                       {/* Item Type Toggle */}
                       <div>
-                        <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Item Type</label>
-                        <div className="grid grid-cols-2 gap-2">
+                        <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Item Category / Type</label>
+                        <div className="grid grid-cols-3 gap-2">
                           <button
                             type="button"
                             onClick={() => {
                               setNewServiceType('service');
                               setNewServiceVehicleType('All');
                             }}
-                            className={`py-1.5 px-3 border rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                            className={`py-1.5 px-2 border rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${
                               newServiceType === 'service'
-                                ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
+                                ? 'border-blue-500 bg-blue-50 text-blue-700'
                                 : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
                             }`}
                           >
-                            Service
+                            Main Service
                           </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNewServiceType('addon');
+                              setNewServiceVehicleType('All');
+                            }}
+                            className={`py-1.5 px-2 border rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                              newServiceType === 'addon'
+                                ? 'border-purple-500 bg-purple-50 text-purple-700'
+                                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                            }`}
+                          >
+                            Add-on / Extra
+                          </button>
+
                           <button
                             type="button"
                             onClick={() => {
                               setNewServiceType('product');
                               setNewServiceVehicleType('N/A');
                             }}
-                            className={`py-1.5 px-3 border rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                            className={`py-1.5 px-2 border rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${
                               newServiceType === 'product'
-                                ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
+                                ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
                                 : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
                             }`}
                           >
@@ -2991,10 +3315,16 @@ export const OwnerDashboard: React.FC = () => {
                           <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5">Item Name</label>
                           <input
                             type="text"
-                            placeholder={newServiceType === 'service' ? "e.g. Premium Clay Bar Detail" : "e.g. Microfiber Drying Towel"}
+                            placeholder={
+                              newServiceType === 'service'
+                                ? "e.g. Executive Polish & Wax"
+                                : newServiceType === 'addon'
+                                ? "e.g. Headlight Polish, Engine Wash, Tyre Wax"
+                                : "e.g. Microfiber Drying Towel"
+                            }
                             value={newServiceName}
                             onChange={(e) => setNewServiceName(e.target.value)}
-                            className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs"
+                            className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-medium"
                           />
                         </div>
 
@@ -3014,7 +3344,7 @@ export const OwnerDashboard: React.FC = () => {
                         {/* Duration (Hidden/Set to 0 if product) */}
                         <div className="sm:col-span-6">
                           <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5">
-                            {newServiceType === 'service' ? "Duration (minutes)" : "Duration (N/A)"}
+                            {newServiceType === 'product' ? "Duration (N/A)" : "Duration (minutes)"}
                           </label>
                           <input
                             type="number"
@@ -3026,7 +3356,7 @@ export const OwnerDashboard: React.FC = () => {
                           />
                         </div>
 
-                        {/* Vehicle Type (Only useful for services, or products specifically for one type) */}
+                        {/* Vehicle Type */}
                         <div className="sm:col-span-6">
                           <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5">Vehicle Compatibility</label>
                           <select
@@ -3039,6 +3369,24 @@ export const OwnerDashboard: React.FC = () => {
                             <option value="SUV">SUV Only</option>
                             <option value="Motorcycle">Motorcycle Only</option>
                             <option value="N/A">Not Applicable (N/A)</option>
+                          </select>
+                        </div>
+
+                        {/* Bay Slots Capacity Required */}
+                        <div className="sm:col-span-6">
+                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5">
+                            Bay Slots Capacity
+                          </label>
+                          <select
+                            disabled={newServiceType === 'product'}
+                            value={newServiceType === 'product' ? 0 : newServiceSlotsRequired}
+                            onChange={(e) => setNewServiceSlotsRequired(parseInt(e.target.value, 10))}
+                            className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs bg-white text-slate-700 disabled:bg-slate-50 disabled:text-slate-400 font-medium"
+                          >
+                            <option value={0}>0 Slots (Takes 0 Capacity - Add/Book Anytime)</option>
+                            <option value={1}>1 Slot (Standard ~30 min)</option>
+                            <option value={2}>2 Slots (1 Hour / Multi-Slot Wash)</option>
+                            <option value={3}>3 Slots (1.5 Hours / Full Detail)</option>
                           </select>
                         </div>
 
@@ -3070,7 +3418,7 @@ export const OwnerDashboard: React.FC = () => {
 
                       <button
                         type="button"
-                        onClick={() => {
+                        onClick={async () => {
                           if (!newServiceName.trim()) return;
                           const priceNum = parseFloat(newServicePrice);
                           const durNum = newServiceType === 'product' ? 0 : parseInt(newServiceDuration, 10);
@@ -3085,20 +3433,30 @@ export const OwnerDashboard: React.FC = () => {
                             type: newServiceType,
                             vehicleType: newServiceVehicleType,
                             isAvailable: newServiceIsAvailable,
+                            slotsRequired: newServiceType === 'product' ? 0 : newServiceSlotsRequired,
                           };
 
-                          setEditServices([...editServices, newSvc]);
+                          const updatedList = [...editServices, newSvc];
+                          setEditServices(updatedList);
+
+                          // Auto-persist if selectedBusiness exists
+                          if (selectedBusiness) {
+                            await updateLocationConfig(selectedBusiness.id, {
+                              ...selectedBusiness,
+                              services: updatedList,
+                            });
+                          }
+
                           setNewServiceName('');
                           setNewServicePrice('15.00');
                           setNewServiceDuration('30');
                           setNewServiceDesc('');
-                          // Keep type as selected, but reset default compatibility if needed
                           setNewServiceIsAvailable(true);
                         }}
-                        className="w-full py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-100 font-bold text-xs rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer"
+                        className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer shadow-xs"
                       >
                         <Plus className="w-3.5 h-3.5" />
-                        <span>Add to List</span>
+                        <span>Add & Save Item</span>
                       </button>
                     </div>
                   </div>
@@ -3324,6 +3682,64 @@ export const OwnerDashboard: React.FC = () => {
 
       {activeTab === 'bookings' && (
         <div className="max-w-5xl mx-auto space-y-6 animate-fade-in">
+          {/* Active Services & Pricing Catalog Banner for Operators */}
+          <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-3xl p-5 sm:p-6 shadow-md border border-slate-800">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 bg-indigo-500/20 text-indigo-400 rounded-lg">
+                    <Sparkles className="w-4 h-4" />
+                  </span>
+                  <h3 className="font-extrabold text-white text-base sm:text-lg">Services, Add-ons & Products Offered</h3>
+                </div>
+                <p className="text-xs text-slate-400 mt-1">
+                  Active wash menu available for online bookings and walk-in sales
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('settings')}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs rounded-xl transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ Add / Edit Services</span>
+              </button>
+            </div>
+
+            {/* Quick Service Pills Display */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-4">
+              {(!selectedBusiness?.services || selectedBusiness.services.length === 0) ? (
+                <div className="col-span-full bg-slate-800/60 border border-slate-700/80 rounded-2xl p-4 text-center text-xs text-slate-400">
+                  Default Standard Wash ($15.00) active. Click <strong className="text-indigo-300">+ Add / Edit Services</strong> above to add custom wash packages, headlight polishing, or retail products!
+                </div>
+              ) : (
+                selectedBusiness.services.map((svc) => (
+                  <div key={svc.id} className="bg-slate-800/80 border border-slate-700/60 rounded-2xl p-3.5 flex items-center justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <strong className="text-xs font-extrabold text-white truncate block">{svc.name}</strong>
+                        {svc.type === 'addon' ? (
+                          <span className="bg-purple-950 text-purple-300 border border-purple-800/60 text-[9px] font-bold px-1.5 py-0.2 rounded uppercase">Add-on</span>
+                        ) : svc.type === 'product' ? (
+                          <span className="bg-emerald-950 text-emerald-300 border border-emerald-800/60 text-[9px] font-bold px-1.5 py-0.2 rounded uppercase">Product</span>
+                        ) : (
+                          <span className="bg-indigo-950 text-indigo-300 border border-indigo-800/60 text-[9px] font-bold px-1.5 py-0.2 rounded uppercase">Service</span>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-slate-400 block mt-0.5 font-mono">
+                        {svc.duration ? `${svc.duration} mins` : 'N/A'} • {svc.slotsRequired === 0 ? '0 Bay Slots (Flex)' : `${svc.slotsRequired || 1} Bay Slot(s)`}
+                      </span>
+                    </div>
+                    <span className="font-black text-xs text-emerald-400 bg-emerald-950/60 border border-emerald-800/40 px-2 py-1 rounded-lg shrink-0 font-mono">
+                      BND ${svc.price.toFixed(2)}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
           {/* Bookings Operations Control */}
           <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-6">
@@ -3831,7 +4247,21 @@ export const OwnerDashboard: React.FC = () => {
 
                           <div className="flex items-center justify-between gap-2 text-[11px] pt-1 border-t border-slate-100">
                             <span className="text-slate-500 font-bold">Service: <strong className="text-indigo-700">{bk.serviceName || 'Standard Wash'}</strong></span>
-                            <span className="font-black text-slate-900 font-mono">BND ${(bk.price || 15.00).toFixed(2)}</span>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingBooking(bk);
+                                  setShowEditBookingModal(true);
+                                }}
+                                className="px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 rounded-md text-[10px] font-extrabold flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
+                                title="Edit Services, Add-ons & Total Price"
+                              >
+                                <Pencil className="w-3 h-3 text-indigo-600" />
+                                <span>Edit</span>
+                              </button>
+                              <span className="font-black text-slate-900 font-mono">BND ${(bk.price || 15.00).toFixed(2)}</span>
+                            </div>
                           </div>
                         </div>
 
@@ -3948,9 +4378,23 @@ export const OwnerDashboard: React.FC = () => {
                           <span className="text-[10px] text-slate-400 uppercase font-bold block">Selected Service / Item</span>
                           <span className="font-bold text-slate-700 text-xs">{focusedBooking.serviceName || 'Standard Car Wash'}</span>
                         </div>
-                        <span className="font-mono font-black text-indigo-600 text-sm">
-                          BND ${(focusedBooking.price || 15).toFixed(2)}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingBooking(focusedBooking);
+                              setShowEditBookingModal(true);
+                            }}
+                            className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 rounded-lg text-[10px] font-extrabold flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
+                            title="Edit Services, Add-ons & Total Price"
+                          >
+                            <Pencil className="w-3 h-3 text-indigo-600" />
+                            <span>Edit</span>
+                          </button>
+                          <span className="font-mono font-black text-indigo-600 text-sm">
+                            BND ${(focusedBooking.price || 15).toFixed(2)}
+                          </span>
+                        </div>
                       </div>
 
                       <div className="bg-white border border-slate-200/60 p-3 rounded-xl">
@@ -4226,11 +4670,33 @@ export const OwnerDashboard: React.FC = () => {
                 />
               </div>
 
-              <div className="bg-amber-50 text-amber-800 p-2.5 rounded-lg border border-amber-150 text-[11px] flex gap-2">
-                <Info className="h-4 w-4 shrink-0 mt-0.5 text-amber-600" />
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  Login Password (Chosen by Owner)
+                </label>
+                <div className="relative">
+                  <input
+                    type={showEmpPassword ? 'text' : 'password'}
+                    placeholder="Set password (or leave empty for 'employee123')"
+                    value={empPassword}
+                    onChange={(e) => setEmpPassword(e.target.value)}
+                    className="w-full px-3 py-2 pr-14 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-mono text-xs"
+                    id="emp-password-input"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowEmpPassword(!showEmpPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer text-xs font-bold"
+                  >
+                    {showEmpPassword ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-indigo-50 text-indigo-900 p-2.5 rounded-xl border border-indigo-100 text-[11px] flex gap-2">
+                <Info className="h-4 w-4 shrink-0 mt-0.5 text-indigo-600" />
                 <p>
-                  Newly registered staff accounts can log in using their email and the default initial password:
-                  <strong className="block font-bold select-all mt-1">employee123</strong>
+                  As owner, you set the staff password above. The employee can log in using their email and this password immediately.
                 </p>
               </div>
 
@@ -4306,7 +4772,7 @@ export const OwnerDashboard: React.FC = () => {
                   required
                 >
                   <option value="">-- Select Business --</option>
-                  {locations.map((loc) => (
+                  {ownerLocations.map((loc) => (
                     <option key={loc.id} value={loc.id}>
                       {loc.name}
                     </option>
@@ -4454,41 +4920,133 @@ export const OwnerDashboard: React.FC = () => {
                 </div>
               </div>
 
-              {/* Date & Time Slot */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
-                    Booking Date *
+              {/* Booking Date */}
+              <div>
+                <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
+                  Booking Date *
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={mbDate}
+                  onChange={(e) => setMbDate(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm outline-none focus:border-indigo-500 font-mono"
+                />
+              </div>
+
+              {/* Time Slot Selection (Interactive Chip Picker) */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider">
+                    Time Slot Selection (Click chips to choose 1 or multi-slots) *
                   </label>
-                  <input
-                    type="date"
-                    required
-                    value={mbDate}
-                    onChange={(e) => setMbDate(e.target.value)}
-                    className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm outline-none focus:border-indigo-500 font-mono"
-                  />
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setMbSelectedSlots([])}
+                      className="text-[10px] font-bold text-amber-600 hover:underline cursor-pointer"
+                    >
+                      ⚡ Immediate / Unscheduled
+                    </button>
+                    <span className="text-slate-300">|</span>
+                    <button
+                      type="button"
+                      onClick={() => setMbIsCustomSlot(!mbIsCustomSlot)}
+                      className="text-[10px] font-bold text-indigo-600 hover:underline cursor-pointer"
+                    >
+                      {mbIsCustomSlot ? "Select Interactive Slots" : "✍️ Custom Text"}
+                    </button>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
-                    Time Slot *
-                  </label>
-                  <select
-                    value={mbTimeSlot}
-                    onChange={(e) => setMbTimeSlot(e.target.value)}
-                    className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm outline-none focus:border-indigo-500 font-mono"
-                  >
-                    {mbAvailableSlots.length === 0 ? (
-                      <option value="09:00 - 09:30">09:00 - 09:30</option>
-                    ) : (
-                      mbAvailableSlots.map((s) => (
-                        <option key={s.timeSlot} value={s.timeSlot}>
-                          {s.timeSlot} ({s.bookedCount}/{s.capacity} occupied)
-                        </option>
-                      ))
-                    )}
-                  </select>
-                </div>
+                {mbIsCustomSlot ? (
+                  <input
+                    type="text"
+                    placeholder="e.g. 09:00 - 10:30 (Walk-in Bay 2 / 1.5 Hrs)"
+                    value={mbCustomSlotText}
+                    onChange={(e) => setMbCustomSlotText(e.target.value)}
+                    className="w-full px-3 py-2.5 border border-indigo-300 bg-indigo-50/30 rounded-xl text-slate-800 text-xs sm:text-sm outline-none focus:border-indigo-500 font-mono font-bold"
+                  />
+                ) : (
+                  <div className="space-y-2">
+                    {/* Selection Summary Header */}
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 flex items-center justify-between text-xs">
+                      <div>
+                        <span className="text-[10px] text-slate-400 font-bold uppercase block">Selected Time Window</span>
+                        <strong className="text-slate-800 font-mono text-xs sm:text-sm">
+                          {getFormattedSlotSummary(mbSelectedSlots)}
+                        </strong>
+                      </div>
+                      {mbSelectedSlots.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setMbSelectedSlots([])}
+                          className="text-[10px] font-bold text-slate-500 hover:text-red-600 px-2 py-1 bg-white border border-slate-200 rounded-lg shadow-2xs hover:bg-red-50 transition-colors cursor-pointer"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Interactive Chips Grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-1.5 border border-slate-200 rounded-2xl bg-slate-50/50">
+                      {mbAvailableSlots.length === 0 ? (
+                        <div className="col-span-full p-4 text-center text-slate-400 text-xs">
+                          No predefined slots loaded for this date. Click "Custom Text" above to write custom range.
+                        </div>
+                      ) : (
+                        mbAvailableSlots.map((s) => {
+                          const isSelected = mbSelectedSlots.includes(s.timeSlot);
+                          const remaining = s.remainingCapacity !== undefined ? s.remainingCapacity : (s.capacity - s.bookedCount);
+                          const isFull = remaining <= 0;
+
+                          return (
+                            <button
+                              key={s.timeSlot}
+                              type="button"
+                              onClick={() => {
+                                if (isSelected) {
+                                  setMbSelectedSlots(mbSelectedSlots.filter((slot) => slot !== s.timeSlot));
+                                } else {
+                                  setMbSelectedSlots([...mbSelectedSlots, s.timeSlot]);
+                                }
+                              }}
+                              className={`p-2 rounded-xl text-left border transition-all cursor-pointer flex flex-col justify-between ${
+                                isSelected
+                                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs font-bold scale-[1.02]'
+                                  : isFull
+                                  ? 'bg-red-50/80 hover:bg-red-100 border-red-200 text-slate-800'
+                                  : 'bg-white hover:bg-slate-100 border-slate-200 text-slate-800'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between text-xs font-mono font-bold">
+                                <span>{s.timeSlot}</span>
+                                {isSelected && <Check className="w-3.5 h-3.5 shrink-0 ml-1" />}
+                              </div>
+                              <div className="mt-1 flex items-center justify-between text-[10px]">
+                                <span className={`font-semibold ${
+                                  isSelected
+                                    ? 'text-indigo-100'
+                                    : isFull
+                                    ? 'text-red-600 font-bold'
+                                    : 'text-slate-500'
+                                }`}>
+                                  {isFull ? '🔴 0 left (Full)' : `🟢 ${remaining} left`}
+                                </span>
+                                <span className={`font-mono text-[9px] ${isSelected ? 'text-indigo-200' : 'text-slate-400'}`}>
+                                  {s.bookedCount}/{s.capacity}
+                                </span>
+                              </div>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                    <p className="text-[10px] text-slate-400 italic">
+                      💡 Click one or multiple slots to set custom duration (e.g. 1.5 Hrs). Full slots (0 left) can still be clicked by staff for walk-in overrides.
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Service Selection & Price */}
@@ -4581,6 +5139,17 @@ export const OwnerDashboard: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Edit Booking Services & Add-ons Modal */}
+      <EditBookingModal
+        isOpen={showEditBookingModal}
+        onClose={() => {
+          setShowEditBookingModal(false);
+          setEditingBooking(null);
+        }}
+        booking={editingBooking}
+        location={selectedBusiness}
+      />
     </div>
   );
 };

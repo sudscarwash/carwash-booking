@@ -233,7 +233,7 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
 
       // Handle map clicks for coordinates selection
       leafletMapRef.current.on('click', (e: any) => {
-        const coords = { lat: parseFloat(e.latlng.lat.toFixed(4)), lng: parseFloat(e.latlng.lng.toFixed(4)) };
+        const coords = { lat: parseFloat(e.latlng.lat.toFixed(6)), lng: parseFloat(e.latlng.lng.toFixed(6)) };
         if (onMapClickSelectCoords) {
           onMapClickSelectCoords(coords);
         } else if (onUserLocationChange) {

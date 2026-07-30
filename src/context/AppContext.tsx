@@ -69,8 +69,9 @@ interface AppContextType {
     status?: BookingStatus;
   }) => Promise<boolean>;
   updateBookingStatus: (bookingId: string, status: string, notes?: string, employeeId?: string) => Promise<boolean>;
+  updateBookingDetails: (bookingId: string, data: { serviceId?: string; serviceName?: string; price?: number; vehicleInfo?: string; notes?: string }) => Promise<boolean>;
   rescheduleBooking: (bookingId: string, date: string, timeSlot: string) => Promise<boolean>;
-  createEmployee: (email: string, name: string, businessId: string) => Promise<boolean>;
+  createEmployee: (email: string, name: string, businessId: string, password?: string) => Promise<boolean>;
   updateEmployee: (id: string, name: string, email: string, businessId: string) => Promise<boolean>;
   deleteEmployee: (id: string) => Promise<boolean>;
   createOwnerWithBusiness: (data: any) => Promise<boolean>;
@@ -149,7 +150,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (user?.role === Role.OWNER || user?.role === Role.ADMIN) {
         fetchEmployees();
       }
-      if (user?.role === Role.ADMIN) {
+      if (user?.role === Role.ADMIN || user?.role === Role.SPECIAL) {
         fetchLogs();
         fetchAdminUsers();
       }
@@ -182,8 +183,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (Array.isArray(data)) {
         setAppNotifications(data);
       }
-    } catch (err) {
-      console.error('Failed to fetch notifications:', err);
+    } catch (err: any) {
+      if (err?.message !== 'Failed to fetch') {
+        console.warn('Could not fetch notifications:', err?.message || err);
+      }
     }
   };
 
@@ -193,8 +196,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
       );
       await apiFetch(`/api/notifications/${id}/read`, { method: 'PATCH' });
-    } catch (err) {
-      console.error('Failed to mark notification as read:', err);
+    } catch (err: any) {
+      console.warn('Could not mark notification as read:', err?.message || err);
     }
   };
 
@@ -202,8 +205,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       setAppNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
       await apiFetch('/api/notifications/mark-all-read', { method: 'PATCH' });
-    } catch (err) {
-      console.error('Failed to mark all notifications as read:', err);
+    } catch (err: any) {
+      console.warn('Could not mark all notifications as read:', err?.message || err);
     }
   };
 
@@ -216,14 +219,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     headers.set('Content-Type', 'application/json');
 
-    const res = await fetch(endpoint, {
-      ...options,
-      headers,
-    });
+    let res: Response;
+    try {
+      res = await fetch(endpoint, {
+        ...options,
+        headers,
+      });
+    } catch (fetchErr) {
+      throw new Error('Failed to fetch');
+    }
 
-    const data = await res.json();
+    const contentType = res.headers.get('content-type');
+    let data: any = {};
+    if (contentType && contentType.includes('application/json')) {
+      data = await res.json().catch(() => ({}));
+    } else {
+      const text = await res.text().catch(() => '');
+      data = { error: text || `HTTP error ${res.status}` };
+    }
+
     if (!res.ok) {
-      throw new Error(data.error || 'Something went wrong');
+      if (res.status === 401) {
+        localStorage.removeItem('cw_user');
+        localStorage.removeItem('cw_token');
+        setUser(null);
+        setToken(null);
+      }
+      throw new Error(data.error || `Request failed with status ${res.status}`);
     }
     return data;
   };
@@ -346,7 +368,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const data = await apiFetch(`/api/car-washes${query}`);
       setLocations(data);
     } catch (err: any) {
-      console.error('Failed to fetch car wash locations:', err);
+      if (err?.message !== 'Failed to fetch') {
+        console.warn('Failed to fetch car wash locations:', err?.message || err);
+      }
     }
   };
 
@@ -356,7 +380,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const data = await apiFetch('/api/bookings');
       setBookings(data);
     } catch (err: any) {
-      console.error('Failed to fetch bookings:', err);
+      if (err?.message !== 'Failed to fetch') {
+        console.warn('Failed to fetch bookings:', err?.message || err);
+      }
     }
   };
 
@@ -366,7 +392,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const data = await apiFetch('/api/owner/employees');
       setEmployees(data);
     } catch (err: any) {
-      console.error('Failed to fetch employees:', err);
+      if (err?.message !== 'Failed to fetch') {
+        console.warn('Failed to fetch employees:', err?.message || err);
+      }
     }
   };
 
@@ -376,17 +404,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const data = await apiFetch('/api/admin/logs');
       setLogs(data);
     } catch (err: any) {
-      console.error('Failed to fetch logs:', err);
+      if (err?.message !== 'Failed to fetch') {
+        console.warn('Failed to fetch logs:', err?.message || err);
+      }
     }
   };
 
   const fetchAdminUsers = async () => {
-    if (!token || user?.role !== Role.ADMIN) return;
+    if (!token || (user?.role !== Role.ADMIN && user?.role !== Role.SPECIAL)) return;
     try {
       const data = await apiFetch('/api/admin/users');
       setAdminUsersList(data);
     } catch (err: any) {
-      console.error('Failed to fetch admin users:', err);
+      if (err?.message !== 'Failed to fetch') {
+        console.warn('Failed to fetch admin users:', err?.message || err);
+      }
     }
   };
 
@@ -450,6 +482,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const updateBookingDetails = async (
+    bookingId: string,
+    data: { serviceId?: string; serviceName?: string; price?: number; vehicleInfo?: string; notes?: string }
+  ): Promise<boolean> => {
+    try {
+      await apiFetch(`/api/bookings/${bookingId}/details`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      });
+      showNotification('Booking services & price updated successfully!', 'success');
+      fetchBookings();
+      return true;
+    } catch (err: any) {
+      showNotification(err.message, 'error');
+      return false;
+    }
+  };
+
   const rescheduleBooking = async (bookingId: string, date: string, timeSlot: string): Promise<boolean> => {
     try {
       await apiFetch(`/api/bookings/${bookingId}/reschedule`, {
@@ -465,13 +515,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const createEmployee = async (email: string, name: string, businessId: string): Promise<boolean> => {
+  const createEmployee = async (email: string, name: string, businessId: string, password?: string): Promise<boolean> => {
     try {
+      const initialPassword = password && password.trim() ? password.trim() : 'employee123';
       await apiFetch('/api/owner/employees', {
         method: 'POST',
-        body: JSON.stringify({ email, name, businessId, password: 'employee123' }), // standard initial password
+        body: JSON.stringify({ email, name, businessId, password: initialPassword }),
       });
-      showNotification(`Employee ${name} registered successfully. Default password is 'employee123'.`, 'success');
+      showNotification(`Employee ${name} registered successfully with assigned password.`, 'success');
       fetchEmployees();
       if (user?.role === Role.ADMIN) {
         fetchAdminUsers();
@@ -689,6 +740,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         createBooking,
         createManualBooking,
         updateBookingStatus,
+        updateBookingDetails,
         rescheduleBooking,
         createEmployee,
         updateEmployee,

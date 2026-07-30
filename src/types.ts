@@ -55,9 +55,10 @@ export interface WashService {
   price: number;
   duration: number; // minutes
   description?: string;
-  type?: 'service' | 'product';
+  type?: 'service' | 'product' | 'addon';
   vehicleType?: string;
   isAvailable?: boolean;
+  slotsRequired?: number; // 0 = no slot capacity needed, 1 = 1 slot (30 min), 2 = 2 slots (1 hr)
 }
 
 export interface CarWash {
@@ -75,6 +76,7 @@ export interface CarWash {
   createdAt: string;
   phone?: string;
   instagram?: string;
+  logoUrl?: string;
 
   // 🔒 Dynamic local Brunei bank configs
   bibdAccountName?: string;

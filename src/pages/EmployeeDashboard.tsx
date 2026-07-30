@@ -3,26 +3,158 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext.js';
 import { MapSimulation } from '../components/MapSimulation.js';
 import { BookingStatus, Booking } from '../types.js';
-import { Briefcase as BriefcaseIcon, Calendar as CalendarIcon, Clock as ClockIcon, Check as CheckIcon, ChevronRight as ChevronRightIcon, CheckCircle as CheckCircleIcon, Info as InfoIcon, MapPin as MapPinIcon } from 'lucide-react';
+import {
+  Briefcase as BriefcaseIcon, Calendar as CalendarIcon, Clock as ClockIcon, Check as CheckIcon, ChevronRight as ChevronRightIcon,
+  CheckCircle as CheckCircleIcon, Info as InfoIcon, MapPin as MapPinIcon, CalendarDays, ChevronLeft, ChevronRight, Plus,
+  Sparkles, Phone, Car, User as UserIcon, X, CheckCheck, Pencil
+} from 'lucide-react';
+import { EditBookingModal } from '../components/EditBookingModal.js';
+
+const getTodayDateString = () => new Date().toISOString().split('T')[0];
 
 export const EmployeeDashboard: React.FC = () => {
-  const { user, bookings, updateBookingStatus, locations } = useApp();
+  const { user, bookings, updateBookingStatus, locations, createManualBooking } = useApp();
   const [updatingId, setUpdatingId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'queue' | 'station'>('queue');
+  const [activeTab, setActiveTab] = useState<'queue' | 'calendar' | 'station'>('queue');
+
+  // Edit Booking Modal state
+  const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
+  const [showEditBookingModal, setShowEditBookingModal] = useState<boolean>(false);
+
+  // Calendar states
+  const [calendarCurrentMonth, setCalendarCurrentMonth] = useState<Date>(new Date());
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState<string>(getTodayDateString());
+  const [calendarSourceFilter, setCalendarSourceFilter] = useState<'ALL' | 'ONLINE' | 'PHONE' | 'WALK_IN'>('ALL');
+
+  // Quick Walk-In / Phone Booking Modal states
+  const [showManualBookingModal, setShowManualBookingModal] = useState(false);
+  const [mbName, setMbName] = useState('');
+  const [mbPhone, setMbPhone] = useState('');
+  const [mbEmail, setMbEmail] = useState('');
+  const [mbVehicle, setMbVehicle] = useState('');
+  const [mbDate, setMbDate] = useState<string>(getTodayDateString());
+  const [mbTimeSlot, setMbTimeSlot] = useState<string>('09:00 - 09:30');
+  const [mbIsCustomSlot, setMbIsCustomSlot] = useState(false);
+  const [mbCustomSlotText, setMbCustomSlotText] = useState('');
+  const [mbSelectedServiceId, setMbSelectedServiceId] = useState<string>('');
+  const [mbPrice, setMbPrice] = useState<string>('15.00');
+  const [mbNotes, setMbNotes] = useState('');
+  const [mbSource, setMbSource] = useState<'PHONE' | 'WALK_IN' | 'ONLINE'>('WALK_IN');
+  const [mbStatus, setMbStatus] = useState<BookingStatus>(BookingStatus.IN_PROGRESS);
+  const [mbAvailableSlots, setMbAvailableSlots] = useState<any[]>([]);
+  const [mbSelectedSlots, setMbSelectedSlots] = useState<string[]>([]);
+  const [mbIsSubmitting, setMbIsSubmitting] = useState(false);
+
+  const getFormattedSlotSummary = (slots: string[]) => {
+    if (!slots || slots.length === 0) {
+      return 'Walk-in / Immediate (No Slot Reserved)';
+    }
+    const sorted = [...slots].sort((a, b) => {
+      const tA = a.split(' - ')[0];
+      const tB = b.split(' - ')[0];
+      return tA.localeCompare(tB);
+    });
+    if (sorted.length === 1) return sorted[0];
+
+    const isContiguous = sorted.every((s, i) => {
+      if (i === 0) return true;
+      const prevEnd = sorted[i - 1].split(' - ')[1];
+      const currStart = s.split(' - ')[0];
+      return prevEnd === currStart;
+    });
+
+    if (isContiguous) {
+      const start = sorted[0].split(' - ')[0];
+      const end = sorted[sorted.length - 1].split(' - ')[1];
+      const hrs = (sorted.length * 0.5).toFixed(1);
+      return `${start} - ${end} (${sorted.length} Slots / ${hrs} Hrs)`;
+    }
+    return sorted.join(', ');
+  };
 
   // Employees can view and manage bookings for their assigned business
+  const myLocation = locations.find((loc) => loc.id === user?.businessId);
   const filteredBookings = bookings.filter((b) => b.carWashId === user?.businessId);
 
-  const myLocation = locations.find((loc) => loc.id === user?.businessId);
+  // Auto set initial service price when service selected
+  useEffect(() => {
+    if (myLocation && myLocation.services && myLocation.services.length > 0) {
+      if (!mbSelectedServiceId) {
+        setMbSelectedServiceId(myLocation.services[0].id);
+        setMbPrice(myLocation.services[0].price.toFixed(2));
+      }
+    }
+  }, [myLocation]);
+
+  // Fetch available slots for manual booking date
+  useEffect(() => {
+    if (myLocation && mbDate) {
+      fetch(`/api/bookings/available-slots?carWashId=${myLocation.id}&date=${mbDate}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (Array.isArray(data)) {
+            setMbAvailableSlots(data);
+            if (data.length > 0 && (!mbTimeSlot || !data.some((s) => s.timeSlot === mbTimeSlot))) {
+              setMbTimeSlot(data[0].timeSlot);
+            }
+          }
+        })
+        .catch((err) => console.error('Error fetching slots:', err));
+    }
+  }, [myLocation, mbDate]);
 
   const handleUpdateStatus = async (bookingId: string, status: BookingStatus) => {
     setUpdatingId(bookingId);
     await updateBookingStatus(bookingId, status);
     setUpdatingId(null);
+  };
+
+  const handleManualBookingSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!myLocation || !mbName.trim() || !mbPhone.trim() || !mbDate) {
+      return;
+    }
+
+    setMbIsSubmitting(true);
+    const selectedSvc = myLocation.services?.find((s) => s.id === mbSelectedServiceId);
+
+    const finalSlot = mbIsCustomSlot
+      ? (mbCustomSlotText.trim() || 'Walk-in / Immediate (No Slot)')
+      : getFormattedSlotSummary(mbSelectedSlots);
+
+    const success = await createManualBooking({
+      carWashId: myLocation.id,
+      date: mbDate,
+      timeSlot: finalSlot,
+      customerName: mbName.trim(),
+      customerPhone: mbPhone.trim(),
+      customerEmail: mbEmail.trim() || undefined,
+      vehicleInfo: mbVehicle.trim() || undefined,
+      bookingSource: mbSource,
+      serviceId: selectedSvc?.id,
+      serviceName: selectedSvc?.name || 'Standard Wash',
+      price: parseFloat(mbPrice) || selectedSvc?.price || 15.00,
+      notes: mbNotes.trim() || undefined,
+      status: mbStatus,
+    });
+
+    setMbIsSubmitting(false);
+
+    if (success) {
+      setShowManualBookingModal(false);
+      setMbName('');
+      setMbPhone('');
+      setMbEmail('');
+      setMbVehicle('');
+      setMbNotes('');
+      setMbIsCustomSlot(false);
+      setMbCustomSlotText('');
+      setMbSelectedSlots([]);
+    }
   };
 
   return (
@@ -38,33 +170,62 @@ export const EmployeeDashboard: React.FC = () => {
               Operator Station
             </h1>
             <p className="text-xs sm:text-sm text-slate-500">
-              Welcome back, <strong className="text-slate-700">{user?.name}</strong>. Manage your active washing queue.
+              Welcome back, <strong className="text-slate-700">{user?.name}</strong>. Manage your active queue and record walk-in customers.
             </p>
           </div>
         </div>
 
-        <div className="bg-slate-50 border border-slate-100 rounded-xl px-4 py-2 text-xs">
-          <span className="text-slate-400 block uppercase font-bold tracking-wider text-[9px]">Station Reference</span>
-          <strong className="text-slate-700">{myLocation ? myLocation.name : 'Unassigned Station'}</strong>
+        <div className="bg-slate-50 border border-slate-100 rounded-xl px-4 py-2 text-xs flex items-center gap-3">
+          <div>
+            <span className="text-slate-400 block uppercase font-bold tracking-wider text-[9px]">Station Reference</span>
+            <strong className="text-slate-700">{myLocation ? myLocation.name : 'Unassigned Station'}</strong>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setMbDate(selectedCalendarDate || getTodayDateString());
+              setShowManualBookingModal(true);
+            }}
+            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-extrabold text-xs rounded-xl transition-all shadow-xs flex items-center gap-1 cursor-pointer shrink-0"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>+ Quick Walk-In</span>
+          </button>
         </div>
       </div>
 
       {/* Responsive Bottom Navigation Bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200/80 px-6 py-2.5 flex justify-around items-center z-40 md:hidden shadow-[0_-4px_12px_rgba(0,0,0,0.03)] rounded-t-2xl">
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200/80 px-4 py-2.5 flex justify-around items-center z-40 md:hidden shadow-[0_-4px_12px_rgba(0,0,0,0.03)] rounded-t-2xl">
         <button
           onClick={() => {
             setActiveTab('queue');
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
-          className={`flex flex-col items-center gap-1 py-1 px-4 rounded-xl transition-all cursor-pointer ${
+          className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition-all cursor-pointer ${
             activeTab === 'queue'
-              ? 'text-amber-600 font-extrabold scale-110'
+              ? 'text-amber-600 font-extrabold scale-105'
               : 'text-slate-400 font-medium hover:text-slate-600'
           }`}
           id="btn-emp-nav-queue"
         >
-          <ClockIcon className="w-5.5 h-5.5" />
-          <span className="text-[10px]">Wash Queue</span>
+          <ClockIcon className="w-5 h-5" />
+          <span className="text-[10px]">Wash Queue ({filteredBookings.length})</span>
+        </button>
+
+        <button
+          onClick={() => {
+            setActiveTab('calendar');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition-all cursor-pointer ${
+            activeTab === 'calendar'
+              ? 'text-amber-600 font-extrabold scale-105'
+              : 'text-slate-400 font-medium hover:text-slate-600'
+          }`}
+          id="btn-emp-nav-calendar"
+        >
+          <CalendarDays className="w-5 h-5" />
+          <span className="text-[10px]">Calendar & Slots</span>
         </button>
 
         <button
@@ -72,14 +233,14 @@ export const EmployeeDashboard: React.FC = () => {
             setActiveTab('station');
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
-          className={`flex flex-col items-center gap-1 py-1 px-4 rounded-xl transition-all cursor-pointer ${
+          className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition-all cursor-pointer ${
             activeTab === 'station'
-              ? 'text-amber-600 font-extrabold scale-110'
+              ? 'text-amber-600 font-extrabold scale-105'
               : 'text-slate-400 font-medium hover:text-slate-600'
           }`}
           id="btn-emp-nav-station"
         >
-          <MapPinIcon className="w-5.5 h-5.5" />
+          <MapPinIcon className="w-5 h-5" />
           <span className="text-[10px]">Station Info</span>
         </button>
       </div>
@@ -95,6 +256,17 @@ export const EmployeeDashboard: React.FC = () => {
           }`}
         >
           Active Wash Queue ({filteredBookings.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('calendar')}
+          className={`px-4 py-2 text-sm font-bold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 ${
+            activeTab === 'calendar'
+              ? 'border-amber-600 text-amber-600 font-extrabold'
+              : 'border-transparent text-slate-400 hover:text-slate-600'
+          }`}
+        >
+          <CalendarDays className="w-4 h-4" />
+          <span>Calendar & Quick Slots</span>
         </button>
         <button
           onClick={() => setActiveTab('station')}
@@ -144,6 +316,11 @@ export const EmployeeDashboard: React.FC = () => {
                           <span className="text-xs font-bold text-slate-500 font-mono">
                             {bk.date} @ {bk.timeSlot}
                           </span>
+                          {bk.bookingSource && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                              {bk.bookingSource === 'WALK_IN' ? '🚗 Walk-In' : bk.bookingSource === 'PHONE' ? '📞 Phone' : '🌐 App'}
+                            </span>
+                          )}
                         </div>
 
                         <div className="text-left">
@@ -184,6 +361,18 @@ export const EmployeeDashboard: React.FC = () => {
                         </span>
 
                         <div className="flex flex-wrap items-center gap-2 justify-end">
+                          <button
+                            onClick={() => {
+                              setEditingBooking(bk);
+                              setShowEditBookingModal(true);
+                            }}
+                            className="px-2.5 py-1.5 border border-indigo-200 text-indigo-700 hover:bg-indigo-50 font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
+                            title="Edit Services, Add-ons & Price"
+                          >
+                            <Pencil className="h-3.5 w-3.5 text-indigo-600" />
+                            <span>Edit Services / Extras</span>
+                          </button>
+
                           {bk.status === BookingStatus.PENDING && (
                             <>
                               <button
@@ -257,6 +446,348 @@ export const EmployeeDashboard: React.FC = () => {
           </div>
         )}
 
+        {/* 📅 Calendar & Quick Booking Tab */}
+        {activeTab === 'calendar' && (
+          <div className="space-y-6 animate-fade-in max-w-6xl mx-auto">
+            {/* Top Control Bar */}
+            <div className="bg-white border border-slate-200/80 rounded-3xl p-4 sm:p-6 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <CalendarDays className="h-6 w-6 text-amber-600 shrink-0" />
+                  <h2 className="text-lg sm:text-xl font-black text-slate-800">
+                    Booking Calendar & Station Slots
+                  </h2>
+                </div>
+                <p className="text-slate-500 text-xs mt-1">
+                  View bay slot distribution, filter booking sources, and record instant walk-in or phone-in orders.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3 flex-wrap w-full md:w-auto">
+                {/* Filter pills */}
+                <div className="grid grid-cols-2 sm:flex sm:items-center gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200 text-xs font-bold w-full sm:w-auto">
+                  <button
+                    type="button"
+                    onClick={() => setCalendarSourceFilter('ALL')}
+                    className={`px-2.5 py-1.5 sm:py-1 rounded-lg transition-all cursor-pointer text-center ${
+                      calendarSourceFilter === 'ALL' ? 'bg-white text-slate-800 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    All Sources
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCalendarSourceFilter('ONLINE')}
+                    className={`px-2.5 py-1.5 sm:py-1 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                      calendarSourceFilter === 'ONLINE' ? 'bg-sky-500 text-white shadow-2xs' : 'text-slate-500 hover:text-sky-700'
+                    }`}
+                  >
+                    🌐 App
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCalendarSourceFilter('PHONE')}
+                    className={`px-2.5 py-1.5 sm:py-1 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                      calendarSourceFilter === 'PHONE' ? 'bg-amber-500 text-white shadow-2xs' : 'text-slate-500 hover:text-amber-700'
+                    }`}
+                  >
+                    📞 Phone
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCalendarSourceFilter('WALK_IN')}
+                    className={`px-2.5 py-1.5 sm:py-1 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                      calendarSourceFilter === 'WALK_IN' ? 'bg-emerald-600 text-white shadow-2xs' : 'text-slate-500 hover:text-emerald-700'
+                    }`}
+                  >
+                    🚗 Walk-In
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMbDate(selectedCalendarDate || getTodayDateString());
+                    setShowManualBookingModal(true);
+                  }}
+                  className="px-4 py-2.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-extrabold rounded-xl shadow-sm transition-all flex items-center gap-2 cursor-pointer w-full sm:w-auto justify-center"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Record Phone / Walk-In</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Month Grid & Day Detail Grid Layout */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              {/* Calendar Grid (7 cols) */}
+              <div className="lg:col-span-7 bg-white border border-slate-200/80 rounded-3xl p-4 sm:p-5 shadow-xs space-y-4">
+                {/* Calendar Month Header */}
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-extrabold text-slate-800 text-base">
+                      {calendarCurrentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCalendarCurrentMonth(new Date());
+                        setSelectedCalendarDate(getTodayDateString());
+                      }}
+                      className="px-2 py-0.5 bg-amber-50 text-amber-700 hover:bg-amber-100 text-[10px] font-extrabold rounded-md border border-amber-100 transition-all cursor-pointer"
+                    >
+                      Today
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const prev = new Date(calendarCurrentMonth.getFullYear(), calendarCurrentMonth.getMonth() - 1, 1);
+                        setCalendarCurrentMonth(prev);
+                      }}
+                      className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 transition-colors cursor-pointer"
+                      title="Previous Month"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = new Date(calendarCurrentMonth.getFullYear(), calendarCurrentMonth.getMonth() + 1, 1);
+                        setCalendarCurrentMonth(next);
+                      }}
+                      className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 transition-colors cursor-pointer"
+                      title="Next Month"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Day Name Headers */}
+                <div className="grid grid-cols-7 gap-1 text-center font-extrabold text-[10px] sm:text-[11px] text-slate-400 uppercase tracking-wider py-1">
+                  <span>Sun</span>
+                  <span>Mon</span>
+                  <span>Tue</span>
+                  <span>Wed</span>
+                  <span>Thu</span>
+                  <span>Fri</span>
+                  <span>Sat</span>
+                </div>
+
+                {/* Month Grid Cells */}
+                {(() => {
+                  const year = calendarCurrentMonth.getFullYear();
+                  const month = calendarCurrentMonth.getMonth();
+                  const totalDays = new Date(year, month + 1, 0).getDate();
+                  const firstDayIdx = new Date(year, month, 1).getDay();
+
+                  const todayStr = getTodayDateString();
+                  const bizBookings = bookings.filter((b) => !myLocation || b.carWashId === myLocation.id);
+
+                  const cells = [];
+                  for (let i = 0; i < firstDayIdx; i++) {
+                    cells.push(<div key={`empty-${i}`} className="h-14 sm:h-20 bg-slate-50/50 rounded-xl border border-dashed border-slate-100 opacity-40" />);
+                  }
+
+                  for (let d = 1; d <= totalDays; d++) {
+                    const mStr = String(month + 1).padStart(2, '0');
+                    const dStr = String(d).padStart(2, '0');
+                    const dateKey = `${year}-${mStr}-${dStr}`;
+
+                    const isToday = dateKey === todayStr;
+                    const isSelected = dateKey === selectedCalendarDate;
+
+                    let dateBookings = bizBookings.filter((b) => b.date === dateKey);
+                    if (calendarSourceFilter !== 'ALL') {
+                      dateBookings = dateBookings.filter((b) => (b.bookingSource || 'ONLINE') === calendarSourceFilter);
+                    }
+
+                    const totalCount = dateBookings.length;
+                    const onlineCount = dateBookings.filter((b) => (b.bookingSource || 'ONLINE') === 'ONLINE').length;
+                    const phoneCount = dateBookings.filter((b) => b.bookingSource === 'PHONE').length;
+                    const walkInCount = dateBookings.filter((b) => b.bookingSource === 'WALK_IN').length;
+
+                    cells.push(
+                      <div
+                        key={dateKey}
+                        onClick={() => setSelectedCalendarDate(dateKey)}
+                        className={`h-14 sm:h-20 p-1 sm:p-1.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between select-none relative ${
+                          isSelected
+                            ? 'border-amber-600 bg-amber-50/70 shadow-xs ring-2 ring-amber-500/20'
+                            : isToday
+                            ? 'border-sky-300 bg-sky-50/40'
+                            : 'border-slate-200/80 bg-white hover:border-amber-300 hover:bg-slate-50/80'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className={`text-[11px] sm:text-xs font-black ${
+                            isSelected ? 'text-amber-900' : isToday ? 'text-sky-700' : 'text-slate-700'
+                          }`}>
+                            {d}
+                          </span>
+                          {isToday && (
+                            <span className="text-[9px] font-extrabold text-sky-700 bg-sky-100 px-1 rounded uppercase">Today</span>
+                          )}
+                        </div>
+
+                        {totalCount > 0 ? (
+                          <div className="space-y-0.5">
+                            <span className={`block text-[9px] sm:text-[10px] font-extrabold px-0.5 sm:px-1 py-0.2 sm:py-0.5 rounded text-center truncate ${
+                              isSelected ? 'bg-amber-600 text-white' : 'bg-slate-800 text-white'
+                            }`}>
+                              {totalCount} {totalCount === 1 ? 'Wash' : 'Washes'}
+                            </span>
+
+                            <div className="flex items-center justify-center gap-0.5 text-[8px] font-bold">
+                              {onlineCount > 0 && <span className="text-sky-600" title={`${onlineCount} Online`}>🌐{onlineCount}</span>}
+                              {phoneCount > 0 && <span className="text-amber-600" title={`${phoneCount} Phone`}>📞{phoneCount}</span>}
+                              {walkInCount > 0 && <span className="text-emerald-600" title={`${walkInCount} Walk-In`}>🚗{walkInCount}</span>}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-[9px] text-slate-300 font-mono text-center block">0</span>
+                        )}
+                      </div>
+                    );
+                  }
+
+                  return <div className="grid grid-cols-7 gap-1.5 sm:gap-2">{cells}</div>;
+                })()}
+              </div>
+
+              {/* Day Detail & Slots Breakdown Panel (5 cols) */}
+              <div className="lg:col-span-5 space-y-4">
+                <div className="bg-white border border-slate-200/80 rounded-3xl p-5 shadow-xs space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Selected Calendar Day</span>
+                      <strong className="text-sm sm:text-base font-extrabold text-slate-800">
+                        {new Date(selectedCalendarDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                      </strong>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMbDate(selectedCalendarDate);
+                        setShowManualBookingModal(true);
+                      }}
+                      className="px-2.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-extrabold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>+ Walk-In</span>
+                    </button>
+                  </div>
+
+                  {/* Day Bookings List */}
+                  {(() => {
+                    const dayBookings = bookings.filter((b) => (!myLocation || b.carWashId === myLocation.id) && b.date === selectedCalendarDate);
+
+                    return (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between text-xs font-bold text-slate-500">
+                          <span>Recorded Jobs ({dayBookings.length})</span>
+                          <span className="text-[10px] text-slate-400 font-mono">Date: {selectedCalendarDate}</span>
+                        </div>
+
+                        {dayBookings.length === 0 ? (
+                          <div className="bg-slate-50 border border-dashed border-slate-200 rounded-2xl p-6 text-center text-slate-400">
+                            <CalendarDays className="w-8 h-8 text-slate-300 mx-auto mb-1.5" />
+                            <p className="text-xs font-bold text-slate-600">No bookings logged for this date yet</p>
+                            <p className="text-[10px] text-slate-400 mt-1">Click "+ Walk-In" to quickly log a phone call or walk-in customer.</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-2.5 max-h-[460px] overflow-y-auto pr-1">
+                            {dayBookings.map((bk) => (
+                              <div
+                                key={bk.id}
+                                className="bg-slate-50/80 border border-slate-200 rounded-2xl p-3.5 text-left hover:border-amber-300 hover:bg-white transition-all space-y-2"
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <strong className="text-xs font-extrabold text-slate-800">{bk.customerName}</strong>
+                                    {bk.bookingSource === 'WALK_IN' ? (
+                                      <span className="bg-emerald-100 text-emerald-800 text-[9px] font-extrabold px-1.5 py-0.2 rounded border border-emerald-200">
+                                        🚗 Walk-In
+                                      </span>
+                                    ) : bk.bookingSource === 'PHONE' ? (
+                                      <span className="bg-amber-100 text-amber-800 text-[9px] font-extrabold px-1.5 py-0.2 rounded border border-amber-200">
+                                        📞 Phone
+                                      </span>
+                                    ) : (
+                                      <span className="bg-sky-100 text-sky-800 text-[9px] font-extrabold px-1.5 py-0.2 rounded border border-sky-200">
+                                        🌐 App
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${
+                                    bk.status === BookingStatus.COMPLETED
+                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                      : bk.status === BookingStatus.IN_PROGRESS
+                                      ? 'bg-sky-50 text-sky-700 border-sky-200 animate-pulse'
+                                      : 'bg-amber-50 text-amber-700 border-amber-200'
+                                  }`}>
+                                    {bk.status}
+                                  </span>
+                                </div>
+
+                                <div className="text-[11px] text-slate-600 space-y-0.5 font-mono">
+                                  <p>⏰ Slot: <strong>{bk.timeSlot}</strong></p>
+                                  <p>🚗 Info: {bk.vehicleInfo || bk.customerPhone || 'N/A'}</p>
+                                  <p>🧼 Service: {bk.serviceName || 'Standard Wash'} (BND ${(bk.price || 15).toFixed(2)})</p>
+                                </div>
+
+                                {/* Status Toggle Actions */}
+                                <div className="flex items-center justify-end gap-1.5 pt-1 border-t border-slate-200/60">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingBooking(bk);
+                                      setShowEditBookingModal(true);
+                                    }}
+                                    className="px-2 py-1 border border-indigo-200 text-indigo-700 hover:bg-indigo-50 font-bold text-[10px] rounded-lg transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
+                                    title="Edit Services, Add-ons & Price"
+                                  >
+                                    <Pencil className="h-3 w-3 text-indigo-600" />
+                                    <span>Edit</span>
+                                  </button>
+
+                                  {bk.status === BookingStatus.PENDING && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateStatus(bk.id, BookingStatus.IN_PROGRESS)}
+                                      className="px-2 py-1 bg-sky-600 text-white font-bold text-[10px] rounded-lg shadow-2xs hover:bg-sky-500 cursor-pointer"
+                                    >
+                                      Start Wash
+                                    </button>
+                                  )}
+                                  {bk.status === BookingStatus.IN_PROGRESS && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateStatus(bk.id, BookingStatus.COMPLETED)}
+                                      className="px-2 py-1 bg-emerald-600 text-white font-bold text-[10px] rounded-lg shadow-2xs hover:bg-emerald-500 cursor-pointer animate-pulse"
+                                    >
+                                      Finish & Done
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'station' && (
           <div className="space-y-6 animate-fade-in">
             {/* Station Map & Location details */}
@@ -301,6 +832,369 @@ export const EmployeeDashboard: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Quick Walk-In & Phone Booking Modal */}
+      {showManualBookingModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 space-y-5 my-auto max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 bg-amber-100 text-amber-700 rounded-lg">
+                    <Plus className="w-4 h-4" />
+                  </span>
+                  <h3 className="font-extrabold text-slate-800 text-base">Record Walk-In / Phone Booking</h3>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">Quickly log walk-in customers or phone reservations at your station.</p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowManualBookingModal(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleManualBookingSubmit} className="space-y-4 text-left">
+              {/* Booking Source Pills */}
+              <div>
+                <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
+                  Booking Source *
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setMbSource('WALK_IN')}
+                    className={`py-2 px-3 rounded-xl border text-xs font-extrabold flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+                      mbSource === 'WALK_IN'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                        : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    <Car className="w-3.5 h-3.5" />
+                    <span>🚗 Walk-In</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMbSource('PHONE')}
+                    className={`py-2 px-3 rounded-xl border text-xs font-extrabold flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+                      mbSource === 'PHONE'
+                        ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                        : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    <Phone className="w-3.5 h-3.5" />
+                    <span>📞 Phone</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMbSource('ONLINE')}
+                    className={`py-2 px-3 rounded-xl border text-xs font-extrabold flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+                      mbSource === 'ONLINE'
+                        ? 'bg-sky-600 text-white border-sky-600 shadow-xs'
+                        : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>🌐 Manual App</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Customer Name & Phone */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
+                    Customer Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. John Doe"
+                    value={mbName}
+                    onChange={(e) => setMbName(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm outline-none focus:border-amber-500 font-medium"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
+                    Customer Phone *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. +673 8123456"
+                    value={mbPhone}
+                    onChange={(e) => setMbPhone(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm outline-none focus:border-amber-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Vehicle Specs & Email */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
+                    Vehicle Model / Plate
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. BAA 1234 (Toyota Fortuner)"
+                    value={mbVehicle}
+                    onChange={(e) => setMbVehicle(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm outline-none focus:border-amber-500 font-medium"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
+                    Customer Email (Optional)
+                  </label>
+                  <input
+                    type="email"
+                    placeholder="e.g. john@gmail.com"
+                    value={mbEmail}
+                    onChange={(e) => setMbEmail(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm outline-none focus:border-amber-500 font-medium"
+                  />
+                </div>
+              </div>
+
+              {/* Booking Date */}
+              <div>
+                <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
+                  Booking Date *
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={mbDate}
+                  onChange={(e) => setMbDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm outline-none focus:border-amber-500 font-mono"
+                />
+              </div>
+
+              {/* Time Slot Selection (Interactive Chips Picker) */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider">
+                    Time Slot Selection (Click chips to choose 1 or multi-slots) *
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setMbSelectedSlots([])}
+                      className="text-[10px] font-bold text-amber-600 hover:underline cursor-pointer"
+                    >
+                      ⚡ Immediate / Unscheduled
+                    </button>
+                    <span className="text-slate-300">|</span>
+                    <button
+                      type="button"
+                      onClick={() => setMbIsCustomSlot(!mbIsCustomSlot)}
+                      className="text-[10px] font-bold text-amber-600 hover:underline cursor-pointer"
+                    >
+                      {mbIsCustomSlot ? "Select Interactive Slots" : "✍️ Custom Text"}
+                    </button>
+                  </div>
+                </div>
+
+                {mbIsCustomSlot ? (
+                  <input
+                    type="text"
+                    placeholder="e.g. 09:00 - 10:30 (Walk-in Bay 2 / 1.5 Hrs)"
+                    value={mbCustomSlotText}
+                    onChange={(e) => setMbCustomSlotText(e.target.value)}
+                    className="w-full px-3 py-2 border border-amber-300 bg-amber-50/30 rounded-xl text-slate-800 text-xs sm:text-sm outline-none focus:border-amber-500 font-mono font-bold"
+                  />
+                ) : (
+                  <div className="space-y-2">
+                    {/* Selection Summary Header */}
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 flex items-center justify-between text-xs">
+                      <div>
+                        <span className="text-[10px] text-slate-400 font-bold uppercase block">Selected Time Window</span>
+                        <strong className="text-slate-800 font-mono text-xs sm:text-sm">
+                          {getFormattedSlotSummary(mbSelectedSlots)}
+                        </strong>
+                      </div>
+                      {mbSelectedSlots.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setMbSelectedSlots([])}
+                          className="text-[10px] font-bold text-slate-500 hover:text-red-600 px-2 py-1 bg-white border border-slate-200 rounded-lg shadow-2xs hover:bg-red-50 transition-colors cursor-pointer"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Interactive Chips Grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-1.5 border border-slate-200 rounded-2xl bg-slate-50/50">
+                      {mbAvailableSlots.length === 0 ? (
+                        <div className="col-span-full p-4 text-center text-slate-400 text-xs">
+                          No predefined slots loaded for this date. Click "Custom Text" above to write custom range.
+                        </div>
+                      ) : (
+                        mbAvailableSlots.map((s) => {
+                          const isSelected = mbSelectedSlots.includes(s.timeSlot);
+                          const remaining = s.remainingCapacity !== undefined ? s.remainingCapacity : (s.capacity - s.bookedCount);
+                          const isFull = remaining <= 0;
+
+                          return (
+                            <button
+                              key={s.timeSlot}
+                              type="button"
+                              onClick={() => {
+                                if (isSelected) {
+                                  setMbSelectedSlots(mbSelectedSlots.filter((slot) => slot !== s.timeSlot));
+                                } else {
+                                  setMbSelectedSlots([...mbSelectedSlots, s.timeSlot]);
+                                }
+                              }}
+                              className={`p-2 rounded-xl text-left border transition-all cursor-pointer flex flex-col justify-between ${
+                                isSelected
+                                  ? 'bg-amber-600 text-white border-amber-600 shadow-xs font-bold scale-[1.02]'
+                                  : isFull
+                                  ? 'bg-red-50/80 hover:bg-red-100 border-red-200 text-slate-800'
+                                  : 'bg-white hover:bg-slate-100 border-slate-200 text-slate-800'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between text-xs font-mono font-bold">
+                                <span>{s.timeSlot}</span>
+                                {isSelected && <CheckIcon className="w-3.5 h-3.5 shrink-0 ml-1" />}
+                              </div>
+                              <div className="mt-1 flex items-center justify-between text-[10px]">
+                                <span className={`font-semibold ${
+                                  isSelected
+                                    ? 'text-amber-100'
+                                    : isFull
+                                    ? 'text-red-600 font-bold'
+                                    : 'text-slate-500'
+                                }`}>
+                                  {isFull ? '🔴 0 left (Full)' : `🟢 ${remaining} left`}
+                                </span>
+                                <span className={`font-mono text-[9px] ${isSelected ? 'text-amber-200' : 'text-slate-400'}`}>
+                                  {s.bookedCount}/{s.capacity}
+                                </span>
+                              </div>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                    <p className="text-[10px] text-slate-400 italic">
+                      💡 Click one or multiple slots to set custom duration (e.g. 1.5 Hrs). Full slots (0 left) can still be clicked by staff for walk-in overrides.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Service Selection & Custom Price */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
+                    Selected Service / Add-on
+                  </label>
+                  <select
+                    value={mbSelectedServiceId}
+                    onChange={(e) => {
+                      const svcId = e.target.value;
+                      setMbSelectedServiceId(svcId);
+                      const svc = myLocation?.services?.find((s) => s.id === svcId);
+                      if (svc) setMbPrice(svc.price.toFixed(2));
+                    }}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm outline-none focus:border-amber-500 font-medium"
+                  >
+                    {(!myLocation?.services || myLocation.services.length === 0) ? (
+                      <option value="default_wash">Standard Car Wash</option>
+                    ) : (
+                      myLocation.services.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name} (BND ${s.price.toFixed(2)})
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
+                    Charge Price (BND $)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={mbPrice}
+                    onChange={(e) => setMbPrice(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm outline-none focus:border-amber-500 font-mono font-bold"
+                  />
+                </div>
+              </div>
+
+              {/* Initial Status */}
+              <div>
+                <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
+                  Initial Order Status
+                </label>
+                <select
+                  value={mbStatus}
+                  onChange={(e) => setMbStatus(e.target.value as BookingStatus)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm outline-none focus:border-amber-500 font-medium"
+                >
+                  <option value={BookingStatus.IN_PROGRESS}>⚡ Wash In Progress (Active Bay)</option>
+                  <option value={BookingStatus.PENDING}>⏳ Pending Queue</option>
+                  <option value={BookingStatus.COMPLETED}>✅ Already Clean & Completed</option>
+                </select>
+              </div>
+
+              {/* Notes / Special Instructions */}
+              <div>
+                <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
+                  Notes / Special Instructions
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="e.g. Extra dirty rims, customer paid cash on site."
+                  value={mbNotes}
+                  onChange={(e) => setMbNotes(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm outline-none focus:border-amber-500 font-medium"
+                />
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowManualBookingModal(false)}
+                  className="px-4 py-2 border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-bold rounded-xl transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={mbIsSubmitting}
+                  className="px-5 py-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-extrabold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <CheckCheck className="w-4 h-4" />
+                  <span>{mbIsSubmitting ? 'Recording...' : 'Confirm & Save Booking'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Booking Services & Add-ons Modal */}
+      <EditBookingModal
+        isOpen={showEditBookingModal}
+        onClose={() => {
+          setShowEditBookingModal(false);
+          setEditingBooking(null);
+        }}
+        booking={editingBooking}
+        location={myLocation}
+      />
 
       <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex gap-3 text-xs text-slate-500 text-left">
         <InfoIcon className="h-5 w-5 text-slate-400 shrink-0" />

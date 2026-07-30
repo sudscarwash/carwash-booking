@@ -665,63 +665,65 @@ const MainAppContent: React.FC = () => {
                 </>
               )}
 
-              {/* Multi-role Simulator Playground Switcher (MANDATORY & VERY HELPFUL FOR GRADING) */}
-              <div className="mt-8 border-t border-slate-100 pt-6">
-                <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 text-center">
-                  🛠️ Interactive Role Play Testing Credentials
-                </span>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleQuickLogin('customer')}
-                    className="p-2 border border-sky-150 hover:bg-sky-50 text-sky-700 text-xs font-bold rounded-xl flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer"
-                    id="quick-login-customer"
-                  >
-                    <Compass className="h-4 w-4" />
-                    Customer
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleQuickLogin('owner')}
-                    className="p-2 border border-indigo-150 hover:bg-indigo-50 text-indigo-700 text-xs font-bold rounded-xl flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer"
-                    id="quick-login-owner"
-                  >
-                    <Sliders className="h-4 w-4" />
-                    Owner
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleQuickLogin('employee')}
-                    className="p-2 border border-amber-150 hover:bg-amber-50 text-amber-700 text-xs font-bold rounded-xl flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer"
-                    id="quick-login-employee"
-                  >
-                    <Briefcase className="h-4 w-4" />
-                    Employee
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleQuickLogin('special')}
-                    className="p-2 border border-emerald-150 hover:bg-emerald-50 text-emerald-700 text-xs font-bold rounded-xl flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer"
-                    id="quick-login-special"
-                  >
-                    <Sparkles className="h-4 w-4" />
-                    Special User
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleQuickLogin('admin')}
-                    className="p-2 border border-red-150 hover:bg-red-50 text-red-700 text-xs font-bold rounded-xl flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer col-span-2 sm:col-span-1"
-                    id="quick-login-admin"
-                  >
-                    <Shield className="h-4 w-4" />
-                    Admin
-                  </button>
+              {/* Multi-role Simulator Playground Switcher (Automatically hidden in production) */}
+              {!import.meta.env.PROD && (
+                <div className="mt-8 border-t border-slate-100 pt-6">
+                  <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 text-center">
+                    🛠️ Interactive Role Play Testing Credentials (Dev Mode Only)
+                  </span>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleQuickLogin('customer')}
+                      className="p-2 border border-sky-150 hover:bg-sky-50 text-sky-700 text-xs font-bold rounded-xl flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer"
+                      id="quick-login-customer"
+                    >
+                      <Compass className="h-4 w-4" />
+                      Customer
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickLogin('owner')}
+                      className="p-2 border border-indigo-150 hover:bg-indigo-50 text-indigo-700 text-xs font-bold rounded-xl flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer"
+                      id="quick-login-owner"
+                    >
+                      <Sliders className="h-4 w-4" />
+                      Owner
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickLogin('employee')}
+                      className="p-2 border border-amber-150 hover:bg-amber-50 text-amber-700 text-xs font-bold rounded-xl flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer"
+                      id="quick-login-employee"
+                    >
+                      <Briefcase className="h-4 w-4" />
+                      Employee
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickLogin('special')}
+                      className="p-2 border border-emerald-150 hover:bg-emerald-50 text-emerald-700 text-xs font-bold rounded-xl flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer"
+                      id="quick-login-special"
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      Special User
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickLogin('admin')}
+                      className="p-2 border border-red-150 hover:bg-red-50 text-red-700 text-xs font-bold rounded-xl flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer col-span-2 sm:col-span-1"
+                      id="quick-login-admin"
+                    >
+                      <Shield className="h-4 w-4" />
+                      Admin
+                    </button>
+                  </div>
+                  <div className="bg-slate-50 rounded-xl p-2.5 border border-slate-100 text-[10px] text-slate-400 text-center mt-3 flex items-start gap-1.5 justify-center">
+                    <Info className="h-3 w-3 text-slate-400 shrink-0 mt-0.5" />
+                    <span>Click any button above to instantly log in as that role and explore distinct dashboards!</span>
+                  </div>
                 </div>
-                <div className="bg-slate-50 rounded-xl p-2.5 border border-slate-100 text-[10px] text-slate-400 text-center mt-3 flex items-start gap-1.5 justify-center">
-                  <Info className="h-3 w-3 text-slate-400 shrink-0 mt-0.5" />
-                  <span>Click any button above to instantly log in as that role and explore distinct dashboards!</span>
-                </div>
-              </div>
+              )}
             </div>
           </div>
         </div>

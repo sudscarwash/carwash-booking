@@ -740,12 +740,16 @@ export const CustomerDashboard: React.FC = () => {
                         }`}
                       >
                         <div className="flex gap-3 items-start min-w-0 w-full">
-                          <div className={`h-11 w-11 rounded-2xl flex items-center justify-center shrink-0 border ${
+                          <div className={`h-12 w-12 rounded-2xl flex items-center justify-center shrink-0 border overflow-hidden ${
                             selectedLocation?.id === loc.id
                               ? 'bg-sky-600 text-white border-sky-600'
                               : 'bg-sky-50 text-sky-600 border-sky-100'
                           }`}>
-                            <MapPin className="h-5 w-5" />
+                            {loc.logoUrl ? (
+                              <img src={loc.logoUrl} alt={loc.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <MapPin className="h-5 w-5" />
+                            )}
                           </div>
                           <div className="min-w-0 flex-1 overflow-hidden">
                             <h3 className="font-extrabold text-slate-900 text-sm sm:text-base break-words line-clamp-2 leading-tight">
@@ -1089,11 +1093,20 @@ export const CustomerDashboard: React.FC = () => {
                             onClick={() => toggleBookingExpanded(bk.id)}
                             className="p-3.5 sm:p-4 cursor-pointer select-none hover:bg-slate-50/80 transition-colors space-y-2"
                           >
-                            {/* Top Row: Full Uncut Car Wash Name & Status Badge */}
+                             {/* Top Row: Full Uncut Car Wash Name & Status Badge */}
                             <div className="flex items-start justify-between gap-2.5">
-                              <h4 className="font-black text-slate-900 text-sm sm:text-base leading-snug break-words flex-1 min-w-0">
-                                {(bk as any).carWashName || 'Car Wash Location'}
-                              </h4>
+                              <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                                {(() => {
+                                  const matchedLoc = locations.find(l => l.id === bk.carWashId || l.name === (bk as any).carWashName);
+                                  if (matchedLoc?.logoUrl) {
+                                    return <img src={matchedLoc.logoUrl} alt={matchedLoc.name} className="w-8 h-8 rounded-xl object-cover border border-slate-200 shrink-0 shadow-2xs" />;
+                                  }
+                                  return null;
+                                })()}
+                                <h4 className="font-black text-slate-900 text-sm sm:text-base leading-snug break-words flex-1 min-w-0">
+                                  {(bk as any).carWashName || 'Car Wash Location'}
+                                </h4>
+                              </div>
 
                               <div className="flex items-center gap-1.5 shrink-0">
                                 {renderStatusBadge(bk.status)}

@@ -75,9 +75,29 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
   const { token, showNotification } = useApp();
 
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
-  const [itemTabFilter, setItemTabFilter] = useState<'service' | 'product'>('service');
-  const [selectedService, setSelectedService] = useState<any | null>(null);
+  const [itemTabFilter, setItemTabFilter] = useState<'all' | 'service' | 'addon' | 'product'>('all');
+  const [selectedItems, setSelectedItems] = useState<any[]>([]);
   const [expandedServiceId, setExpandedServiceId] = useState<string | null>(null);
+
+  // Computed summary for selected multi-items
+  const totalSelectedPrice = selectedItems.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
+  const totalSelectedDuration = selectedItems.reduce((sum, item) => sum + (Number(item.duration) || 0), 0);
+  const combinedServiceName = selectedItems
+    .map((item) => item.name + (item.type === 'addon' ? ' (Add-on)' : item.type === 'product' ? ' (Product)' : ''))
+    .join(' + ');
+  const combinedServiceId = selectedItems.map((item) => item.id).join(',');
+
+  const toggleItemSelection = (item: any) => {
+    setSelectedItems((prev) => {
+      const exists = prev.some((i) => i.id === item.id);
+      if (exists) {
+        return prev.filter((i) => i.id !== item.id);
+      } else {
+        return [...prev, item];
+      }
+    });
+    setErrorMessage(null);
+  };
   
   // Date & Time states
   const [bookingDate, setBookingDate] = useState(() => getTodayDateString());
@@ -177,12 +197,19 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
       return;
     }
 
+    if (!vehicleInfo || !vehicleInfo.trim()) {
+      setErrorMessage('Vehicle plate number is compulsory to confirm your booking.');
+      return;
+    }
+
+    /* Commented out bank transfer flow - using Pay at Counter
     if (paymentMethod === 'bank') {
       setShowPaymentModal(true);
       return;
     }
+    */
 
-    const fullNotes = [vehicleInfo ? `Vehicle: ${vehicleInfo}` : '', notes].filter(Boolean).join(' | ');
+    const fullNotes = [vehicleInfo ? `Vehicle Plate: ${vehicleInfo.trim()}` : '', notes].filter(Boolean).join(' | ');
 
     setIsSubmitting(true);
     try {
@@ -191,9 +218,9 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
         bookingDate,
         selectedSlot,
         fullNotes,
-        selectedService?.id,
-        selectedService?.name,
-        selectedService?.price
+        combinedServiceId || undefined,
+        combinedServiceName || 'Standard Car Wash',
+        totalSelectedPrice || 15.00
       );
 
       if (res.success) {
@@ -204,8 +231,8 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
           date: bookingDate,
           timeSlot: selectedSlot,
           notes: fullNotes,
-          serviceName: selectedService?.name,
-          price: selectedService?.price,
+          serviceName: combinedServiceName || 'Standard Car Wash',
+          price: totalSelectedPrice || 15.00,
         };
         setSuccessBooking(bookingData);
         onBookingSuccess(bookingData);
@@ -245,7 +272,7 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                 <span className="hidden sm:inline">Back</span>
               </button>
             )}
-            <img src={autoshineLogo} alt="Logo" className="w-8 h-8 rounded-lg object-cover ring-1 ring-white/20" />
+            <img src={location.logoUrl || autoshineLogo} alt={location.name} className="w-9 h-9 rounded-xl object-cover ring-2 ring-white/20 shrink-0" />
             <div>
               <h3 className="font-extrabold text-sm sm:text-base text-white line-clamp-1">{location.name}</h3>
               <p className="text-[11px] text-sky-400 font-medium flex items-center gap-1">
@@ -280,21 +307,21 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
               <span className={`w-5 h-5 rounded-full text-[10px] flex items-center justify-center font-extrabold ${currentStep === 1 ? 'bg-sky-600 text-white' : currentStep > 1 ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
                 {currentStep > 1 ? '✓' : '1'}
               </span>
-              <span>1. Service</span>
+              <span>1. Services & Add-ons</span>
             </button>
 
             <ChevronRight className="w-4 h-4 text-slate-300 shrink-0" />
 
             <button
               type="button"
-              disabled={!selectedService}
+              disabled={selectedItems.length === 0}
               onClick={() => {
-                if (selectedService) {
+                if (selectedItems.length > 0) {
                   setErrorMessage(null);
                   setCurrentStep(2);
                 }
               }}
-              className={`flex items-center gap-1.5 transition-all ${selectedService ? 'cursor-pointer hover:text-sky-600' : 'cursor-not-allowed opacity-50'} ${currentStep === 2 ? 'text-sky-600 font-black' : currentStep > 2 ? 'text-emerald-600' : ''}`}
+              className={`flex items-center gap-1.5 transition-all ${selectedItems.length > 0 ? 'cursor-pointer hover:text-sky-600' : 'cursor-not-allowed opacity-50'} ${currentStep === 2 ? 'text-sky-600 font-black' : currentStep > 2 ? 'text-emerald-600' : ''}`}
             >
               <span className={`w-5 h-5 rounded-full text-[10px] flex items-center justify-center font-extrabold ${currentStep === 2 ? 'bg-sky-600 text-white' : currentStep > 2 ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
                 {currentStep > 2 ? '✓' : '2'}
@@ -306,14 +333,14 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
 
             <button
               type="button"
-              disabled={!selectedService || !selectedSlot}
+              disabled={selectedItems.length === 0 || !selectedSlot}
               onClick={() => {
-                if (selectedService && selectedSlot) {
+                if (selectedItems.length > 0 && selectedSlot) {
                   setErrorMessage(null);
                   setCurrentStep(3);
                 }
               }}
-              className={`flex items-center gap-1.5 transition-all ${selectedService && selectedSlot ? 'cursor-pointer hover:text-sky-600' : 'cursor-not-allowed opacity-50'} ${currentStep === 3 ? 'text-sky-600 font-black' : ''}`}
+              className={`flex items-center gap-1.5 transition-all ${selectedItems.length > 0 && selectedSlot ? 'cursor-pointer hover:text-sky-600' : 'cursor-not-allowed opacity-50'} ${currentStep === 3 ? 'text-sky-600 font-black' : ''}`}
             >
               <span className={`w-5 h-5 rounded-full text-[10px] flex items-center justify-center font-extrabold ${currentStep === 3 ? 'bg-sky-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
                 3
@@ -386,122 +413,162 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
             </div>
           ) : (
             <>
-              {/* STEP 1: SERVICE & PRODUCT SELECTION */}
+              {/* STEP 1: SERVICE & ADD-ON SELECTION (MULTI-SELECT SUPPORTED) */}
               {currentStep === 1 && (
                 <div className="space-y-4 animate-fade-in">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
                     <div>
                       <h2 className="text-sm font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
                         <Sparkles className="w-4 h-4 text-sky-500" />
-                        Step 1: Choose a Wash Package or Product
+                        Step 1: Choose Wash Services & Add-ons
                       </h2>
-                      <p className="text-xs text-slate-400">Select your preferred wash option to proceed to date & time selection</p>
+                      <p className="text-xs text-slate-400">You can select a main wash service plus optional add-ons (e.g. headlight polish, tyre wax)</p>
                     </div>
 
-                    {location.services && location.services.some((s: any) => s.type === 'product') && (
-                      <div className="flex border border-slate-200 p-0.5 rounded-xl bg-slate-100 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => setItemTabFilter('service')}
-                          className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                            itemTabFilter === 'service'
-                              ? 'bg-white text-sky-600 shadow-xs'
-                              : 'text-slate-500 hover:text-slate-700'
-                          }`}
-                        >
-                          Wash Services
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setItemTabFilter('product')}
-                          className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                            itemTabFilter === 'product'
-                              ? 'bg-white text-sky-600 shadow-xs'
-                              : 'text-slate-500 hover:text-slate-700'
-                          }`}
-                        >
-                          Retail Products
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Services / Items list */}
-                  <div className="space-y-3">
-                    {!location.services || location.services.length === 0 ? (
-                      /* Default fallback service */
-                      <div
-                        onClick={() => {
-                          const defaultSvc = {
-                            id: 'default_wash',
-                            name: 'Standard Car Wash & Vacuum',
-                            price: 15.00,
-                            duration: 45,
-                            description: 'Complete exterior water jet wash with high foam shampoo, tire shine, and interior deep vacuum cleaning.'
-                          };
-                          setSelectedService(defaultSvc);
-                          setErrorMessage(null);
-                          setCurrentStep(2);
-                        }}
-                        className={`bg-white border rounded-2xl p-4 sm:p-5 transition-all cursor-pointer flex justify-between items-center ${
-                          selectedService?.id === 'default_wash'
-                            ? 'border-sky-500 ring-2 ring-sky-100 shadow-sm'
-                            : 'border-slate-200 hover:border-sky-300'
+                    <div className="flex border border-slate-200 p-0.5 rounded-xl bg-slate-100 shrink-0 text-xs font-bold overflow-x-auto">
+                      <button
+                        type="button"
+                        onClick={() => setItemTabFilter('all')}
+                        className={`px-2.5 py-1 text-[11px] font-extrabold rounded-lg transition-all cursor-pointer ${
+                          itemTabFilter === 'all' ? 'bg-white text-sky-600 shadow-xs' : 'text-slate-500 hover:text-slate-700'
                         }`}
                       >
-                        <div>
-                          <h4 className="font-extrabold text-slate-800 text-sm">Standard Car Wash & Vacuum</h4>
-                          <p className="text-xs text-slate-400 mt-0.5">Duration: 45 mins</p>
-                          <p className="text-slate-500 text-xs mt-1">Complete exterior wash and interior vacuum</p>
-                        </div>
-                        <span className="font-black text-sky-600 text-base shrink-0">BND $15.00</span>
-                      </div>
-                    ) : (
-                      (() => {
-                        const hasProducts = location.services.some((s: any) => s.type === 'product');
-                        const filtered = location.services.filter((svc: any) => {
-                          if (!hasProducts) return true;
-                          if (itemTabFilter === 'product') {
-                            return svc.type === 'product';
-                          } else {
-                            return svc.type !== 'product';
-                          }
-                        });
+                        All
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setItemTabFilter('service')}
+                        className={`px-2.5 py-1 text-[11px] font-extrabold rounded-lg transition-all cursor-pointer ${
+                          itemTabFilter === 'service' ? 'bg-white text-sky-600 shadow-xs' : 'text-slate-500 hover:text-slate-700'
+                        }`}
+                      >
+                        Main Services
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setItemTabFilter('addon')}
+                        className={`px-2.5 py-1 text-[11px] font-extrabold rounded-lg transition-all cursor-pointer ${
+                          itemTabFilter === 'addon' ? 'bg-white text-purple-600 shadow-xs' : 'text-slate-500 hover:text-slate-700'
+                        }`}
+                      >
+                        Add-ons & Extras
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setItemTabFilter('product')}
+                        className={`px-2.5 py-1 text-[11px] font-extrabold rounded-lg transition-all cursor-pointer ${
+                          itemTabFilter === 'product' ? 'bg-white text-emerald-600 shadow-xs' : 'text-slate-500 hover:text-slate-700'
+                        }`}
+                      >
+                        Products
+                      </button>
+                    </div>
+                  </div>
 
-                        if (filtered.length === 0) {
-                          return (
-                            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-8 text-center text-slate-400 text-xs">
-                              No items available in this category.
-                            </div>
-                          );
-                        }
+                  {/* Services / Add-ons / Items list */}
+                  <div className="space-y-3">
+                    {(() => {
+                      // Determine items to display (fallback or actual location services)
+                      const itemsList = (location.services && location.services.length > 0)
+                        ? location.services
+                        : [
+                            {
+                              id: 'default_wash',
+                              name: 'Standard Car Wash & Vacuum',
+                              price: 15.00,
+                              duration: 45,
+                              type: 'service',
+                              description: 'Complete exterior water jet wash with high foam shampoo, tire shine, and interior deep vacuum cleaning.'
+                            },
+                            {
+                              id: 'default_addon_headlight',
+                              name: 'Headlight Polish & Restoration',
+                              price: 15.00,
+                              duration: 15,
+                              type: 'addon',
+                              description: 'Professional headlight lens clarity restoration removing yellowing, cloudiness and hazing.'
+                            },
+                            {
+                              id: 'default_addon_tyre',
+                              name: 'Tyre Shine & Rim Wax Coating',
+                              price: 5.00,
+                              duration: 10,
+                              type: 'addon',
+                              description: 'Deep glossy tyre dressing and protective hydrophobic rim shine coat.'
+                            }
+                          ];
 
-                        return filtered.map((svc: any) => {
-                          const isSelected = selectedService?.id === svc.id;
-                          const isExpanded = expandedServiceId === svc.id;
-                          const isProduct = svc.type === 'product';
-                          const isAvailable = svc.isAvailable !== false;
+                      const filtered = itemsList.filter((svc: any) => {
+                        if (itemTabFilter === 'all') return true;
+                        if (itemTabFilter === 'service') return !svc.type || svc.type === 'service';
+                        if (itemTabFilter === 'addon') return svc.type === 'addon';
+                        if (itemTabFilter === 'product') return svc.type === 'product';
+                        return true;
+                      });
 
-                          return (
-                            <div
-                              key={svc.id}
-                              className={`bg-white border rounded-2xl p-4 transition-all ${
-                                !isAvailable
-                                  ? 'opacity-60 bg-slate-50/50 border-slate-100'
-                                  : isSelected
-                                  ? 'border-sky-500 ring-2 ring-sky-100 shadow-sm'
-                                  : 'border-slate-200 hover:border-slate-300'
-                              }`}
-                            >
-                              <div className="flex items-start justify-between gap-3">
+                      if (filtered.length === 0) {
+                        return (
+                          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-8 text-center text-slate-400 text-xs">
+                            No items available in this category.
+                          </div>
+                        );
+                      }
+
+                      return filtered.map((svc: any) => {
+                        const isSelected = selectedItems.some((i) => i.id === svc.id);
+                        const isExpanded = expandedServiceId === svc.id;
+                        const isProduct = svc.type === 'product';
+                        const isAddon = svc.type === 'addon';
+                        const isAvailable = svc.isAvailable !== false;
+
+                        return (
+                          <div
+                            key={svc.id}
+                            onClick={() => {
+                              if (isAvailable) toggleItemSelection(svc);
+                            }}
+                            className={`bg-white border rounded-2xl p-4 transition-all cursor-pointer ${
+                              !isAvailable
+                                ? 'opacity-60 bg-slate-50/50 border-slate-100 cursor-not-allowed'
+                                : isSelected
+                                ? 'border-sky-500 ring-2 ring-sky-100 bg-sky-50/30 shadow-sm'
+                                : 'border-slate-200 hover:border-sky-300'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex items-start gap-3 flex-1 min-w-0">
+                                {/* Checkbox Indicator */}
+                                <div className={`w-5 h-5 rounded-lg border flex items-center justify-center shrink-0 mt-0.5 transition-all ${
+                                  isSelected ? 'bg-sky-600 border-sky-600 text-white' : 'border-slate-300 bg-white'
+                                }`}>
+                                  {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                                </div>
+
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <h4 className="font-extrabold text-slate-800 text-sm sm:text-base">{svc.name}</h4>
+                                    
+                                    {/* Type badge */}
+                                    {isProduct ? (
+                                      <span className="bg-emerald-50 text-emerald-700 border border-emerald-100 text-[9px] font-black px-2 py-0.5 rounded-md uppercase">
+                                        Product
+                                      </span>
+                                    ) : isAddon ? (
+                                      <span className="bg-purple-50 text-purple-700 border border-purple-100 text-[9px] font-black px-2 py-0.5 rounded-md uppercase">
+                                        Add-on
+                                      </span>
+                                    ) : (
+                                      <span className="bg-blue-50 text-blue-700 border border-blue-100 text-[9px] font-black px-2 py-0.5 rounded-md uppercase">
+                                        Main Wash
+                                      </span>
+                                    )}
+
                                     {svc.vehicleType && svc.vehicleType !== 'N/A' && svc.vehicleType !== 'All' && (
                                       <span className="bg-slate-100 text-slate-700 text-[10px] font-bold px-2 py-0.5 rounded-md">
                                         {svc.vehicleType}
                                       </span>
                                     )}
+
                                     {!isAvailable && (
                                       <span className="bg-rose-50 text-rose-600 border border-rose-100 text-[10px] font-bold px-2 py-0.5 rounded-md uppercase">
                                         {isProduct ? 'Out of Stock' : 'Unavailable'}
@@ -513,7 +580,7 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                                     {!isProduct ? (
                                       <span className="flex items-center gap-1 font-semibold text-slate-600">
                                         <Clock className="w-3.5 h-3.5 text-sky-500" />
-                                        {svc.duration || 30} mins duration
+                                        {svc.duration || 30} mins
                                       </span>
                                     ) : (
                                       <span className="text-emerald-600 font-bold">Physical Retail Product</span>
@@ -525,67 +592,94 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                                       onClick={(e) => toggleExpand(svc.id, e)}
                                       className="text-sky-600 hover:text-sky-700 font-bold text-xs flex items-center gap-0.5 ml-auto sm:ml-0 underline decoration-sky-300 underline-offset-2 cursor-pointer"
                                     >
-                                      {isExpanded ? 'Hide Details' : 'Details & Info'}
+                                      {isExpanded ? 'Hide Info' : 'Info'}
                                       <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                                     </button>
                                   </div>
                                 </div>
-
-                                <div className="flex flex-col items-end shrink-0 gap-2">
-                                  <span className="font-black text-sky-600 text-base sm:text-lg">
-                                    BND ${(svc.price || 0).toFixed(2)}
-                                  </span>
-
-                                  <button
-                                    type="button"
-                                    disabled={!isAvailable}
-                                    onClick={() => {
-                                      setSelectedService(svc);
-                                      setErrorMessage(null);
-                                      setCurrentStep(2);
-                                    }}
-                                    className={`px-4 py-2 rounded-xl font-extrabold text-xs transition-all flex items-center gap-1 cursor-pointer ${
-                                      isSelected
-                                        ? 'bg-sky-600 text-white shadow-xs'
-                                        : 'bg-slate-900 hover:bg-sky-600 text-white shadow-xs'
-                                    }`}
-                                  >
-                                    <span>{isSelected ? 'Selected' : 'Select'}</span>
-                                    <ChevronRight className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
                               </div>
 
-                              {/* EXPANDABLE DETAILS ACCORDION */}
-                              {isExpanded && (
-                                <div className="mt-3 pt-3 border-t border-slate-100 text-xs text-slate-600 bg-slate-50/80 rounded-xl p-3 space-y-2 animate-fade-in">
-                                  <div className="flex items-start gap-2">
-                                    <Info className="w-4 h-4 text-sky-500 shrink-0 mt-0.5" />
-                                    <div>
-                                      <p className="font-bold text-slate-800 mb-0.5">Package Details & Features:</p>
-                                      <p className="text-slate-600 leading-relaxed">
-                                        {svc.description || 'Standard high quality car wash service delivered by experienced detailing staff.'}
-                                      </p>
-                                    </div>
-                                  </div>
+                              <div className="flex flex-col items-end shrink-0 gap-2">
+                                <span className="font-black text-sky-600 text-base sm:text-lg">
+                                  BND ${(svc.price || 0).toFixed(2)}
+                                </span>
 
-                                  {!isProduct && (
-                                    <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200/60 text-[11px] text-slate-500">
-                                      <div>
-                                        <span className="font-bold text-slate-700">Estimated Duration:</span> {svc.duration || 30} Minutes
-                                      </div>
-                                      <div>
-                                        <span className="font-bold text-slate-700">Suitable For:</span> {svc.vehicleType || 'All Vehicles'}
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
+                                <button
+                                  type="button"
+                                  disabled={!isAvailable}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (isAvailable) toggleItemSelection(svc);
+                                  }}
+                                  className={`px-3.5 py-1.5 rounded-xl font-extrabold text-xs transition-all flex items-center gap-1 cursor-pointer ${
+                                    isSelected
+                                      ? 'bg-sky-600 text-white shadow-xs'
+                                      : 'bg-slate-100 hover:bg-sky-600 hover:text-white text-slate-800'
+                                  }`}
+                                >
+                                  <span>{isSelected ? '✓ Added' : '+ Add'}</span>
+                                </button>
+                              </div>
                             </div>
-                          );
-                        });
-                      })()
-                    )}
+
+                            {/* EXPANDABLE DETAILS ACCORDION */}
+                            {isExpanded && (
+                              <div className="mt-3 pt-3 border-t border-slate-100 text-xs text-slate-600 bg-slate-50/80 rounded-xl p-3 space-y-2 animate-fade-in">
+                                <div className="flex items-start gap-2">
+                                  <Info className="w-4 h-4 text-sky-500 shrink-0 mt-0.5" />
+                                  <div>
+                                    <p className="font-bold text-slate-800 mb-0.5">Package Details & Features:</p>
+                                    <p className="text-slate-600 leading-relaxed">
+                                      {svc.description || 'High quality car wash service delivered by experienced detailing staff.'}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+
+                  {/* BOTTOM STICKY SELECTION SUMMARY & PROCEED BUTTON */}
+                  <div className="bg-slate-900 text-white rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xl">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-black uppercase text-sky-400 tracking-wider">
+                          {selectedItems.length} {selectedItems.length === 1 ? 'Item' : 'Items'} Selected
+                        </span>
+                        {totalSelectedDuration > 0 && (
+                          <span className="text-[10px] bg-slate-800 text-slate-300 font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                            <Clock className="w-3 h-3 text-sky-400" />
+                            ~{totalSelectedDuration} min total
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-300 line-clamp-1 mt-0.5 font-medium">
+                        {selectedItems.length > 0 ? combinedServiceName : 'Please select at least one wash service or add-on.'}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-3 w-full sm:w-auto shrink-0">
+                      <div className="text-right hidden sm:block">
+                        <span className="text-[10px] text-slate-400 uppercase font-bold block">Total Amount</span>
+                        <span className="font-black text-white text-base font-mono">BND ${totalSelectedPrice.toFixed(2)}</span>
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={selectedItems.length === 0}
+                        onClick={() => {
+                          setErrorMessage(null);
+                          setCurrentStep(2);
+                        }}
+                        className="w-full sm:w-auto px-5 py-3 bg-sky-500 hover:bg-sky-400 disabled:opacity-40 disabled:hover:bg-sky-500 text-slate-950 font-black text-xs sm:text-sm rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <span>Schedule Appointment (${totalSelectedPrice.toFixed(2)})</span>
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -593,20 +687,20 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
               {/* STEP 2: DATE & TIME SLOT SELECTION */}
               {currentStep === 2 && (
                 <div className="space-y-5 animate-fade-in">
-                  {/* Selected service summary chip */}
-                  {selectedService && (
-                    <div className="bg-sky-50 border border-sky-200 p-3.5 rounded-2xl flex items-center justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <div className="bg-sky-500 text-white p-2 rounded-xl">
+                  {/* Selected items summary chip */}
+                  {selectedItems.length > 0 && (
+                    <div className="bg-sky-50 border border-sky-200 p-3.5 rounded-2xl flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="bg-sky-500 text-white p-2 rounded-xl shrink-0">
                           <Sparkles className="w-4 h-4" />
                         </div>
-                        <div>
-                          <span className="text-[10px] text-sky-600 font-bold uppercase tracking-wider block">Selected Package</span>
-                          <span className="font-extrabold text-slate-800 text-xs sm:text-sm">{selectedService.name}</span>
+                        <div className="min-w-0">
+                          <span className="text-[10px] text-sky-600 font-bold uppercase tracking-wider block">Selected Package & Add-ons ({selectedItems.length})</span>
+                          <span className="font-extrabold text-slate-800 text-xs sm:text-sm line-clamp-1">{combinedServiceName}</span>
                         </div>
                       </div>
-                      <div className="text-right flex items-center gap-3">
-                        <span className="font-black text-sky-700 text-sm sm:text-base">BND ${(selectedService.price || 0).toFixed(2)}</span>
+                      <div className="text-right flex items-center gap-3 shrink-0">
+                        <span className="font-black text-sky-700 text-sm sm:text-base font-mono">BND ${totalSelectedPrice.toFixed(2)}</span>
                         <button
                           type="button"
                           onClick={() => {
@@ -789,9 +883,9 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                       </div>
 
                       <div>
-                        <span className="text-slate-400 font-bold block uppercase tracking-wider text-[10px]">Selected Service</span>
-                        <span className="text-slate-800 font-extrabold text-sm">{selectedService?.name || 'Standard Car Wash'}</span>
-                        <span className="text-sky-600 font-extrabold text-xs block">Duration: {selectedService?.duration || 45} mins</span>
+                        <span className="text-slate-400 font-bold block uppercase tracking-wider text-[10px]">Selected Services & Add-ons ({selectedItems.length})</span>
+                        <span className="text-slate-800 font-extrabold text-xs sm:text-sm block leading-snug">{combinedServiceName || 'Standard Car Wash'}</span>
+                        <span className="text-sky-600 font-extrabold text-xs block mt-0.5">Est. Duration: ~{totalSelectedDuration} mins</span>
                       </div>
 
                       <div>
@@ -800,31 +894,39 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                       </div>
 
                       <div>
-                        <span className="text-slate-400 font-bold block uppercase tracking-wider text-[10px]">Total Service Price</span>
-                        <span className="text-slate-900 font-black text-base">BND ${(selectedService?.price || 0).toFixed(2)}</span>
+                        <span className="text-slate-400 font-bold block uppercase tracking-wider text-[10px]">Total Amount Payable</span>
+                        <span className="text-slate-900 font-black text-base font-mono">BND ${totalSelectedPrice.toFixed(2)}</span>
                       </div>
                     </div>
                   </div>
 
                   {/* Vehicle Details & Customer Notes */}
                   <div className="space-y-3">
-                    <label className="block text-xs font-black text-slate-700 uppercase tracking-wider">
-                      Vehicle Plate & Notes (Optional)
+                    <label className="block text-xs font-black text-slate-700 uppercase tracking-wider flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        Vehicle Plate Number <span className="text-red-500 font-bold text-sm">*</span>
+                      </span>
+                      <span className="text-[10px] text-red-600 font-extrabold bg-red-50 px-2 py-0.5 rounded border border-red-100">
+                        Compulsory
+                      </span>
                     </label>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <input
                           type="text"
-                          placeholder="Vehicle Model / Plate (e.g. Toyota Vios BA1234)"
+                          required
+                          placeholder="Vehicle Plate Number (e.g. BA1234 or K1234)"
                           value={vehicleInfo}
                           onChange={(e) => setVehicleInfo(e.target.value)}
-                          className="w-full px-3.5 py-2.5 border border-slate-200 focus:border-sky-500 rounded-xl outline-none text-slate-800 text-xs transition-all bg-white"
+                          className={`w-full px-3.5 py-2.5 border rounded-xl outline-none text-slate-800 text-xs transition-all bg-white font-mono font-bold uppercase ${
+                            !vehicleInfo.trim() && errorMessage ? 'border-red-500 ring-2 ring-red-100' : 'border-slate-200 focus:border-sky-500'
+                          }`}
                         />
                       </div>
                       <div>
                         <input
                           type="text"
-                          placeholder="Special instructions or requests..."
+                          placeholder="Special instructions or requests (Optional)..."
                           value={notes}
                           onChange={(e) => setNotes(e.target.value)}
                           className="w-full px-3.5 py-2.5 border border-slate-200 focus:border-sky-500 rounded-xl outline-none text-slate-800 text-xs transition-all bg-white"
@@ -836,33 +938,30 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                   {/* Payment Method Selector */}
                   <div className="space-y-2">
                     <label className="block text-xs font-black text-slate-700 uppercase tracking-wider flex items-center justify-between">
-                      <span>Select Payment Option</span>
-                      <span className="text-[10px] text-emerald-600 font-bold">Default: Pay at Counter</span>
+                      <span>Payment Method</span>
+                      <span className="text-[10px] text-emerald-600 font-bold">Pay at Counter</span>
                     </label>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 gap-3">
                       <button
                         type="button"
                         onClick={() => setPaymentMethod('cash')}
-                        className={`p-3.5 rounded-2xl border text-left flex items-center gap-3 transition-all cursor-pointer ${
-                          paymentMethod === 'cash'
-                            ? 'border-emerald-500 bg-emerald-50/60 ring-2 ring-emerald-100'
-                            : 'border-slate-200 bg-white hover:border-slate-300'
-                        }`}
+                        className="p-3.5 rounded-2xl border text-left flex items-center gap-3 transition-all cursor-pointer border-emerald-500 bg-emerald-50/60 ring-2 ring-emerald-100"
                       >
                         <div className="bg-emerald-100 text-emerald-700 p-2.5 rounded-xl shrink-0">
                           <CreditCard className="w-4 h-4" />
                         </div>
-                        <div>
-                          <span className="font-extrabold text-slate-800 text-xs block flex items-center gap-1.5">
+                        <div className="flex-1">
+                          <span className="font-extrabold text-slate-800 text-xs flex items-center gap-1.5">
                             Pay at Counter
                             <span className="text-[9px] bg-emerald-100 text-emerald-800 border border-emerald-200 px-1.5 py-0.2 rounded font-black">
-                              Default
+                              Pay On Arrival
                             </span>
                           </span>
-                          <span className="text-[10px] text-slate-500 block">Cash or local QR on-site</span>
+                          <span className="text-[10px] text-slate-500 block">Pay cash or local QR when dropping off your vehicle on-site</span>
                         </div>
                       </button>
 
+                      {/* Bank Transfer option commented out for now as requested
                       <button
                         type="button"
                         disabled={!isBankAvailable}
@@ -896,6 +995,7 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                           </span>
                         </div>
                       </button>
+                      */}
                     </div>
                   </div>
 
@@ -1005,9 +1105,9 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
             timeSlot={selectedSlot}
             notes={[vehicleInfo ? `Vehicle: ${vehicleInfo}` : '', notes].filter(Boolean).join(' | ')}
             token={token}
-            serviceId={selectedService?.id}
-            serviceName={selectedService?.name}
-            price={selectedService?.price}
+            serviceId={combinedServiceId}
+            serviceName={combinedServiceName}
+            price={totalSelectedPrice}
             onSuccess={(data) => {
               setShowPaymentModal(false);
               const bookingData = {
@@ -1017,8 +1117,8 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                 date: bookingDate,
                 timeSlot: selectedSlot,
                 notes: notes,
-                serviceName: selectedService?.name,
-                price: selectedService?.price,
+                serviceName: combinedServiceName,
+                price: totalSelectedPrice,
                 txnRef: data.txnReference || ''
               };
               setSuccessBooking(bookingData);

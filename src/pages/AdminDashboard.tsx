@@ -24,6 +24,7 @@ export const AdminDashboard: React.FC = () => {
     createOwnerWithBusiness,
     updateLocationConfig,
     deleteLocation,
+    fetchLocationsConfig,
     loading,
     token
   } = useApp();
@@ -51,6 +52,8 @@ export const AdminDashboard: React.FC = () => {
 
   // Onboard Business and Owner State
   const [showOnboardModal, setShowOnboardModal] = useState(false);
+  const [onboardOwnerMode, setOnboardOwnerMode] = useState<'new' | 'existing'>('new');
+  const [selectedOnboardOwnerId, setSelectedOnboardOwnerId] = useState('');
   const [onboardOwnerName, setOnboardOwnerName] = useState('');
   const [onboardOwnerEmail, setOnboardOwnerEmail] = useState('');
   const [onboardOwnerPassword, setOnboardOwnerPassword] = useState('owner123');
@@ -73,6 +76,7 @@ export const AdminDashboard: React.FC = () => {
   const [editLocIsActive, setEditLocIsActive] = useState(true);
   const [editLocPhone, setEditLocPhone] = useState('');
   const [editLocInstagram, setEditLocInstagram] = useState('');
+  const [editLocOwnerId, setEditLocOwnerId] = useState('');
   const [editLocSubmitting, setEditLocSubmitting] = useState(false);
   const [deletingLocId, setDeletingLocId] = useState<string | null>(null);
 
@@ -235,6 +239,7 @@ export const AdminDashboard: React.FC = () => {
     setEditLocIsActive(loc.isActive);
     setEditLocPhone(loc.phone || '');
     setEditLocInstagram(loc.instagram || '');
+    setEditLocOwnerId(loc.ownerId || '');
   };
 
   const handleEditLocationSubmit = async (e: React.FormEvent) => {
@@ -253,6 +258,7 @@ export const AdminDashboard: React.FC = () => {
       isActive: editLocIsActive,
       phone: editLocPhone,
       instagram: editLocInstagram,
+      ownerId: editLocOwnerId,
     });
     setEditLocSubmitting(false);
 
@@ -296,19 +302,58 @@ export const AdminDashboard: React.FC = () => {
 
   const handleOnboardSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!onboardOwnerName || !onboardOwnerEmail || !onboardBusinessName || !onboardBusinessAddress) return;
+    if (!onboardBusinessName || !onboardBusinessAddress) return;
 
     setOnboardSubmitting(true);
-    const success = await createOwnerWithBusiness({
-      ownerName: onboardOwnerName,
-      ownerEmail: onboardOwnerEmail,
-      ownerPassword: onboardOwnerPassword,
-      businessName: onboardBusinessName,
-      businessAddress: onboardBusinessAddress,
-      businessDesc: onboardBusinessDesc,
-      businessLat: onboardBusinessLat,
-      businessLng: onboardBusinessLng
-    });
+    let success = false;
+
+    if (onboardOwnerMode === 'existing') {
+      if (!selectedOnboardOwnerId) {
+        setOnboardSubmitting(false);
+        return;
+      }
+      try {
+        const res = await fetch('/api/car-washes', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            name: onboardBusinessName,
+            address: onboardBusinessAddress,
+            description: onboardBusinessDesc,
+            locationLat: onboardBusinessLat,
+            locationLng: onboardBusinessLng,
+            ownerId: selectedOnboardOwnerId,
+            slotDuration: 30,
+            capacityPerSlot: 2
+          })
+        });
+        success = res.ok;
+        if (success) {
+          fetchLocationsConfig();
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    } else {
+      if (!onboardOwnerName || !onboardOwnerEmail) {
+        setOnboardSubmitting(false);
+        return;
+      }
+      success = await createOwnerWithBusiness({
+        ownerName: onboardOwnerName,
+        ownerEmail: onboardOwnerEmail,
+        ownerPassword: onboardOwnerPassword,
+        businessName: onboardBusinessName,
+        businessAddress: onboardBusinessAddress,
+        businessDesc: onboardBusinessDesc,
+        businessLat: onboardBusinessLat,
+        businessLng: onboardBusinessLng
+      });
+    }
+
     setOnboardSubmitting(false);
 
     if (success) {
@@ -318,6 +363,7 @@ export const AdminDashboard: React.FC = () => {
       setOnboardBusinessName('');
       setOnboardBusinessAddress('');
       setOnboardBusinessDesc('');
+      setSelectedOnboardOwnerId('');
       setShowOnboardModal(false);
     }
   };
@@ -1515,49 +1561,90 @@ export const AdminDashboard: React.FC = () => {
             <form onSubmit={handleOnboardSubmit} className="space-y-6 text-xs sm:text-sm">
               {/* Part 1: Owner Profile details */}
               <div className="space-y-3 bg-slate-50/50 p-4 rounded-2xl border border-slate-100">
-                <h4 className="font-bold text-slate-700 text-xs uppercase tracking-wider flex items-center gap-1.5">
-                  <span className="bg-red-50 text-red-700 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold">1</span>
-                  Merchant Account Profile (Owner)
-                </h4>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Owner Contact Name</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Jack Owner"
-                      value={onboardOwnerName}
-                      onChange={(e) => setOnboardOwnerName(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-500"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Email Address</label>
-                    <input
-                      type="email"
-                      placeholder="owner@carwash.com"
-                      value={onboardOwnerEmail}
-                      onChange={(e) => setOnboardOwnerEmail(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-500"
-                      required
-                    />
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-slate-700 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="bg-red-50 text-red-700 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold">1</span>
+                    Merchant Account Profile (Owner)
+                  </h4>
+                  <div className="flex items-center bg-slate-200/60 p-0.5 rounded-lg text-[10px] font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setOnboardOwnerMode('new')}
+                      className={`px-2 py-1 rounded-md transition-all cursor-pointer ${onboardOwnerMode === 'new' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500'}`}
+                    >
+                      New Owner
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOnboardOwnerMode('existing')}
+                      className={`px-2 py-1 rounded-md transition-all cursor-pointer ${onboardOwnerMode === 'existing' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500'}`}
+                    >
+                      Existing Owner
+                    </button>
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Initial Password</label>
-                  <div className="relative">
-                    <Key className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
-                    <input
-                      type="text"
-                      value={onboardOwnerPassword}
-                      onChange={(e) => setOnboardOwnerPassword(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-500 font-mono font-bold"
+                {onboardOwnerMode === 'existing' ? (
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Select Existing Owner Account</label>
+                    <select
+                      value={selectedOnboardOwnerId}
+                      onChange={(e) => setSelectedOnboardOwnerId(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-500 text-sm font-medium"
                       required
-                    />
+                    >
+                      <option value="">-- Choose Registered Owner --</option>
+                      {adminUsersList
+                        .filter((u) => u.role === Role.OWNER)
+                        .map((owner) => (
+                          <option key={owner.id} value={owner.id}>
+                            {owner.name} ({owner.email}) - {owner.id}
+                          </option>
+                        ))}
+                    </select>
                   </div>
-                </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-600 mb-1">Owner Contact Name</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Jack Owner"
+                          value={onboardOwnerName}
+                          onChange={(e) => setOnboardOwnerName(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-500"
+                          required={onboardOwnerMode === 'new'}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-600 mb-1">Email Address</label>
+                        <input
+                          type="email"
+                          placeholder="owner@carwash.com"
+                          value={onboardOwnerEmail}
+                          onChange={(e) => setOnboardOwnerEmail(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-500"
+                          required={onboardOwnerMode === 'new'}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">Initial Password</label>
+                      <div className="relative">
+                        <Key className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+                        <input
+                          type="text"
+                          value={onboardOwnerPassword}
+                          onChange={(e) => setOnboardOwnerPassword(e.target.value)}
+                          className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-500 font-mono font-bold"
+                          required={onboardOwnerMode === 'new'}
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Part 2: Business Location details */}
@@ -1714,16 +1801,35 @@ export const AdminDashboard: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Physical Address</label>
-                    <input
-                      type="text"
-                      placeholder="455 Market St, San Francisco, CA"
-                      value={editLocAddress}
-                      onChange={(e) => setEditLocAddress(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-500"
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Assigned Business Owner</label>
+                    <select
+                      value={editLocOwnerId}
+                      onChange={(e) => setEditLocOwnerId(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-500 font-medium text-slate-800"
                       required
-                    />
+                    >
+                      <option value="">-- Select Owner Account --</option>
+                      {adminUsersList
+                        .filter((u) => u.role === Role.OWNER)
+                        .map((owner) => (
+                          <option key={owner.id} value={owner.id}>
+                            {owner.name} ({owner.email}) - {owner.id}
+                          </option>
+                        ))}
+                    </select>
                   </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Physical Address</label>
+                  <input
+                    type="text"
+                    placeholder="455 Market St, San Francisco, CA"
+                    value={editLocAddress}
+                    onChange={(e) => setEditLocAddress(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-500"
+                    required
+                  />
                 </div>
 
                 <div>

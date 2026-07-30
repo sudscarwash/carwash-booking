@@ -133,6 +133,8 @@ function convertQueryToPg(sql: string): string {
     useremail: 'user_email',
     expiresAt: 'expires_at',
     expiresat: 'expires_at',
+    logoUrl: 'logo_url',
+    logourl: 'logo_url',
     isCustom: 'is_custom',
     iscustom: 'is_custom',
     bookingId: 'booking_id',
@@ -274,6 +276,7 @@ const mapCarWash = (row: any): CarWash => {
     createdAt: row.createdAt ?? row.created_at ?? row.createdat,
     phone: row.phone ?? undefined,
     instagram: row.instagram ?? undefined,
+    logoUrl: row.logoUrl ?? row.logo_url ?? row.logourl ?? undefined,
     bibdAccountName: row.bibdAccountName ?? row.bibd_account_name ?? row.bibdaccountname ?? undefined,
     bibdAccountNo: row.bibdAccountNo ?? row.bibd_account_no ?? row.bibdaccountno ?? undefined,
     bibdEnabled: bibdEnabledVal === 1 || bibdEnabledVal === true || bibdEnabledVal === '1',
@@ -284,7 +287,7 @@ const mapCarWash = (row: any): CarWash => {
     baiduriQrImageUrl: row.baiduriQrImageUrl ?? row.baiduri_qr_image_url ?? row.baiduriqrimageurl ?? undefined,
     customPaymentsJson: customPaymentsJson ?? undefined,
     customPaymentMethods: parsedCustom,
-    paymentPolicy: row.paymentPolicy ?? row.payment_policy ?? row.paymentpolicy ?? 'PAY_ON_SITE',
+    paymentPolicy: 'PAY_ON_SITE', // Always use Pay at Counter on site
     servicesJson: servicesJson ?? undefined,
     services: parsedServices,
   };
@@ -298,6 +301,11 @@ const mapBooking = (row: any): Booking => {
     customerId: row.customerId ?? row.customer_id ?? row.customerid,
     customerName: row.customerName ?? row.customer_name ?? row.customername,
     customerEmail: row.customerEmail ?? row.customer_email ?? row.customeremail,
+    customerPhone: row.customerPhone ?? row.customer_phone ?? row.customerphone ?? undefined,
+    vehicleInfo: row.vehicleInfo ?? row.vehicle_info ?? row.vehicleinfo ?? undefined,
+    bookingSource: (row.bookingSource ?? row.booking_source ?? row.bookingsource) || 'ONLINE',
+    createdByRole: row.createdByRole ?? row.created_by_role ?? row.createdbyrole ?? undefined,
+    createdByEmail: row.createdByEmail ?? row.created_by_email ?? row.createdbyemail ?? undefined,
     date: row.date,
     timeSlot: row.timeSlot ?? row.time_slot ?? row.timeslot,
     status: row.status,
@@ -441,6 +449,7 @@ export async function seedFirestoreIfEmpty() {
     'ALTER TABLE users ADD COLUMN phone TEXT',
     'ALTER TABLE car_washes ADD COLUMN phone TEXT',
     'ALTER TABLE car_washes ADD COLUMN instagram TEXT',
+    'ALTER TABLE car_washes ADD COLUMN logoUrl TEXT',
     'ALTER TABLE car_washes ADD COLUMN bibdAccountName TEXT',
     'ALTER TABLE car_washes ADD COLUMN bibdAccountNo TEXT',
     'ALTER TABLE car_washes ADD COLUMN bibdEnabled INTEGER DEFAULT 0',
@@ -458,6 +467,11 @@ export async function seedFirestoreIfEmpty() {
     'ALTER TABLE bookings ADD COLUMN serviceId TEXT',
     'ALTER TABLE bookings ADD COLUMN serviceName TEXT',
     'ALTER TABLE bookings ADD COLUMN price REAL',
+    'ALTER TABLE bookings ADD COLUMN customerPhone TEXT',
+    'ALTER TABLE bookings ADD COLUMN vehicleInfo TEXT',
+    'ALTER TABLE bookings ADD COLUMN bookingSource TEXT DEFAULT \'ONLINE\'',
+    'ALTER TABLE bookings ADD COLUMN createdByRole TEXT',
+    'ALTER TABLE bookings ADD COLUMN createdByEmail TEXT',
   ];
 
   for (const query of alterColumns) {
@@ -516,6 +530,10 @@ export async function seedFirestoreIfEmpty() {
         new Date().toISOString()
       ]);
     }
+
+    // Normalize all car wash payment policies to PAY_ON_SITE & assign sample logo to locations if missing
+    await runQueryRun("UPDATE car_washes SET paymentPolicy = 'PAY_ON_SITE'");
+    await runQueryRun("UPDATE car_washes SET logoUrl = '/src/assets/images/sample_carwash_logo_1785395152772.jpg' WHERE logoUrl IS NULL OR logoUrl = ''");
   } catch (err) {
     console.error('Error ensuring Brunei location is seeded:', err);
   }
@@ -1041,18 +1059,23 @@ export async function createBooking(booking: Booking): Promise<void> {
   try {
     await runQueryRun(`
       INSERT OR IGNORE INTO bookings (
-        id, carWashId, customerId, customerName, customerEmail, 
+        id, carWashId, customerId, customerName, customerEmail, customerPhone, vehicleInfo, bookingSource, createdByRole, createdByEmail,
         date, timeSlot, status, notes, employeeId, 
         createdAt, updatedAt, paymentBank, txnReference, receiptFilename,
         serviceId, serviceName, price
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       booking.id,
       booking.carWashId,
       booking.customerId,
       booking.customerName,
       booking.customerEmail,
+      booking.customerPhone || null,
+      booking.vehicleInfo || null,
+      booking.bookingSource || 'ONLINE',
+      booking.createdByRole || null,
+      booking.createdByEmail || null,
       booking.date,
       booking.timeSlot,
       booking.status,
@@ -1411,31 +1434,49 @@ export const mapNotification = (row: any): AppNotification => {
 };
 
 export async function createNotification(n: AppNotification): Promise<void> {
-  await runQueryRun(
-    `INSERT INTO notifications (id, userId, title, message, type, bookingId, isRead, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [n.id, n.userId, n.title, n.message, n.type, n.bookingId || null, n.isRead ? 1 : 0, n.createdAt]
-  );
+  try {
+    await runQueryRun(
+      `INSERT INTO notifications (id, userId, title, message, type, bookingId, isRead, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [n.id, n.userId, n.title, n.message, n.type, n.bookingId || null, n.isRead ? 1 : 0, n.createdAt]
+    );
+  } catch (err) {
+    console.warn('Could not create notification:', err);
+  }
 }
 
 export async function getNotificationsByUserId(userId: string): Promise<AppNotification[]> {
-  const rows = await runQueryAll(
-    `SELECT * FROM notifications WHERE userId = ? ORDER BY createdAt DESC LIMIT 100`,
-    [userId]
-  );
-  return rows.map(mapNotification);
+  try {
+    const rows = await runQueryAll(
+      `SELECT * FROM notifications WHERE userId = ? ORDER BY createdAt DESC LIMIT 100`,
+      [userId]
+    );
+    if (!Array.isArray(rows)) return [];
+    return rows.map(mapNotification);
+  } catch (err) {
+    console.warn('Could not fetch notifications for user:', userId, err);
+    return [];
+  }
 }
 
 export async function markNotificationAsRead(id: string, userId: string): Promise<void> {
-  await runQueryRun(
-    `UPDATE notifications SET isRead = 1 WHERE id = ? AND userId = ?`,
-    [id, userId]
-  );
+  try {
+    await runQueryRun(
+      `UPDATE notifications SET isRead = 1 WHERE id = ? AND userId = ?`,
+      [id, userId]
+    );
+  } catch (err) {
+    console.warn('Could not mark notification as read:', err);
+  }
 }
 
 export async function markAllNotificationsAsRead(userId: string): Promise<void> {
-  await runQueryRun(
-    `UPDATE notifications SET isRead = 1 WHERE userId = ?`,
-    [userId]
-  );
+  try {
+    await runQueryRun(
+      `UPDATE notifications SET isRead = 1 WHERE userId = ?`,
+      [userId]
+    );
+  } catch (err) {
+    console.warn('Could not mark all notifications as read:', err);
+  }
 }
 
