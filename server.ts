@@ -81,6 +81,9 @@ async function startServer() {
   const app = express();
   const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
+  // Enable trust proxy for cloud deployment & container proxies
+  app.set('trust proxy', true);
+
   // 🔒 OWASP TOP 10 SECURITY HARDENING (A05: Security Misconfiguration)
   // Disable X-Powered-By fingerprinting header to prevent stack footprinting
   app.disable('x-powered-by');
