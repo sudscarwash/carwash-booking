@@ -435,7 +435,7 @@ export async function seedFirestoreIfEmpty() {
     );
   `);
 
-  // Dynamically add rich user profile columns if they do not exist
+  // Dynamically add rich user profile columns and ensure all required core columns exist
   const alterColumns = [
     'ALTER TABLE users ADD COLUMN isActive INTEGER DEFAULT 1',
     'ALTER TABLE users ADD COLUMN businessId TEXT',
@@ -461,6 +461,16 @@ export async function seedFirestoreIfEmpty() {
     'ALTER TABLE car_washes ADD COLUMN customPaymentsJson TEXT',
     'ALTER TABLE car_washes ADD COLUMN paymentPolicy TEXT DEFAULT \'PRE_PAYMENT\'',
     'ALTER TABLE car_washes ADD COLUMN servicesJson TEXT',
+    'ALTER TABLE bookings ADD COLUMN carWashId TEXT',
+    'ALTER TABLE bookings ADD COLUMN customerId TEXT',
+    'ALTER TABLE bookings ADD COLUMN customerName TEXT',
+    'ALTER TABLE bookings ADD COLUMN customerEmail TEXT',
+    'ALTER TABLE bookings ADD COLUMN timeSlot TEXT',
+    'ALTER TABLE bookings ADD COLUMN status TEXT',
+    'ALTER TABLE bookings ADD COLUMN notes TEXT',
+    'ALTER TABLE bookings ADD COLUMN employeeId TEXT',
+    'ALTER TABLE bookings ADD COLUMN createdAt TEXT',
+    'ALTER TABLE bookings ADD COLUMN updatedAt TEXT',
     'ALTER TABLE bookings ADD COLUMN paymentBank TEXT',
     'ALTER TABLE bookings ADD COLUMN txnReference TEXT',
     'ALTER TABLE bookings ADD COLUMN receiptFilename TEXT',
@@ -473,6 +483,26 @@ export async function seedFirestoreIfEmpty() {
     'ALTER TABLE bookings ADD COLUMN createdByRole TEXT',
     'ALTER TABLE bookings ADD COLUMN createdByEmail TEXT',
   ];
+
+  // Try renaming un-underscored Postgres columns if present from legacy schemas
+  if (usePostgres) {
+    const renameQueries = [
+      'ALTER TABLE bookings RENAME COLUMN carwashid TO car_wash_id',
+      'ALTER TABLE bookings RENAME COLUMN customerid TO customer_id',
+      'ALTER TABLE bookings RENAME COLUMN customername TO customer_name',
+      'ALTER TABLE bookings RENAME COLUMN customeremail TO customer_email',
+      'ALTER TABLE bookings RENAME COLUMN timeslot TO time_slot',
+      'ALTER TABLE bookings RENAME COLUMN createdat TO created_at',
+      'ALTER TABLE bookings RENAME COLUMN updatedat TO updated_at',
+    ];
+    for (const renameSql of renameQueries) {
+      try {
+        await pgPool!.query(renameSql);
+      } catch (e) {
+        // Ignore if column doesn't exist or target already exists
+      }
+    }
+  }
 
   for (const query of alterColumns) {
     try {

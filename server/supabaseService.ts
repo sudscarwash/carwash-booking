@@ -207,3 +207,18 @@ export async function deleteSupabaseUser(email: string): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * Ensure initial Admin user exists in Supabase Auth on boot
+ */
+export async function ensureInitialAdminInSupabase(email: string, password: string, name: string): Promise<string | null> {
+  if (!supabaseClient) return null;
+  try {
+    console.log(`[Supabase Auth] Checking / bootstrapping initial admin account (${email})...`);
+    const id = await registerSupabaseUser(email, password, name);
+    return id;
+  } catch (err) {
+    console.warn(`[Supabase Auth] Initial admin sync notice:`, err);
+    return null;
+  }
+}

@@ -9,9 +9,10 @@ import { MapSimulation } from '../components/MapSimulation.js';
 import {
   ShieldAlert, ShieldCheck, Users, Activity, Sliders, Check, X,
   Plus, Edit, UserPlus, FileText, Ban, CheckCircle, Info, Lock, Key, Sparkles, MapPin, Navigation,
-  Database, Mail, AlertTriangle, RefreshCw, Server
+  Database, Mail, AlertTriangle, RefreshCw, Server, Send, Eye, Trash2, Terminal
 } from 'lucide-react';
 import { Role, User, MapPreset } from '../types.js';
+import { isValidEmail } from '../lib/validation.js';
 
 export const AdminDashboard: React.FC = () => {
   const {
@@ -80,7 +81,105 @@ export const AdminDashboard: React.FC = () => {
   const [editLocSubmitting, setEditLocSubmitting] = useState(false);
   const [deletingLocId, setDeletingLocId] = useState<string | null>(null);
 
-  const [activeSubTab, setActiveSubTab] = useState<'users' | 'logs' | 'businesses' | 'presets' | 'system'>('users');
+  const [activeSubTab, setActiveSubTab] = useState<'users' | 'logs' | 'emails' | 'businesses' | 'presets' | 'system'>('users');
+
+  // Email Sandbox & Log State
+  interface EmailLogEntry {
+    id: string;
+    timestamp: string;
+    to: string;
+    from: string;
+    subject: string;
+    html: string;
+    status: 'DELIVERED' | 'SIMULATED' | 'FAILED';
+    provider: 'RESEND' | 'SANDBOX_CONSOLE';
+    errorDetails?: string;
+  }
+
+  const [emailLogs, setEmailLogs] = useState<EmailLogEntry[]>([]);
+  const [emailLogsLoading, setEmailLogsLoading] = useState(false);
+  const [selectedEmailPreview, setSelectedEmailPreview] = useState<EmailLogEntry | null>(null);
+  const [testEmailRecipient, setTestEmailRecipient] = useState('');
+  const [testEmailSubject, setTestEmailSubject] = useState('Autoshine BN Test Email');
+  const [testEmailBody, setTestEmailBody] = useState('This is a test transactional email sent from your Autoshine BN administration console.');
+  const [sendingTestEmail, setSendingTestEmail] = useState(false);
+  const [testEmailStatus, setTestEmailStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const fetchEmailLogs = async () => {
+    if (!token) return;
+    setEmailLogsLoading(true);
+    try {
+      const res = await fetch('/api/admin/email-logs', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setEmailLogs(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch email logs:', err);
+    } finally {
+      setEmailLogsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSubTab === 'emails') {
+      fetchEmailLogs();
+    }
+  }, [activeSubTab, token]);
+
+  const handleSendTestEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const recipientClean = testEmailRecipient.trim();
+    if (!recipientClean || !isValidEmail(recipientClean)) {
+      setTestEmailStatus({ type: 'error', message: 'Please enter a valid recipient email address (e.g. name@domain.com).' });
+      return;
+    }
+    setSendingTestEmail(true);
+    setTestEmailStatus(null);
+    try {
+      const res = await fetch('/api/admin/test-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          recipient: recipientClean,
+          subject: testEmailSubject.trim(),
+          body: testEmailBody.trim()
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setTestEmailStatus({ type: 'success', message: data.message || 'Email dispatched successfully!' });
+        fetchEmailLogs();
+      } else {
+        setTestEmailStatus({ type: 'error', message: data.error || data.message || 'Failed to dispatch email.' });
+      }
+    } catch (err: any) {
+      setTestEmailStatus({ type: 'error', message: err.message || 'Network error occurred while sending email.' });
+    } finally {
+      setSendingTestEmail(false);
+    }
+  };
+
+  const handleClearEmailLogs = async () => {
+    if (!confirm('Are you sure you want to clear all recorded email logs?')) return;
+    try {
+      const res = await fetch('/api/admin/email-logs', {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setEmailLogs([]);
+        setSelectedEmailPreview(null);
+      }
+    } catch (err) {
+      console.error('Failed to clear email logs:', err);
+    }
+  };
 
   // Preset management state
   const [presets, setPresets] = useState<MapPreset[]>([]);
@@ -281,8 +380,14 @@ export const AdminDashboard: React.FC = () => {
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
+    const trimmedEmail = createEmail.trim();
+    if (!isValidEmail(trimmedEmail)) {
+      alert("Please enter a valid email address format (e.g. user@carwash.com).");
+      return;
+    }
+
     const data = {
-      email: createEmail,
+      email: trimmedEmail,
       password: createPassword,
       name: createName,
       role: createRole,
@@ -303,6 +408,14 @@ export const AdminDashboard: React.FC = () => {
   const handleOnboardSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!onboardBusinessName || !onboardBusinessAddress) return;
+
+    if (onboardOwnerMode === 'new') {
+      const trimmedEmail = onboardOwnerEmail.trim();
+      if (!isValidEmail(trimmedEmail)) {
+        alert("Please enter a valid owner email address (e.g. owner@carwash.com).");
+        return;
+      }
+    }
 
     setOnboardSubmitting(true);
     let success = false;
@@ -458,6 +571,17 @@ export const AdminDashboard: React.FC = () => {
           id="admin-subtab-logs"
         >
           <Activity className="h-4 w-4" /> System Audit Logs
+        </button>
+        <button
+          onClick={() => setActiveSubTab('emails')}
+          className={`pb-3.5 px-1 border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
+            activeSubTab === 'emails'
+              ? 'border-red-600 text-red-600 font-bold'
+              : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}
+          id="admin-subtab-emails"
+        >
+          <Mail className="h-4 w-4" /> Email Sandbox & Logs
         </button>
         <button
           onClick={() => setActiveSubTab('businesses')}
@@ -700,41 +824,255 @@ export const AdminDashboard: React.FC = () => {
         );
       })()}
 
-      {/* Sub Tab: System Logs */}
-      {activeSubTab === 'logs' && (
-        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
-          <div className="pb-4 border-b border-slate-100 mb-6">
-            <h2 className="text-base sm:text-lg font-bold text-slate-800">Operational Log Streams</h2>
-            <p className="text-xs text-slate-400">Cryptographically isolated trails auditing state-modifying actions</p>
-          </div>
-
-          <div className="space-y-3 font-mono text-xs max-h-[500px] overflow-y-auto pr-1">
-            {logs.length === 0 ? (
-              <p className="text-center py-8 text-slate-400 italic">No system audit logs found.</p>
-            ) : (
-              logs.map((log) => (
-                <div
-                  key={log.id}
-                  className="bg-slate-50 border border-slate-100 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-slate-100/50 transition-colors"
-                >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="bg-red-50 text-red-800 text-[10px] px-1.5 py-0.5 rounded font-extrabold border border-red-100">
-                        {log.action}
-                      </span>
-                      <span className="text-slate-400 text-[10px]">|</span>
-                      <span className="text-slate-600 font-semibold">{log.userEmail}</span>
-                    </div>
-                    <p className="text-slate-500 font-sans text-xs">{log.details}</p>
-                  </div>
-
-                  <span className="text-slate-400 text-[10px] sm:text-right font-mono self-start sm:self-center shrink-0">
-                    {new Date(log.timestamp).toLocaleString()}
-                  </span>
+      {/* Sub Tab: Email Sandbox & Logs */}
+      {activeSubTab === 'emails' && (
+        <div className="space-y-6">
+          {/* Top Row: Info Banner & Test Email Form */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Live Email Testing Form */}
+            <div className="lg:col-span-7 bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+              <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
+                <div className="p-2.5 bg-blue-50 text-blue-600 rounded-2xl">
+                  <Send className="h-5 w-5" />
                 </div>
-              ))
-            )}
+                <div>
+                  <h2 className="text-base font-bold text-slate-800">Dispatch Test Email</h2>
+                  <p className="text-xs text-slate-400">Send transactional test messages to verify Resend or inspect in sandbox log</p>
+                </div>
+              </div>
+
+              {testEmailStatus && (
+                <div className={`p-3.5 rounded-xl text-xs font-semibold flex items-center gap-2 ${
+                  testEmailStatus.type === 'success'
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                    : 'bg-rose-50 text-rose-700 border border-rose-200'
+                }`}>
+                  {testEmailStatus.type === 'success' ? <CheckCircle className="h-4 w-4 shrink-0" /> : <AlertTriangle className="h-4 w-4 shrink-0" />}
+                  <span>{testEmailStatus.message}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleSendTestEmail} className="space-y-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Recipient Email Address</label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="e.g. test.user@gmail.com"
+                    value={testEmailRecipient}
+                    onChange={(e) => setTestEmailRecipient(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:bg-white focus:border-red-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Subject Line</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Email subject..."
+                    value={testEmailSubject}
+                    onChange={(e) => setTestEmailSubject(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:bg-white focus:border-red-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Email Body Message</label>
+                  <textarea
+                    rows={3}
+                    placeholder="Enter test message..."
+                    value={testEmailBody}
+                    onChange={(e) => setTestEmailBody(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:bg-white focus:border-red-500 outline-none"
+                  />
+                </div>
+
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="submit"
+                    disabled={sendingTestEmail}
+                    className="bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-sm transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    {sendingTestEmail ? (
+                      <>
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Dispatching Email...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="h-3.5 w-3.5" /> Dispatch Test Email
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* Sandbox & Resend Guide Banner */}
+            <div className="lg:col-span-5 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-3xl p-6 text-white shadow-md flex flex-col justify-between space-y-4">
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-sky-400 text-xs font-extrabold uppercase tracking-wider">
+                  <Terminal className="h-4 w-4" /> Live Sandbox Mode Active
+                </div>
+                <h3 className="text-lg font-bold">Email Service Status</h3>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Autoshine BN is configured with a <strong>Dual-Mode Email Engine</strong>:
+                </p>
+                <ul className="text-xs text-slate-300 space-y-2 list-disc pl-4">
+                  <li>
+                    <strong className="text-amber-300">Sandbox Fallback:</strong> If <code className="bg-slate-800 text-amber-200 px-1 py-0.5 rounded">RESEND_API_KEY</code> is not yet configured, all emails (Welcome, Password OTP, Bookings) are logged in real-time in the table below and printed to the server terminal.
+                  </li>
+                  <li>
+                    <strong className="text-emerald-300">Live Delivery:</strong> Add your real key in <code className="bg-slate-800 text-emerald-200 px-1 py-0.5 rounded">RESEND_API_KEY</code> in your environment variables to send live emails to inbox.
+                  </li>
+                </ul>
+              </div>
+
+              <div className="bg-slate-800/80 border border-slate-700/60 rounded-2xl p-3.5 text-[11px] text-slate-300">
+                <p className="font-bold text-white mb-1">💡 Sandbox Testing Tip:</p>
+                You can create new customer, owner, or employee profiles right now in the app. The account welcome emails and generated initial passwords will immediately appear in the Email Sandbox Log below!
+              </div>
+            </div>
           </div>
+
+          {/* Email Logs Table */}
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+              <div>
+                <h2 className="text-base font-bold text-slate-800">Email Dispatch History & Sandbox Logs</h2>
+                <p className="text-xs text-slate-400">Captured transactional emails sent across the system ({emailLogs.length} total recorded)</p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={fetchEmailLogs}
+                  disabled={emailLogsLoading}
+                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-3 py-2 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
+                  title="Refresh Email Logs"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${emailLogsLoading ? 'animate-spin' : ''}`} /> Refresh
+                </button>
+                {emailLogs.length > 0 && (
+                  <button
+                    onClick={handleClearEmailLogs}
+                    className="bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold px-3 py-2 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
+                    title="Clear All Logs"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" /> Clear Logs
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Email Logs Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-600">
+                <thead className="bg-slate-50 text-slate-400 uppercase tracking-wider text-[10px] font-bold border-b border-slate-100">
+                  <tr>
+                    <th className="px-4 py-3 rounded-l-xl">Status & Engine</th>
+                    <th className="px-4 py-3">Recipient</th>
+                    <th className="px-4 py-3">Subject Line</th>
+                    <th className="px-4 py-3">Timestamp</th>
+                    <th className="px-4 py-3 text-right rounded-r-xl">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {emailLogsLoading && emailLogs.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="text-center py-8 text-slate-400">
+                        <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-sky-500" />
+                        Fetching email dispatch logs...
+                      </td>
+                    </tr>
+                  ) : emailLogs.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="text-center py-12 text-slate-400 italic">
+                        <Mail className="h-8 w-8 mx-auto mb-2 text-slate-300" />
+                        No emails sent yet. Trigger a user registration or dispatch a test email above to test!
+                      </td>
+                    </tr>
+                  ) : (
+                    emailLogs.map((log) => (
+                      <tr key={log.id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
+                              log.status === 'DELIVERED'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : log.status === 'SIMULATED'
+                                ? 'bg-amber-100 text-amber-800'
+                                : 'bg-rose-100 text-rose-800'
+                            }`}>
+                              {log.status}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              ({log.provider === 'RESEND' ? 'Resend API' : 'Sandbox'})
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 font-semibold text-slate-800">
+                          {log.to}
+                        </td>
+                        <td className="px-4 py-3 text-slate-700 max-w-xs truncate">
+                          {log.subject}
+                        </td>
+                        <td className="px-4 py-3 text-slate-400 font-mono text-[11px]">
+                          {new Date(log.timestamp).toLocaleString()}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            onClick={() => setSelectedEmailPreview(log)}
+                            className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1.5 rounded-lg font-bold text-[11px] transition-colors inline-flex items-center gap-1 cursor-pointer"
+                          >
+                            <Eye className="h-3.5 w-3.5" /> View HTML
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Email Preview Modal */}
+          {selectedEmailPreview && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[85vh] flex flex-col">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                  <div>
+                    <span className="text-[10px] font-extrabold uppercase bg-sky-100 text-sky-800 px-2 py-0.5 rounded-full">
+                      Email Content Preview
+                    </span>
+                    <h3 className="text-base font-bold text-slate-800 mt-1">{selectedEmailPreview.subject}</h3>
+                    <p className="text-xs text-slate-400">To: {selectedEmailPreview.to} | Sent: {new Date(selectedEmailPreview.timestamp).toLocaleString()}</p>
+                  </div>
+                  <button
+                    onClick={() => setSelectedEmailPreview(null)}
+                    className="p-2 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-xl transition-colors cursor-pointer"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                  <div
+                    className="email-html-preview"
+                    dangerouslySetInnerHTML={{ __html: selectedEmailPreview.html }}
+                  />
+                </div>
+
+                <div className="pt-2 flex justify-end">
+                  <button
+                    onClick={() => setSelectedEmailPreview(null)}
+                    className="bg-slate-900 text-white font-bold text-xs px-5 py-2.5 rounded-xl cursor-pointer hover:bg-slate-800 transition-colors"
+                  >
+                    Close Preview
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

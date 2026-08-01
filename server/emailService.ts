@@ -6,6 +6,41 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
+export interface EmailLogEntry {
+  id: string;
+  timestamp: string;
+  to: string;
+  from: string;
+  subject: string;
+  html: string;
+  status: 'DELIVERED' | 'SIMULATED' | 'FAILED';
+  provider: 'RESEND' | 'SANDBOX_CONSOLE';
+  errorDetails?: string;
+}
+
+const emailLogsMemory: EmailLogEntry[] = [];
+const MAX_LOGS = 100;
+
+export function getEmailLogs(): EmailLogEntry[] {
+  return [...emailLogsMemory];
+}
+
+export function clearEmailLogs(): void {
+  emailLogsMemory.length = 0;
+}
+
+function recordEmailLog(entry: Omit<EmailLogEntry, 'id' | 'timestamp'>) {
+  const log: EmailLogEntry = {
+    ...entry,
+    id: `log_${Math.random().toString(36).substring(2, 9)}_${Date.now()}`,
+    timestamp: new Date().toISOString()
+  };
+  emailLogsMemory.unshift(log);
+  if (emailLogsMemory.length > MAX_LOGS) {
+    emailLogsMemory.pop();
+  }
+}
+
 /**
  * Sends a transactional email using the Resend API.
  * If the RESEND_API_KEY is not configured or is a placeholder,
@@ -13,9 +48,16 @@ dotenv.config();
  */
 export async function sendEmail(to: string, subject: string, html: string): Promise<boolean> {
   const apiKey = process.env.RESEND_API_KEY;
-  const fromAddress = process.env.EMAIL_FROM_ADDRESS || 'onboarding@resend.dev';
+  let rawFrom = process.env.EMAIL_FROM_ADDRESS || 'onboarding@resend.dev';
+  
+  // Normalize resend.com -> resend.dev for Resend sandbox domain
+  if (rawFrom.endsWith('@resend.com')) {
+    rawFrom = rawFrom.replace('@resend.com', '@resend.dev');
+  }
+  const fromAddress = rawFrom;
 
   console.log(`[EmailService] Preparing email dispatch to: ${to}`);
+  console.log(`[EmailService] Sender: Autoshine BN <${fromAddress}>`);
   console.log(`[EmailService] Subject: "${subject}"`);
 
   if (!apiKey || apiKey.startsWith('your_') || apiKey.startsWith('re_12345')) {
@@ -28,6 +70,16 @@ export async function sendEmail(to: string, subject: string, html: string): Prom
     console.log('HTML Content Preview:');
     console.log(html);
     console.log('========================================================');
+
+    recordEmailLog({
+      to,
+      from: `Autoshine BN <${fromAddress}>`,
+      subject,
+      html,
+      status: 'SIMULATED',
+      provider: 'SANDBOX_CONSOLE'
+    });
+
     return true; // Simulate successful delivery in sandbox
   }
 
@@ -48,17 +100,83 @@ export async function sendEmail(to: string, subject: string, html: string): Prom
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('[EmailService] Resend API error:', response.status, errorText);
+      console.error('========================================================');
+      console.error(`❌ [EmailService] Resend API Error (${response.status}): ${errorText}`);
+      console.error('💡 [Resend Sandbox Tip]: If you are using Resend free sandbox tier without a custom verified domain, Resend ONLY delivers emails to the email address associated with your Resend account owner!');
+      console.error('========================================================');
+
+      recordEmailLog({
+        to,
+        from: `Autoshine BN <${fromAddress}>`,
+        subject,
+        html,
+        status: 'FAILED',
+        provider: 'RESEND',
+        errorDetails: `Resend Error (${response.status}): ${errorText}`
+      });
+
       return false;
     }
 
     const data = await response.json();
     console.log(`[EmailService] Email dispatched successfully via Resend. ID: ${data.id}`);
+
+    recordEmailLog({
+      to,
+      from: `Autoshine BN <${fromAddress}>`,
+      subject,
+      html,
+      status: 'DELIVERED',
+      provider: 'RESEND'
+    });
+
     return true;
-  } catch (error) {
+  } catch (error: any) {
     console.error('[EmailService] Failed to send email via Resend:', error);
+
+    recordEmailLog({
+      to,
+      from: `Autoshine BN <${fromAddress}>`,
+      subject,
+      html,
+      status: 'FAILED',
+      provider: 'RESEND',
+      errorDetails: error?.message || String(error)
+    });
+
     return false;
   }
+}
+
+/**
+ * Send a 6-digit OTP code for Email Verification upon Registration
+ */
+export async function sendEmailVerificationOTP(email: string, name: string, code: string): Promise<boolean> {
+  const subject = `Your Verification Code: ${code} - Autoshine BN`;
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff; color: #1e293b;">
+      <div style="text-align: center; margin-bottom: 24px;">
+        <h1 style="color: #0284c7; margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.025em;">Autoshine BN</h1>
+        <p style="color: #64748b; margin: 4px 0 0 0; font-size: 14px;">Account Email Verification</p>
+      </div>
+      <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 24px 0;" />
+      <h2 style="color: #0f172a; font-size: 20px; font-weight: 700; margin-top: 0; margin-bottom: 12px;">Verify Your Email Address</h2>
+      <p style="font-size: 15px; line-height: 1.6; color: #334155;">Hello <strong>${name}</strong>,</p>
+      <p style="font-size: 15px; line-height: 1.6; color: #334155;">Thank you for signing up for Autoshine BN! Please use the 6-digit verification code below to verify your email address and activate your account:</p>
+      
+      <div style="background-color: #f0f9ff; border: 1px solid #bae6fd; padding: 20px; border-radius: 12px; text-align: center; margin: 28px 0;">
+        <span style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 38px; font-weight: 800; letter-spacing: 8px; color: #0284c7;">${code}</span>
+        <p style="color: #0369a1; font-size: 12px; margin: 8px 0 0 0; font-weight: 600;">This verification code is valid for 15 minutes.</p>
+      </div>
+
+      <p style="font-size: 14px; line-height: 1.6; color: #475569;">If you did not create an account on Autoshine BN, you can safely ignore this email.</p>
+      <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 30px 0;" />
+      <div style="text-align: center;">
+        <p style="color: #94a3b8; font-size: 11px; margin: 0;">&copy; ${new Date().getFullYear()} Autoshine BN. All rights reserved.</p>
+      </div>
+    </div>
+  `;
+  return sendEmail(email, subject, html);
 }
 
 /**
@@ -182,4 +300,72 @@ export async function sendBookingConfirmationEmail(options: {
     </div>
   `;
   return sendEmail(options.customerEmail, subject, html);
+}
+
+/**
+ * Send Welcome & Registration Confirmation Email for new accounts (Customer, Owner, Employee)
+ */
+export async function sendRegistrationWelcomeEmail(options: {
+  email: string;
+  name: string;
+  role: string;
+  businessName?: string;
+  initialPassword?: string;
+}): Promise<boolean> {
+  const isEmployee = options.role === 'EMPLOYEE';
+  const isOwner = options.role === 'OWNER';
+
+  const roleTitle = isEmployee
+    ? 'Staff / Employee Account'
+    : isOwner
+    ? 'Car Wash Owner Account'
+    : 'Customer Account';
+
+  const subject = `Welcome to Autoshine BN - ${roleTitle} Created!`;
+
+  const passwordNote = options.initialPassword
+    ? `
+      <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; padding: 16px; border-radius: 12px; margin: 20px 0;">
+        <p style="margin: 0; font-size: 13px; color: #166534; font-weight: 600;">Your Initial Login Password:</p>
+        <p style="margin: 6px 0 0 0; font-family: monospace; font-size: 18px; font-weight: bold; color: #15803d;">${options.initialPassword}</p>
+        <p style="margin: 4px 0 0 0; font-size: 11px; color: #166534;">For security, please change your password after your initial login.</p>
+      </div>
+    `
+    : '';
+
+  const businessNote = options.businessName
+    ? `<p style="font-size: 14px; color: #334155; margin: 4px 0;">Assigned Location: <strong>${options.businessName}</strong></p>`
+    : '';
+
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff; color: #1e293b;">
+      <div style="text-align: center; margin-bottom: 24px;">
+        <h1 style="color: #0284c7; margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.025em;">Autoshine BN</h1>
+        <p style="color: #64748b; margin: 4px 0 0 0; font-size: 14px;">Welcome to the Platform</p>
+      </div>
+      <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 24px 0;" />
+
+      <h2 style="color: #0f172a; font-size: 20px; font-weight: 700; margin-top: 0; margin-bottom: 12px;">Account Registration Confirmed</h2>
+      <p style="font-size: 15px; line-height: 1.6; color: #334155;">Hello <strong>${options.name}</strong>,</p>
+      <p style="font-size: 15px; line-height: 1.6; color: #334155;">Your account on Autoshine BN has been successfully registered and verified with the email address: <strong>${options.email}</strong>.</p>
+
+      <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 20px; border-radius: 12px; margin: 20px 0;">
+        <p style="margin: 0; font-size: 13px; color: #64748b; font-weight: 600;">Account Details:</p>
+        <p style="margin: 6px 0 2px 0; font-size: 14px; color: #0f172a;">Account Type: <strong>${roleTitle}</strong></p>
+        <p style="margin: 2px 0 0 0; font-size: 14px; color: #0f172a;">Registered Email: <strong>${options.email}</strong></p>
+        ${businessNote}
+      </div>
+
+      ${passwordNote}
+
+      <p style="font-size: 14px; line-height: 1.6; color: #475569;">You can now log in to access your customized dashboard, manage bookings, and explore features.</p>
+
+      <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 30px 0;" />
+      <div style="text-align: center;">
+        <p style="color: #94a3b8; font-size: 11px; margin: 0;">&copy; ${new Date().getFullYear()} Autoshine BN. All rights reserved.</p>
+      </div>
+    </div>
+  `;
+
+  return sendEmail(options.email, subject, html);
 }

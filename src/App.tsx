@@ -12,16 +12,21 @@ import { EmployeeDashboard } from './pages/EmployeeDashboard.js';
 import { AdminDashboard } from './pages/AdminDashboard.js';
 import { SpecialUserDashboard } from './pages/SpecialUserDashboard.js';
 import { Role } from './types.js';
+import { isValidEmail } from './lib/validation.js';
 import { Lock, Mail, UserPlus, LogIn, Sparkles, Compass, Sliders, Briefcase, Shield, Check, Info, X, AlertTriangle, LogOut } from 'lucide-react';
 import autoshineLogo from './assets/images/autoshine_logo_1783916518342.jpg';
 
 const MainAppContent: React.FC = () => {
-  const { user, loading, login, register, notification, clearNotification, forgotPassword, resetPassword, showNotification } = useApp();
+  const { user, loading, login, register, verifyRegistrationOtp, resendRegistrationOtp, notification, clearNotification, forgotPassword, resetPassword, showNotification } = useApp();
 
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isRegisterMode, setIsRegisterMode] = useState(() => window.location.pathname === '/register');
   const [isForgotMode, setIsForgotMode] = useState(() => window.location.pathname === '/forgot-password');
   const [isResetMode, setIsResetMode] = useState(() => window.location.pathname === '/reset-password');
+  const [isRegisterOtpMode, setIsRegisterOtpMode] = useState(false);
+  const [pendingRegisterEmail, setPendingRegisterEmail] = useState('');
+  const [registerOtpCode, setRegisterOtpCode] = useState('');
+  const [registerSandboxCode, setRegisterSandboxCode] = useState<string | undefined>(undefined);
   const [showExitConfirmModal, setShowExitConfirmModal] = useState(false);
 
   // Ask for browser confirmation when closing/reloading tab or navigating away
@@ -141,6 +146,12 @@ const MainAppContent: React.FC = () => {
     e.preventDefault();
     if (!email || !password || (isRegisterMode && !name)) return;
 
+    const trimmedEmail = email.trim();
+    if (!isValidEmail(trimmedEmail)) {
+      showNotification("Please enter a valid email address (e.g. name@domain.com).", "error");
+      return;
+    }
+
     if (isRegisterMode && !acceptTerms) {
       showNotification("You must accept the Terms and Conditions to register.", "error");
       return;
@@ -148,26 +159,59 @@ const MainAppContent: React.FC = () => {
 
     setAuthLoading(true);
     if (isRegisterMode) {
-      const success = await register(email, password, name, {
+      const res = await register(trimmedEmail, password, name, {
         phone: phone || undefined,
         dateOfBirth: dateOfBirth || undefined,
         gender: gender || undefined,
         profileImageUrl: profileImageUrl || undefined,
         address: address || undefined,
       });
-      if (success) {
-        setIsRegisterMode(false);
-        setEmail('');
-        setPassword('');
-        setName('');
-        setPhone('');
-        setDateOfBirth('');
-        setGender('');
-        setProfileImageUrl('');
-        setAddress('');
+      if (res.success) {
+        if (res.requireOtp) {
+          setIsRegisterOtpMode(true);
+          setPendingRegisterEmail(res.email || trimmedEmail);
+          setRegisterSandboxCode(res.sandboxCode);
+          if (res.sandboxCode) {
+            setRegisterOtpCode(res.sandboxCode); // auto-fill code in developer sandbox
+          }
+        } else {
+          setIsRegisterMode(false);
+          setEmail('');
+          setPassword('');
+          setName('');
+        }
       }
     } else {
       await login(email, password);
+    }
+    setAuthLoading(false);
+  };
+
+  const handleVerifyRegistrationOtpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pendingRegisterEmail || !registerOtpCode) return;
+
+    setAuthLoading(true);
+    const success = await verifyRegistrationOtp(pendingRegisterEmail, registerOtpCode);
+    if (success) {
+      setIsRegisterOtpMode(false);
+      setIsRegisterMode(false);
+      setEmail('');
+      setPassword('');
+      setName('');
+      setRegisterOtpCode('');
+      setPendingRegisterEmail('');
+    }
+    setAuthLoading(false);
+  };
+
+  const handleResendRegistrationOtpSubmit = async () => {
+    if (!pendingRegisterEmail) return;
+    setAuthLoading(true);
+    const newCode = await resendRegistrationOtp(pendingRegisterEmail);
+    if (newCode) {
+      setRegisterSandboxCode(newCode);
+      setRegisterOtpCode(newCode);
     }
     setAuthLoading(false);
   };
@@ -324,7 +368,80 @@ const MainAppContent: React.FC = () => {
 
           <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md px-4">
             <div className="bg-white py-8 px-4 border border-slate-200 rounded-3xl shadow-xl sm:px-10">
-              {isForgotMode ? (
+              {isRegisterOtpMode ? (
+                <div>
+                  <div className="flex items-center gap-2.5 mb-2">
+                    <div className="p-2 bg-sky-100 rounded-xl text-sky-700">
+                      <Shield className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-800">Verify Your Email Address</h3>
+                      <p className="text-xs text-slate-500">OTP code sent to <strong className="text-slate-700">{pendingRegisterEmail}</strong></p>
+                    </div>
+                  </div>
+
+                  {registerSandboxCode && (
+                    <div className="my-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs flex flex-col gap-1">
+                      <div className="font-bold flex items-center gap-1.5 text-amber-800">
+                        <Info className="h-3.5 w-3.5 shrink-0" />
+                        <span>Developer Sandbox Verification Code</span>
+                      </div>
+                      <p className="text-[11px] text-amber-700">
+                        Code: <code className="font-bold font-mono text-xs bg-amber-100 px-1.5 py-0.5 rounded text-amber-900">{registerSandboxCode}</code>
+                      </p>
+                      <p className="text-[10px] text-amber-600">
+                        (Resend delivers emails to verified addresses/owners. In sandbox/dev mode, code is provided above or logged in server console.)
+                      </p>
+                    </div>
+                  )}
+
+                  <form onSubmit={handleVerifyRegistrationOtpSubmit} className="space-y-4 mt-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1">6-Digit Verification OTP Code</label>
+                      <input
+                        type="text"
+                        maxLength={6}
+                        placeholder="123456"
+                        value={registerOtpCode}
+                        onChange={(e) => setRegisterOtpCode(e.target.value)}
+                        className="w-full px-3 py-3 border border-slate-200 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 rounded-xl outline-none text-slate-800 text-base transition-all text-center tracking-widest font-mono font-bold"
+                        required
+                        id="verify-otp-input"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={authLoading}
+                      className="w-full py-3 bg-sky-600 hover:bg-sky-500 text-white rounded-xl font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer mt-4"
+                      id="verify-otp-submit-btn"
+                    >
+                      {authLoading ? 'Verifying...' : 'Verify Email & Activate Account'}
+                    </button>
+
+                    <div className="flex justify-between items-center pt-3 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={handleResendRegistrationOtpSubmit}
+                        disabled={authLoading}
+                        className="text-xs text-slate-600 hover:text-slate-900 font-bold font-sans cursor-pointer flex items-center gap-1"
+                      >
+                        Resend Verification Code
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsRegisterOtpMode(false);
+                          setIsRegisterMode(true);
+                        }}
+                        className="text-xs text-sky-600 hover:text-sky-500 font-bold font-sans cursor-pointer"
+                      >
+                        Change Details
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              ) : isForgotMode ? (
                 <div>
                   <h3 className="text-lg font-bold text-slate-800 mb-1">Forgot Password</h3>
                   <p className="text-xs text-slate-500 mb-6">Enter your email and we will send you a 6-digit verification code to reset your password.</p>

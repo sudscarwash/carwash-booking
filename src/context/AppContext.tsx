@@ -34,7 +34,9 @@ interface AppContextType {
       address?: string;
       phone?: string;
     }
-  ) => Promise<boolean>;
+  ) => Promise<{ success: boolean; requireOtp?: boolean; email?: string; sandboxCode?: string }>;
+  verifyRegistrationOtp: (email: string, otp: string) => Promise<boolean>;
+  resendRegistrationOtp: (email: string) => Promise<string | null>;
   updateProfile: (profileData: {
     name?: string;
     phone?: string;
@@ -282,22 +284,72 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       address?: string;
       phone?: string;
     }
-  ): Promise<boolean> => {
+  ): Promise<{ success: boolean; requireOtp?: boolean; email?: string; sandboxCode?: string }> => {
     try {
       setLoading(true);
       const data = await apiFetch('/api/auth/register', {
         method: 'POST',
         body: JSON.stringify({ email, password, name, ...profileData }),
       });
+
+      if (data.requireOtp) {
+        showNotification(data.message || 'Verification code sent to your email address.', 'success');
+        return {
+          success: true,
+          requireOtp: true,
+          email: data.email,
+          sandboxCode: data.sandboxCode
+        };
+      }
+
       setUser(data.user);
       setToken(data.token);
       localStorage.setItem('cw_user', JSON.stringify(data.user));
       localStorage.setItem('cw_token', data.token);
       showNotification(`Account created successfully! Welcome, ${data.user.name}!`, 'success');
+      return { success: true };
+    } catch (err: any) {
+      showNotification(err.message, 'error');
+      return { success: false };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const verifyRegistrationOtp = async (email: string, otp: string): Promise<boolean> => {
+    try {
+      setLoading(true);
+      const data = await apiFetch('/api/auth/verify-registration-otp', {
+        method: 'POST',
+        body: JSON.stringify({ email, otp }),
+      });
+
+      setUser(data.user);
+      setToken(data.token);
+      localStorage.setItem('cw_user', JSON.stringify(data.user));
+      localStorage.setItem('cw_token', data.token);
+      showNotification(`Email verified! Welcome to Autoshine BN, ${data.user.name}!`, 'success');
       return true;
     } catch (err: any) {
       showNotification(err.message, 'error');
       return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resendRegistrationOtp = async (email: string): Promise<string | null> => {
+    try {
+      setLoading(true);
+      const data = await apiFetch('/api/auth/resend-registration-otp', {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      });
+      showNotification(data.message || 'Verification code resent successfully.', 'success');
+      return data.sandboxCode || null;
+    } catch (err: any) {
+      showNotification(err.message, 'error');
+      return null;
     } finally {
       setLoading(false);
     }
@@ -727,6 +779,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         markAllNotificationsAsRead,
         login,
         register,
+        verifyRegistrationOtp,
+        resendRegistrationOtp,
         updateProfile,
         logout,
         forgotPassword,

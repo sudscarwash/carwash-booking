@@ -58,13 +58,19 @@ import {
   loginSupabaseUser, 
   updateSupabasePassword,
   supabaseClient,
-  deleteSupabaseUser
+  deleteSupabaseUser,
+  ensureInitialAdminInSupabase
 } from './server/supabaseService.js';
 import {
   sendPasswordResetOTP,
   sendBookingConfirmationEmail,
-  sendEmail
+  sendRegistrationWelcomeEmail,
+  sendEmailVerificationOTP,
+  sendEmail,
+  getEmailLogs,
+  clearEmailLogs
 } from './server/emailService.js';
+import { isValidEmail } from './server/validation.js';
 import { authenticateToken, requireRoles, generateToken, AuthenticatedRequest } from './server/auth.js';
 import { generateSlotsForDate } from './server/slots.js';
 import { authRateLimiter, apiRateLimiter } from './server/production/middleware/rateLimiter.js';
@@ -116,6 +122,13 @@ async function startServer() {
   // Run database automatic seeding to populate Firestore on initial boot
   await seedFirestoreIfEmpty();
 
+  // Bootstrap initial admin into Supabase Auth if Supabase Auth is enabled
+  if (isSupabaseAuthEnabled) {
+    const adminEmail = process.env.INITIAL_ADMIN_EMAIL || 'admin@carwash.com';
+    const adminPassword = process.env.INITIAL_ADMIN_PASSWORD || 'admin123';
+    await ensureInitialAdminInSupabase(adminEmail, adminPassword, 'System Admin');
+  }
+
   // Helper function to calculate distance using Haversine formula (simulated maps distance filtering)
   function getDistanceInKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
     const R = 6371; // Radius of the earth in km
@@ -147,12 +160,18 @@ async function startServer() {
         return;
       }
 
+      const sanitizedEmail = String(email).trim().toLowerCase();
+      if (!isValidEmail(sanitizedEmail)) {
+        res.status(400).json({ error: 'Invalid email address format. Please enter a valid email address (e.g. name@domain.com).' });
+        return;
+      }
+
       if (password.length < 8) {
         res.status(400).json({ error: 'Password must be at least 8 characters long.' });
         return;
       }
 
-      const existing = await getUserByEmail(email);
+      const existing = await getUserByEmail(sanitizedEmail);
       if (existing) {
         res.status(400).json({ error: 'Email already registered.' });
         return;
@@ -210,7 +229,7 @@ async function startServer() {
       const passwordHash = bcrypt.hashSync(password, salt);
       const newUser: UserWithPassword = {
         id: userId,
-        email: email.toLowerCase(),
+        email: sanitizedEmail,
         name,
         role: Role.CUSTOMER,
         isActive: true,
@@ -225,19 +244,119 @@ async function startServer() {
 
       await createUser(newUser);
 
+      // Generate a 6-digit email verification OTP
+      const verificationOtp = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // 15 mins expiry
+      await createPasswordReset(newUser.email, verificationOtp, expiresAt);
+
+      console.log('========================================================');
+      console.log(`🔐 [REGISTRATION VERIFICATION OTP]: Email: ${newUser.email} -> CODE: ${verificationOtp}`);
+      console.log('========================================================');
+
+      // Dispatch Email Verification OTP via Resend
+      const emailSent = await sendEmailVerificationOTP(newUser.email, newUser.name, verificationOtp);
+
+      // Also send welcome email background task
+      sendRegistrationWelcomeEmail({
+        email: newUser.email,
+        name: newUser.name,
+        role: Role.CUSTOMER
+      }).catch((e) => console.error('[Register Welcome Email Error]:', e));
+
       await addAuditLog(
         newUser.id,
         newUser.email,
         isAutoProvisioned ? 'USER_AUTOPROVISION' : 'USER_REGISTER',
-        isAutoProvisioned 
-          ? `Customer profile auto-provisioned/restored on register from existing Supabase Auth account`
-          : `Customer account created: ${newUser.name} ${isSupabaseAuthEnabled ? '(Supabase Auth Synchronized)' : ''}`
+        `Customer account created. Verification OTP dispatched (${emailSent ? 'Delivered via Resend' : 'Sandbox fallback'}): ${newUser.name}`
       );
 
       const { passwordHash: _, ...safeUser } = newUser;
+
+      res.status(201).json({
+        requireOtp: true,
+        email: newUser.email,
+        message: 'Account created! Please enter the 6-digit verification code sent to your email to verify your address.',
+        sandboxCode: verificationOtp, // provided so developer sandbox / testing with arbitrary emails works seamlessly
+        user: safeUser
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Verify Registration OTP Code
+  app.post('/api/auth/verify-registration-otp', authRateLimiter, async (req, res) => {
+    try {
+      const { email, otp } = req.body;
+      if (!email || !otp) {
+        res.status(400).json({ error: 'Email and verification code are required.' });
+        return;
+      }
+
+      const sanitizedEmail = email.trim().toLowerCase();
+      const resetData = await getPasswordResetByToken(otp.trim());
+
+      if (!resetData || resetData.email.toLowerCase() !== sanitizedEmail) {
+        res.status(400).json({ error: 'Invalid verification code. Please check your code or request a new one.' });
+        return;
+      }
+
+      if (new Date(resetData.expiresAt) < new Date()) {
+        await deletePasswordReset(sanitizedEmail);
+        res.status(400).json({ error: 'Verification code has expired. Please request a new code.' });
+        return;
+      }
+
+      const user = await getUserByEmail(sanitizedEmail);
+      if (!user) {
+        res.status(404).json({ error: 'User account not found.' });
+        return;
+      }
+
+      // Delete the used OTP code
+      await deletePasswordReset(sanitizedEmail);
+
+      await addAuditLog(user.id, user.email, 'USER_EMAIL_VERIFIED', `Email address verified successfully with OTP for ${user.email}`);
+
+      const { passwordHash: _, ...safeUser } = user;
       const token = generateToken(safeUser);
 
-      res.status(201).json({ token, user: safeUser });
+      res.json({ token, user: safeUser, message: 'Email verified successfully!' });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Resend Registration OTP Code
+  app.post('/api/auth/resend-registration-otp', authRateLimiter, async (req, res) => {
+    try {
+      const { email } = req.body;
+      if (!email) {
+        res.status(400).json({ error: 'Email address is required.' });
+        return;
+      }
+
+      const sanitizedEmail = email.trim().toLowerCase();
+      const user = await getUserByEmail(sanitizedEmail);
+      if (!user) {
+        res.status(404).json({ error: 'No account found for this email address.' });
+        return;
+      }
+
+      const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+      await createPasswordReset(sanitizedEmail, newOtp, expiresAt);
+
+      console.log('========================================================');
+      console.log(`🔐 [RESEND REGISTRATION OTP]: Email: ${sanitizedEmail} -> CODE: ${newOtp}`);
+      console.log('========================================================');
+
+      const emailSent = await sendEmailVerificationOTP(sanitizedEmail, user.name, newOtp);
+
+      res.json({
+        message: 'A new 6-digit verification code has been dispatched to your email!',
+        sandboxCode: newOtp
+      });
     } catch (error: any) {
       res.status(500).json({ error: error.message || 'Internal server error' });
     }
@@ -1567,7 +1686,14 @@ async function startServer() {
           return;
         }
 
+        const sanitizedEmail = String(email).trim().toLowerCase();
+        if (!isValidEmail(sanitizedEmail)) {
+          res.status(400).json({ error: 'Invalid employee email format. Please provide a valid email (e.g. employee@carwash.com).' });
+          return;
+        }
+
         const carWashes = await getCarWashes();
+        const targetBusiness = carWashes.find((cw) => cw.id === businessId);
 
         // Security check: If OWNER, verify they actually own the businessId
         if (req.user!.role === Role.OWNER) {
@@ -1578,7 +1704,7 @@ async function startServer() {
           }
         }
 
-        const existing = await getUserByEmail(email);
+        const existing = await getUserByEmail(sanitizedEmail);
         if (existing) {
           res.status(400).json({ error: 'Email already exists.' });
           return;
@@ -1589,7 +1715,7 @@ async function startServer() {
 
         const newEmployee: UserWithPassword = {
           id: `usr_${Math.random().toString(36).substr(2, 9)}`,
-          email: email.toLowerCase(),
+          email: sanitizedEmail,
           name,
           role: Role.EMPLOYEE,
           isActive: true,
@@ -1600,11 +1726,20 @@ async function startServer() {
 
         await createUser(newEmployee);
 
+        // Dispatch welcome and credentials email to employee
+        await sendRegistrationWelcomeEmail({
+          email: newEmployee.email,
+          name: newEmployee.name,
+          role: Role.EMPLOYEE,
+          businessName: targetBusiness?.name || 'Car Wash Location',
+          initialPassword: password
+        }).catch((e) => console.error('[Employee Welcome Email Error]:', e));
+
         await addAuditLog(
           req.user!.id,
           req.user!.email,
           'EMPLOYEE_CREATE',
-          `Created employee: ${newEmployee.name} for business: ${businessId}`
+          `Created employee: ${newEmployee.name} (${newEmployee.email}) for business: ${businessId}`
         );
 
         const { passwordHash: _, ...safeEmployee } = newEmployee;
@@ -1810,7 +1945,13 @@ async function startServer() {
           return;
         }
 
-        const existingUser = await getUserByEmail(ownerEmail);
+        const sanitizedEmail = String(ownerEmail).trim().toLowerCase();
+        if (!isValidEmail(sanitizedEmail)) {
+          res.status(400).json({ error: 'Invalid owner email format. Please enter a valid email address (e.g. owner@carwash.com).' });
+          return;
+        }
+
+        const existingUser = await getUserByEmail(sanitizedEmail);
         if (existingUser) {
           res.status(400).json({ error: 'Owner email already registered.' });
           return;
@@ -1821,7 +1962,7 @@ async function startServer() {
         const passwordHash = bcrypt.hashSync(ownerPassword, salt);
         const newOwner: UserWithPassword = {
           id: `usr_${Math.random().toString(36).substr(2, 9)}`,
-          email: ownerEmail.toLowerCase(),
+          email: sanitizedEmail,
           name: ownerName,
           role: Role.OWNER,
           isActive: true,
@@ -1830,6 +1971,15 @@ async function startServer() {
         };
 
         await createUser(newOwner);
+
+        // Dispatch welcome and credentials email to owner
+        await sendRegistrationWelcomeEmail({
+          email: newOwner.email,
+          name: newOwner.name,
+          role: Role.OWNER,
+          businessName: businessName,
+          initialPassword: ownerPassword
+        }).catch((e) => console.error('[Owner Welcome Email Error]:', e));
 
         // 2. Register Business and link to newly created owner
         const newCarWash: CarWash = {
@@ -2082,7 +2232,13 @@ async function startServer() {
           return;
         }
 
-        const existing = await getUserByEmail(email);
+        const sanitizedEmail = String(email).trim().toLowerCase();
+        if (!isValidEmail(sanitizedEmail)) {
+          res.status(400).json({ error: 'Invalid user email format. Please provide a valid email (e.g. user@carwash.com).' });
+          return;
+        }
+
+        const existing = await getUserByEmail(sanitizedEmail);
         if (existing) {
           res.status(400).json({ error: 'Email already registered.' });
           return;
@@ -2093,7 +2249,7 @@ async function startServer() {
 
         const newUser: UserWithPassword = {
           id: `usr_${Math.random().toString(36).substr(2, 9)}`,
-          email: email.toLowerCase(),
+          email: sanitizedEmail,
           name,
           role: role as Role,
           isActive: true,
@@ -2104,7 +2260,15 @@ async function startServer() {
 
         await createUser(newUser);
 
-        await addAuditLog(req.user!.id, req.user!.email, 'ADMIN_USER_CREATE', `Admin created user ${name} with role ${role}`);
+        // Dispatch welcome and credentials email
+        await sendRegistrationWelcomeEmail({
+          email: newUser.email,
+          name: newUser.name,
+          role: newUser.role,
+          initialPassword: password
+        }).catch((e) => console.error('[Admin User Welcome Email Error]:', e));
+
+        await addAuditLog(req.user!.id, req.user!.email, 'ADMIN_USER_CREATE', `Admin created user ${name} (${sanitizedEmail}) with role ${role}`);
 
         const { passwordHash: _, ...safeUser } = newUser;
         res.status(201).json(safeUser);
@@ -2171,6 +2335,74 @@ async function startServer() {
         res.json(logs);
       } catch (error: any) {
         res.status(500).json({ error: error.message || 'Internal server error' });
+      }
+    }
+  );
+
+  // Admin: View Sent/Simulated Email Logs
+  app.get(
+    '/api/admin/email-logs',
+    authenticateToken,
+    requireRoles([Role.ADMIN]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const logs = getEmailLogs();
+        res.json(logs);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to retrieve email logs' });
+      }
+    }
+  );
+
+  // Admin: Clear Email Logs
+  app.delete(
+    '/api/admin/email-logs',
+    authenticateToken,
+    requireRoles([Role.ADMIN]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        clearEmailLogs();
+        res.json({ message: 'Email logs cleared successfully.' });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to clear email logs' });
+      }
+    }
+  );
+
+  // Admin: Send Test Email
+  app.post(
+    '/api/admin/test-email',
+    authenticateToken,
+    requireRoles([Role.ADMIN]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { recipient, subject, body } = req.body;
+        if (!recipient || !isValidEmail(recipient)) {
+          res.status(400).json({ error: 'Please provide a valid recipient email address.' });
+          return;
+        }
+
+        const emailSubject = subject || 'Autoshine BN Test Email';
+        const emailBody = body ? `<p style="font-size: 15px; color: #334155;">${body}</p>` : `<p style="font-size: 15px; color: #334155;">This is a test transactional email sent from your Autoshine BN administration console.</p>`;
+
+        const html = `
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
+            <h2 style="color: #0284c7; margin-top: 0;">Autoshine BN Email Test</h2>
+            ${emailBody}
+            <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 20px 0;" />
+            <p style="font-size: 12px; color: #94a3b8;">Sent via Autoshine BN System Admin Console at ${new Date().toLocaleString()}</p>
+          </div>
+        `;
+
+        const sent = await sendEmail(recipient, emailSubject, html);
+        res.json({
+          success: sent,
+          message: sent
+            ? `Test email sent to ${recipient}.`
+            : `Failed to dispatch email to ${recipient}. Check API configuration.`
+        });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to send test email' });
       }
     }
   );
