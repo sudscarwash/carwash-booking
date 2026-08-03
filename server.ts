@@ -40,6 +40,7 @@ import {
   createPasswordReset,
   getPasswordResetByToken,
   deletePasswordReset,
+  cleanupExpiredPasswordResets,
   getMapPresets,
   createMapPreset,
   deleteMapPreset,
@@ -124,6 +125,16 @@ async function startServer() {
 
   // Run database automatic seeding to populate Firestore on initial boot
   await seedFirestoreIfEmpty();
+
+  // Clean up any expired OTP / password reset tokens on server startup
+  await cleanupExpiredPasswordResets();
+
+  // Schedule background cleanup every 15 minutes to purge stale expired OTP tokens
+  setInterval(() => {
+    cleanupExpiredPasswordResets().catch((err) => {
+      console.warn('[OTP Cleanup] Failed to purge expired tokens:', err);
+    });
+  }, 15 * 60 * 1000);
 
   // Bootstrap initial admin into Supabase Auth if Supabase Auth is enabled
   if (isSupabaseAuthEnabled) {

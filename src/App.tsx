@@ -782,8 +782,8 @@ const MainAppContent: React.FC = () => {
                 </>
               )}
 
-              {/* Multi-role Simulator Playground Switcher (Automatically hidden in production) */}
-              {!import.meta.env.PROD && (
+              {/* Multi-role Simulator Playground Switcher (Enabled in local dev OR when VITE_ENABLE_DEV_ROLE_SWITCHER=true on staging environments like Render) */}
+              {(!import.meta.env.PROD || import.meta.env.VITE_ENABLE_DEV_ROLE_SWITCHER === 'true') && (
                 <div className="mt-8 border-t border-slate-100 pt-6">
                   <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 text-center">
                     🛠️ Interactive Role Play Testing Credentials (Dev Mode Only)

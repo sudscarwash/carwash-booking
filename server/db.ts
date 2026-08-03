@@ -1224,6 +1224,15 @@ export async function deletePasswordReset(email: string): Promise<void> {
   }
 }
 
+export async function cleanupExpiredPasswordResets(): Promise<void> {
+  try {
+    const nowIso = new Date().toISOString();
+    await runQueryRun('DELETE FROM password_resets WHERE expiresAt < ?', [nowIso]);
+  } catch (error) {
+    console.error('Database cleanupExpiredPasswordResets Error:', error);
+  }
+}
+
 // Map Presets CRUD operations
 export async function getMapPresets(): Promise<MapPreset[]> {
   try {
