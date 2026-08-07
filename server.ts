@@ -38,6 +38,7 @@ import {
   getAuditLogs,
   addAuditLog,
   createPasswordReset,
+  getPasswordResetByEmail,
   getPasswordResetByToken,
   deletePasswordReset,
   cleanupExpiredPasswordResets,
@@ -247,6 +248,7 @@ async function startServer() {
         name,
         role: Role.CUSTOMER,
         isActive: true,
+        isEmailVerified: false,
         passwordHash,
         createdAt: new Date().toISOString(),
         dateOfBirth: dateOfBirth || undefined,
@@ -329,6 +331,10 @@ async function startServer() {
 
       // Delete the used OTP code
       await deletePasswordReset(sanitizedEmail);
+
+      // Mark email as verified in database
+      await updateUser(user.id, { isEmailVerified: true });
+      user.isEmailVerified = true;
 
       await addAuditLog(user.id, user.email, 'USER_EMAIL_VERIFIED', `Email address verified successfully with OTP for ${user.email}`);
 
@@ -504,6 +510,27 @@ async function startServer() {
           res.status(400).json({ error: 'Invalid email or password.' });
           return;
         }
+      }
+
+      if (user.isEmailVerified === false) {
+        let activeOtp = await getPasswordResetByEmail(user.email);
+        let otpCode = activeOtp?.token;
+
+        if (!activeOtp || new Date(activeOtp.expiresAt) < new Date()) {
+          const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
+          const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // 15 mins
+          await createPasswordReset(user.email, newOtp, expiresAt);
+          otpCode = newOtp;
+          await sendEmailVerificationOTP(user.email, user.name, newOtp).catch(() => {});
+        }
+
+        res.status(403).json({
+          error: 'Your email address is not verified yet. Please enter the 6-digit verification code sent to your email to log in.',
+          requireOtp: true,
+          email: user.email,
+          sandboxCode: otpCode
+        });
+        return;
       }
 
       const { passwordHash: _, ...safeUser } = user;

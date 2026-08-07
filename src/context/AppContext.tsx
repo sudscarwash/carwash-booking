@@ -22,7 +22,7 @@ interface AppContextType {
   fetchAppNotifications: () => Promise<void>;
   markNotificationAsRead: (id: string) => Promise<void>;
   markAllNotificationsAsRead: () => Promise<void>;
-  login: (email: string, password: string) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<boolean | { requireOtp: boolean; email: string; sandboxCode?: string }>;
   register: (
     email: string,
     password: string,
@@ -247,12 +247,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setUser(null);
         setToken(null);
       }
-      throw new Error(data.error || `Request failed with status ${res.status}`);
+      const err: any = new Error(data.error || `Request failed with status ${res.status}`);
+      err.data = data;
+      throw err;
     }
     return data;
   };
 
-  const login = async (email: string, password: string): Promise<boolean> => {
+  const login = async (
+    email: string,
+    password: string
+  ): Promise<boolean | { requireOtp: boolean; email: string; sandboxCode?: string }> => {
     try {
       setLoading(true);
       const data = await apiFetch('/api/auth/login', {
@@ -266,6 +271,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       showNotification(`Welcome back, ${data.user.name}!`, 'success');
       return true;
     } catch (err: any) {
+      if (err.data?.requireOtp) {
+        showNotification(err.message || 'Please verify your email address before logging in.', 'error');
+        return {
+          requireOtp: true,
+          email: err.data.email || email,
+          sandboxCode: err.data.sandboxCode
+        };
+      }
       showNotification(err.message, 'error');
       return false;
     } finally {

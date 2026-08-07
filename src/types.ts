@@ -33,6 +33,7 @@ export interface User {
   profileImageUrl?: string;
   address?: string;
   phone?: string;
+  isEmailVerified?: boolean;
 }
 
 export interface UserWithPassword extends User {

@@ -24,7 +24,7 @@ import {
   AlertTriangle,
   RefreshCw
 } from 'lucide-react';
-import { CarWash, User } from '../types.js';
+import { CarWash, User, WashService } from '../types.js';
 import { useApp } from '../context/AppContext.js';
 import { MapSimulation } from './MapSimulation.js';
 import { LocalPaymentForm } from './LocalPaymentForm.js';
@@ -78,6 +78,154 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
   const [itemTabFilter, setItemTabFilter] = useState<'all' | 'service' | 'addon' | 'product'>('all');
   const [selectedItems, setSelectedItems] = useState<any[]>([]);
   const [expandedServiceId, setExpandedServiceId] = useState<string | null>(null);
+
+  // Default catalogs when specific category items are absent
+  const DEFAULT_MAIN_SERVICES: WashService[] = [
+    {
+      id: 'default_wash_standard',
+      name: 'Standard Car Wash & Vacuum',
+      price: 15.00,
+      duration: 45,
+      type: 'service',
+      description: 'Complete exterior water jet wash with high foam shampoo, tire shine, and interior deep vacuum cleaning.'
+    },
+    {
+      id: 'default_wash_express',
+      name: 'Express Jet Wash & Towel Dry',
+      price: 10.00,
+      duration: 20,
+      type: 'service',
+      description: 'Fast exterior water jet wash with soft microfiber hand dry. Ideal for a quick clean on the go.'
+    },
+    {
+      id: 'default_wash_deluxe',
+      name: 'Deluxe Foam Wash, Wax & Tyre Shine',
+      price: 25.00,
+      duration: 60,
+      type: 'service',
+      description: 'Full exterior foam wash, spray wax protection, deep interior vacuum, dashboard wipe, and premium tyre shine.'
+    },
+    {
+      id: 'default_wash_ceramic',
+      name: 'Premium Ceramic Coating & Deep Detailing',
+      price: 45.00,
+      duration: 90,
+      type: 'service',
+      description: 'Ultimate hand wash detailing with clay bar decontamination, hydrophobic ceramic spray sealant, and engine bay wipe.'
+    }
+  ];
+
+  const DEFAULT_ADDONS: WashService[] = [
+    {
+      id: 'default_addon_headlight',
+      name: 'Headlight Polish & Lens Restoration',
+      price: 15.00,
+      duration: 15,
+      type: 'addon',
+      description: 'Professional headlight lens clarity restoration removing yellowing, cloudiness and hazing.'
+    },
+    {
+      id: 'default_addon_tyre',
+      name: 'Tyre Shine & Hydrophobic Rim Coating',
+      price: 5.00,
+      duration: 10,
+      type: 'addon',
+      description: 'Deep glossy tyre dressing and protective hydrophobic rim shine coat.'
+    },
+    {
+      id: 'default_addon_windscreen',
+      name: 'Windscreen Rain-Repellent Treatment',
+      price: 8.00,
+      duration: 10,
+      type: 'addon',
+      description: 'Hydrophobic glass coating that repels rain drops and improves driving visibility in heavy downpours.'
+    },
+    {
+      id: 'default_addon_steam',
+      name: 'Interior Steam Sanitization & Deodorizer',
+      price: 12.00,
+      duration: 20,
+      type: 'addon',
+      description: 'High-temperature steam treatment targeting AC vents, seats and carpets to eliminate bacteria and odors.'
+    },
+    {
+      id: 'default_addon_engine',
+      name: 'Engine Bay Degreasing & Dressing',
+      price: 20.00,
+      duration: 25,
+      type: 'addon',
+      description: 'Safe engine compartment degreasing and protective rubber/plastic dressing for a show-room shine.'
+    }
+  ];
+
+  const DEFAULT_PRODUCTS: WashService[] = [
+    {
+      id: 'default_product_microfiber',
+      name: 'Microfiber Detailing Towel Pack (3-pc)',
+      price: 6.00,
+      duration: 0,
+      type: 'product',
+      description: 'Ultra-soft 400GSM plush microfiber towels for scratch-free drying and interior wiping.'
+    },
+    {
+      id: 'default_product_shampoo',
+      name: 'PH-Neutral Auto Wash Shampoo 500ml',
+      price: 12.00,
+      duration: 0,
+      type: 'product',
+      description: 'Concentrated high-foaming car wash soap safe for wax and ceramic coatings.'
+    },
+    {
+      id: 'default_product_ceramic_spray',
+      name: 'Hydrophobic Ceramic Guard Spray 300ml',
+      price: 18.00,
+      duration: 0,
+      type: 'product',
+      description: 'Easy spray-on ceramic sealant providing 3 months of gloss and extreme water beading.'
+    },
+    {
+      id: 'default_product_freshener',
+      name: 'Luxury Air Freshener Vent Clip',
+      price: 4.00,
+      duration: 0,
+      type: 'product',
+      description: 'Long-lasting premium fragrance vent clip for fresh interior scent.'
+    }
+  ];
+
+  // Helper to resolve location services catalog, ensuring main services, add-ons, and products are all available
+  const getCatalogForLocation = (loc: CarWash) => {
+    const customItems = Array.isArray(loc.services) ? loc.services : [];
+    if (customItems.length === 0) {
+      return [...DEFAULT_MAIN_SERVICES, ...DEFAULT_ADDONS, ...DEFAULT_PRODUCTS];
+    }
+
+    const hasService = customItems.some((i: any) => !i.type || i.type === 'service');
+    const hasAddon = customItems.some((i: any) => i.type === 'addon');
+    const hasProduct = customItems.some((i: any) => i.type === 'product');
+
+    const result = [...customItems];
+    if (!hasService) result.push(...DEFAULT_MAIN_SERVICES);
+    if (!hasAddon) result.push(...DEFAULT_ADDONS);
+    if (!hasProduct) result.push(...DEFAULT_PRODUCTS);
+
+    return result;
+  };
+
+  const catalog = getCatalogForLocation(location);
+
+  // Auto-select first main service on modal open if nothing selected yet
+  useEffect(() => {
+    if (isOpen && location) {
+      const items = getCatalogForLocation(location);
+      if (selectedItems.length === 0 && items.length > 0) {
+        const firstWash = items.find((i: any) => !i.type || i.type === 'service') || items[0];
+        if (firstWash) {
+          setSelectedItems([firstWash]);
+        }
+      }
+    }
+  }, [isOpen, location]);
 
   // Computed summary for selected multi-items
   const totalSelectedPrice = selectedItems.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
@@ -429,38 +577,48 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                       <button
                         type="button"
                         onClick={() => setItemTabFilter('all')}
-                        className={`px-2.5 py-1 text-[11px] font-extrabold rounded-lg transition-all cursor-pointer ${
+                        className={`px-2.5 py-1 text-[11px] font-extrabold rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
                           itemTabFilter === 'all' ? 'bg-white text-sky-600 shadow-xs' : 'text-slate-500 hover:text-slate-700'
                         }`}
                       >
-                        All
+                        <span>All</span>
+                        <span className="text-[9px] bg-slate-200 px-1 rounded-full">{catalog.length}</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => setItemTabFilter('service')}
-                        className={`px-2.5 py-1 text-[11px] font-extrabold rounded-lg transition-all cursor-pointer ${
+                        className={`px-2.5 py-1 text-[11px] font-extrabold rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
                           itemTabFilter === 'service' ? 'bg-white text-sky-600 shadow-xs' : 'text-slate-500 hover:text-slate-700'
                         }`}
                       >
-                        Main Services
+                        <span>Main Services</span>
+                        <span className="text-[9px] bg-slate-200 px-1 rounded-full">
+                          {catalog.filter((i: any) => !i.type || i.type === 'service').length}
+                        </span>
                       </button>
                       <button
                         type="button"
                         onClick={() => setItemTabFilter('addon')}
-                        className={`px-2.5 py-1 text-[11px] font-extrabold rounded-lg transition-all cursor-pointer ${
+                        className={`px-2.5 py-1 text-[11px] font-extrabold rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
                           itemTabFilter === 'addon' ? 'bg-white text-purple-600 shadow-xs' : 'text-slate-500 hover:text-slate-700'
                         }`}
                       >
-                        Add-ons & Extras
+                        <span>Add-ons & Extras</span>
+                        <span className="text-[9px] bg-slate-200 px-1 rounded-full">
+                          {catalog.filter((i: any) => i.type === 'addon').length}
+                        </span>
                       </button>
                       <button
                         type="button"
                         onClick={() => setItemTabFilter('product')}
-                        className={`px-2.5 py-1 text-[11px] font-extrabold rounded-lg transition-all cursor-pointer ${
+                        className={`px-2.5 py-1 text-[11px] font-extrabold rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
                           itemTabFilter === 'product' ? 'bg-white text-emerald-600 shadow-xs' : 'text-slate-500 hover:text-slate-700'
                         }`}
                       >
-                        Products
+                        <span>Products</span>
+                        <span className="text-[9px] bg-slate-200 px-1 rounded-full">
+                          {catalog.filter((i: any) => i.type === 'product').length}
+                        </span>
                       </button>
                     </div>
                   </div>
@@ -468,37 +626,7 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                   {/* Services / Add-ons / Items list */}
                   <div className="space-y-3">
                     {(() => {
-                      // Determine items to display (fallback or actual location services)
-                      const itemsList = (location.services && location.services.length > 0)
-                        ? location.services
-                        : [
-                            {
-                              id: 'default_wash',
-                              name: 'Standard Car Wash & Vacuum',
-                              price: 15.00,
-                              duration: 45,
-                              type: 'service',
-                              description: 'Complete exterior water jet wash with high foam shampoo, tire shine, and interior deep vacuum cleaning.'
-                            },
-                            {
-                              id: 'default_addon_headlight',
-                              name: 'Headlight Polish & Restoration',
-                              price: 15.00,
-                              duration: 15,
-                              type: 'addon',
-                              description: 'Professional headlight lens clarity restoration removing yellowing, cloudiness and hazing.'
-                            },
-                            {
-                              id: 'default_addon_tyre',
-                              name: 'Tyre Shine & Rim Wax Coating',
-                              price: 5.00,
-                              duration: 10,
-                              type: 'addon',
-                              description: 'Deep glossy tyre dressing and protective hydrophobic rim shine coat.'
-                            }
-                          ];
-
-                      const filtered = itemsList.filter((svc: any) => {
+                      const filtered = catalog.filter((svc: any) => {
                         if (itemTabFilter === 'all') return true;
                         if (itemTabFilter === 'service') return !svc.type || svc.type === 'service';
                         if (itemTabFilter === 'addon') return svc.type === 'addon';
@@ -883,19 +1011,48 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                       </div>
 
                       <div>
-                        <span className="text-slate-400 font-bold block uppercase tracking-wider text-[10px]">Selected Services & Add-ons ({selectedItems.length})</span>
-                        <span className="text-slate-800 font-extrabold text-xs sm:text-sm block leading-snug">{combinedServiceName || 'Standard Car Wash'}</span>
-                        <span className="text-sky-600 font-extrabold text-xs block mt-0.5">Est. Duration: ~{totalSelectedDuration} mins</span>
-                      </div>
-
-                      <div>
                         <span className="text-slate-400 font-bold block uppercase tracking-wider text-[10px]">Date & Time Slot</span>
                         <span className="text-sky-600 font-black text-sm">{bookingDate} @ {selectedSlot}</span>
+                        <span className="text-slate-500 text-[11px] block mt-0.5">Est. Total Duration: ~{totalSelectedDuration} mins</span>
                       </div>
+                    </div>
 
-                      <div>
-                        <span className="text-slate-400 font-bold block uppercase tracking-wider text-[10px]">Total Amount Payable</span>
-                        <span className="text-slate-900 font-black text-base font-mono">BND ${totalSelectedPrice.toFixed(2)}</span>
+                    {/* Breakdown of selected items */}
+                    <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2">
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+                        <span className="text-[10px] text-slate-500 font-extrabold uppercase tracking-wider">
+                          Selected Items ({selectedItems.length})
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setErrorMessage(null);
+                            setCurrentStep(1);
+                          }}
+                          className="text-[10px] text-sky-600 font-bold hover:underline"
+                        >
+                          Edit Items
+                        </button>
+                      </div>
+                      <div className="divide-y divide-slate-100">
+                        {selectedItems.map((item) => (
+                          <div key={item.id} className="py-2 flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-2 min-w-0 pr-2">
+                              <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase shrink-0 ${
+                                item.type === 'product' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : item.type === 'addon' ? 'bg-purple-50 text-purple-700 border border-purple-200' : 'bg-sky-50 text-sky-700 border border-sky-200'
+                              }`}>
+                                {item.type === 'product' ? 'Product' : item.type === 'addon' ? 'Add-on' : 'Main'}
+                              </span>
+                              <span className="font-bold text-slate-800 truncate">{item.name}</span>
+                              {item.duration > 0 && <span className="text-slate-400 text-[10px] shrink-0">({item.duration}m)</span>}
+                            </div>
+                            <span className="font-black text-slate-900 font-mono shrink-0">BND ${(Number(item.price) || 0).toFixed(2)}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-xs font-black">
+                        <span className="text-slate-700 uppercase tracking-wider text-[10px]">Total Amount Payable:</span>
+                        <span className="text-sky-600 text-sm font-mono">BND ${totalSelectedPrice.toFixed(2)}</span>
                       </div>
                     </div>
                   </div>

@@ -13,7 +13,7 @@ import { AdminDashboard } from './pages/AdminDashboard.js';
 import { SpecialUserDashboard } from './pages/SpecialUserDashboard.js';
 import { Role } from './types.js';
 import { isValidEmail } from './lib/validation.js';
-import { Lock, Mail, UserPlus, LogIn, Sparkles, Compass, Sliders, Briefcase, Shield, Check, Info, X, AlertTriangle, LogOut } from 'lucide-react';
+import { Lock, Mail, UserPlus, LogIn, Sparkles, Compass, Sliders, Briefcase, Shield, Check, Info, X, AlertTriangle, LogOut, Eye, EyeOff } from 'lucide-react';
 import autoshineLogo from './assets/images/autoshine_logo_1783916518342.jpg';
 
 const MainAppContent: React.FC = () => {
@@ -127,6 +127,7 @@ const MainAppContent: React.FC = () => {
   // Auth form state
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
@@ -141,6 +142,7 @@ const MainAppContent: React.FC = () => {
   const [resetCode, setResetCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showResetPassword, setShowResetPassword] = useState(false);
 
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -152,15 +154,21 @@ const MainAppContent: React.FC = () => {
       return;
     }
 
-    if (isRegisterMode && !acceptTerms) {
-      showNotification("You must accept the Terms and Conditions to register.", "error");
-      return;
+    if (isRegisterMode) {
+      if (!phone.trim()) {
+        showNotification("Please enter a valid phone number.", "error");
+        return;
+      }
+      if (!acceptTerms) {
+        showNotification("You must accept the Terms and Conditions to register.", "error");
+        return;
+      }
     }
 
     setAuthLoading(true);
     if (isRegisterMode) {
       const res = await register(trimmedEmail, password, name, {
-        phone: phone || undefined,
+        phone: phone.trim(),
         dateOfBirth: dateOfBirth || undefined,
         gender: gender || undefined,
         profileImageUrl: profileImageUrl || undefined,
@@ -182,7 +190,15 @@ const MainAppContent: React.FC = () => {
         }
       }
     } else {
-      await login(email, password);
+      const res = await login(email, password);
+      if (typeof res === 'object' && res.requireOtp) {
+        setIsRegisterOtpMode(true);
+        setPendingRegisterEmail(res.email);
+        setRegisterSandboxCode(res.sandboxCode);
+        if (res.sandboxCode) {
+          setRegisterOtpCode(res.sandboxCode);
+        }
+      }
     }
     setAuthLoading(false);
   };
@@ -510,14 +526,23 @@ const MainAppContent: React.FC = () => {
                       <div className="relative">
                         <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
                         <input
-                          type="password"
+                          type={showResetPassword ? 'text' : 'password'}
                           placeholder="••••••••"
                           value={newPassword}
                           onChange={(e) => setNewPassword(e.target.value)}
-                          className="w-full pl-10 pr-3 py-2.5 border border-slate-200 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 rounded-xl outline-none text-slate-800 text-sm transition-all"
+                          className="w-full pl-10 pr-10 py-2.5 border border-slate-200 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 rounded-xl outline-none text-slate-800 text-sm transition-all"
                           required
                           id="new-password-input"
                         />
+                        <button
+                          type="button"
+                          onClick={() => setShowResetPassword(!showResetPassword)}
+                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none cursor-pointer p-1"
+                          id="toggle-reset-password-btn"
+                          aria-label={showResetPassword ? "Hide password" : "Show password"}
+                        >
+                          {showResetPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
                       </div>
                     </div>
 
@@ -526,14 +551,23 @@ const MainAppContent: React.FC = () => {
                       <div className="relative">
                         <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
                         <input
-                          type="password"
+                          type={showResetPassword ? 'text' : 'password'}
                           placeholder="••••••••"
                           value={confirmPassword}
                           onChange={(e) => setConfirmPassword(e.target.value)}
-                          className="w-full pl-10 pr-3 py-2.5 border border-slate-200 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 rounded-xl outline-none text-slate-800 text-sm transition-all"
+                          className="w-full pl-10 pr-10 py-2.5 border border-slate-200 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 rounded-xl outline-none text-slate-800 text-sm transition-all"
                           required
                           id="confirm-password-input"
                         />
+                        <button
+                          type="button"
+                          onClick={() => setShowResetPassword(!showResetPassword)}
+                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none cursor-pointer p-1"
+                          id="toggle-confirm-reset-password-btn"
+                          aria-label={showResetPassword ? "Hide password" : "Show password"}
+                        >
+                          {showResetPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
                       </div>
                     </div>
 
@@ -655,83 +689,40 @@ const MainAppContent: React.FC = () => {
                       <div className="relative">
                         <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
                         <input
-                          type="password"
+                          type={showPassword ? 'text' : 'password'}
                           placeholder="••••••••"
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
-                          className="w-full pl-10 pr-3 py-2.5 border border-slate-200 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 rounded-xl outline-none text-slate-800 text-sm transition-all"
+                          className="w-full pl-10 pr-10 py-2.5 border border-slate-200 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 rounded-xl outline-none text-slate-800 text-sm transition-all"
                           required
                           id="auth-password-input"
                         />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none cursor-pointer p-1"
+                          id="toggle-auth-password-btn"
+                          aria-label={showPassword ? "Hide password" : "Show password"}
+                        >
+                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
                       </div>
                     </div>
 
                     {isRegisterMode && (
                       <div className="space-y-4 pt-3 border-t border-slate-100 mt-3 animate-fade-in">
-                        <div className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider mb-2">Optional Profile Details</div>
-                        
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Phone Number</label>
-                            <input
-                              type="tel"
-                              placeholder="+673 812-3456"
-                              value={phone}
-                              onChange={(e) => setPhone(e.target.value)}
-                              className="w-full px-3 py-2 border border-slate-200 focus:border-sky-500 rounded-xl outline-none text-slate-800 text-xs transition-all"
-                              id="auth-phone-input"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Date of Birth</label>
-                            <input
-                              type="date"
-                              value={dateOfBirth}
-                              onChange={(e) => setDateOfBirth(e.target.value)}
-                              className="w-full px-3 py-2 border border-slate-200 focus:border-sky-500 rounded-xl outline-none text-slate-800 text-xs transition-all"
-                              id="auth-dob-input"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Gender</label>
-                            <select
-                              value={gender}
-                              onChange={(e) => setGender(e.target.value)}
-                              className="w-full px-3 py-2 border border-slate-200 focus:border-sky-500 rounded-xl outline-none text-slate-800 text-xs transition-all bg-white"
-                              id="auth-gender-input"
-                            >
-                              <option value="">Select Gender</option>
-                              <option value="Male">Male</option>
-                              <option value="Female">Female</option>
-                              <option value="Other">Other</option>
-                              <option value="Prefer not to say">Prefer not to say</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Profile Photo URL</label>
-                            <input
-                              type="text"
-                              placeholder="https://..."
-                              value={profileImageUrl}
-                              onChange={(e) => setProfileImageUrl(e.target.value)}
-                              className="w-full px-3 py-2 border border-slate-200 focus:border-sky-500 rounded-xl outline-none text-slate-800 text-xs transition-all"
-                              id="auth-avatar-input"
-                            />
-                          </div>
-                        </div>
-
                         <div>
-                          <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Residential Address</label>
-                          <textarea
-                            placeholder="Kampong Gadong, Bandar Seri Begawan"
-                            value={address}
-                            onChange={(e) => setAddress(e.target.value)}
-                            rows={2}
-                            className="w-full px-3 py-2 border border-slate-200 focus:border-sky-500 rounded-xl outline-none text-slate-800 text-xs transition-all resize-none"
-                            id="auth-address-input"
+                          <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                            Phone Number <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="tel"
+                            placeholder="+673 812-3456"
+                            value={phone}
+                            onChange={(e) => setPhone(e.target.value)}
+                            className="w-full px-3 py-2 border border-slate-200 focus:border-sky-500 rounded-xl outline-none text-slate-800 text-xs transition-all"
+                            required
+                            id="auth-phone-input"
                           />
                         </div>
 

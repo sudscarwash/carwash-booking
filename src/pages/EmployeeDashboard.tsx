@@ -6,15 +6,146 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext.js';
 import { MapSimulation } from '../components/MapSimulation.js';
-import { BookingStatus, Booking } from '../types.js';
+import { BookingStatus, Booking, CarWash, WashService } from '../types.js';
 import {
   Briefcase as BriefcaseIcon, Calendar as CalendarIcon, Clock as ClockIcon, Check as CheckIcon, ChevronRight as ChevronRightIcon,
   CheckCircle as CheckCircleIcon, Info as InfoIcon, MapPin as MapPinIcon, CalendarDays, ChevronLeft, ChevronRight, Plus,
   Sparkles, Phone, Car, User as UserIcon, X, CheckCheck, Pencil
 } from 'lucide-react';
 import { EditBookingModal } from '../components/EditBookingModal.js';
+import { ServicePickerModal } from '../components/ServicePickerModal.js';
 
 const getTodayDateString = () => new Date().toISOString().split('T')[0];
+
+const DEFAULT_MAIN_SERVICES: WashService[] = [
+  {
+    id: 'default_wash_standard',
+    name: 'Standard Car Wash & Vacuum',
+    price: 15.00,
+    duration: 45,
+    type: 'service',
+    description: 'Complete exterior water jet wash with high foam shampoo, tire shine, and interior deep vacuum cleaning.'
+  },
+  {
+    id: 'default_wash_express',
+    name: 'Express Jet Wash & Towel Dry',
+    price: 10.00,
+    duration: 20,
+    type: 'service',
+    description: 'Fast exterior water jet wash with soft microfiber hand dry.'
+  },
+  {
+    id: 'default_wash_deluxe',
+    name: 'Deluxe Foam Wash, Wax & Tyre Shine',
+    price: 25.00,
+    duration: 60,
+    type: 'service',
+    description: 'Full exterior foam wash, spray wax protection, deep interior vacuum, and tyre shine.'
+  },
+  {
+    id: 'default_wash_ceramic',
+    name: 'Premium Ceramic Coating & Deep Detailing',
+    price: 45.00,
+    duration: 90,
+    type: 'service',
+    description: 'Ultimate hand wash detailing with hydrophobic ceramic spray sealant.'
+  }
+];
+
+const DEFAULT_ADDONS: WashService[] = [
+  {
+    id: 'default_addon_headlight',
+    name: 'Headlight Polish & Lens Restoration',
+    price: 15.00,
+    duration: 15,
+    type: 'addon',
+    description: 'Professional headlight lens clarity restoration.'
+  },
+  {
+    id: 'default_addon_tyre',
+    name: 'Tyre Shine & Hydrophobic Rim Coating',
+    price: 5.00,
+    duration: 10,
+    type: 'addon',
+    description: 'Deep glossy tyre dressing and protective rim shine coat.'
+  },
+  {
+    id: 'default_addon_windscreen',
+    name: 'Windscreen Rain-Repellent Treatment',
+    price: 8.00,
+    duration: 10,
+    type: 'addon',
+    description: 'Hydrophobic glass coating that repels rain drops.'
+  },
+  {
+    id: 'default_addon_steam',
+    name: 'Interior Steam Sanitization & Deodorizer',
+    price: 12.00,
+    duration: 20,
+    type: 'addon',
+    description: 'High-temperature steam treatment targeting AC vents and seats.'
+  },
+  {
+    id: 'default_addon_engine',
+    name: 'Engine Bay Degreasing & Dressing',
+    price: 20.00,
+    duration: 25,
+    type: 'addon',
+    description: 'Safe engine compartment degreasing and protective dressing.'
+  }
+];
+
+const DEFAULT_PRODUCTS: WashService[] = [
+  {
+    id: 'default_product_microfiber',
+    name: 'Microfiber Detailing Towel Pack (3-pc)',
+    price: 6.00,
+    duration: 0,
+    type: 'product',
+    description: 'Ultra-soft 400GSM plush microfiber towels.'
+  },
+  {
+    id: 'default_product_shampoo',
+    name: 'PH-Neutral Auto Wash Shampoo 500ml',
+    price: 12.00,
+    duration: 0,
+    type: 'product',
+    description: 'Concentrated high-foaming car wash soap.'
+  },
+  {
+    id: 'default_product_ceramic_spray',
+    name: 'Hydrophobic Ceramic Guard Spray 300ml',
+    price: 18.00,
+    duration: 0,
+    type: 'product',
+    description: 'Easy spray-on ceramic sealant providing gloss and water beading.'
+  },
+  {
+    id: 'default_product_freshener',
+    name: 'Luxury Air Freshener Vent Clip',
+    price: 4.00,
+    duration: 0,
+    type: 'product',
+    description: 'Long-lasting premium fragrance vent clip.'
+  }
+];
+
+const getCatalogForLocation = (loc?: CarWash | null): WashService[] => {
+  if (!loc) return [...DEFAULT_MAIN_SERVICES, ...DEFAULT_ADDONS, ...DEFAULT_PRODUCTS];
+  const customItems = Array.isArray(loc.services) ? loc.services : [];
+  if (customItems.length === 0) {
+    return [...DEFAULT_MAIN_SERVICES, ...DEFAULT_ADDONS, ...DEFAULT_PRODUCTS];
+  }
+  const hasService = customItems.some((i: any) => !i.type || i.type === 'service');
+  const hasAddon = customItems.some((i: any) => i.type === 'addon');
+  const hasProduct = customItems.some((i: any) => i.type === 'product');
+
+  const result = [...customItems];
+  if (!hasService) result.push(...DEFAULT_MAIN_SERVICES);
+  if (!hasAddon) result.push(...DEFAULT_ADDONS);
+  if (!hasProduct) result.push(...DEFAULT_PRODUCTS);
+  return result;
+};
 
 export const EmployeeDashboard: React.FC = () => {
   const { user, bookings, updateBookingStatus, locations, createManualBooking } = useApp();
@@ -41,6 +172,8 @@ export const EmployeeDashboard: React.FC = () => {
   const [mbIsCustomSlot, setMbIsCustomSlot] = useState(false);
   const [mbCustomSlotText, setMbCustomSlotText] = useState('');
   const [mbSelectedServiceId, setMbSelectedServiceId] = useState<string>('');
+  const [mbSelectedItems, setMbSelectedItems] = useState<WashService[]>([]);
+  const [showServicePickerModal, setShowServicePickerModal] = useState(false);
   const [mbPrice, setMbPrice] = useState<string>('15.00');
   const [mbNotes, setMbNotes] = useState('');
   const [mbSource, setMbSource] = useState<'PHONE' | 'WALK_IN' | 'ONLINE'>('WALK_IN');
@@ -82,13 +215,19 @@ export const EmployeeDashboard: React.FC = () => {
 
   // Auto set initial service price when service selected
   useEffect(() => {
-    if (myLocation && myLocation.services && myLocation.services.length > 0) {
-      if (!mbSelectedServiceId) {
-        setMbSelectedServiceId(myLocation.services[0].id);
-        setMbPrice(myLocation.services[0].price.toFixed(2));
+    if (myLocation) {
+      const catalog = getCatalogForLocation(myLocation);
+      if (catalog.length > 0) {
+        if (mbSelectedItems.length === 0) {
+          setMbSelectedItems([catalog[0]]);
+          setMbSelectedServiceId(catalog[0].id);
+          setMbPrice(catalog[0].price.toFixed(2));
+        } else if (!mbSelectedServiceId) {
+          setMbSelectedServiceId(catalog[0].id);
+        }
       }
     }
-  }, [myLocation]);
+  }, [myLocation, showManualBookingModal]);
 
   // Fetch available slots for manual booking date
   useEffect(() => {
@@ -120,7 +259,15 @@ export const EmployeeDashboard: React.FC = () => {
     }
 
     setMbIsSubmitting(true);
-    const selectedSvc = myLocation.services?.find((s) => s.id === mbSelectedServiceId);
+    const catalog = getCatalogForLocation(myLocation);
+
+    const combinedName = mbSelectedItems.length > 0
+      ? mbSelectedItems.map((i) => i.name).join(' + ')
+      : 'Standard Car Wash & Vacuum';
+
+    const calculatedPrice = mbSelectedItems.length > 0
+      ? mbSelectedItems.reduce((sum, item) => sum + (Number(item.price) || 0), 0)
+      : (parseFloat(mbPrice) || 15.00);
 
     const finalSlot = mbIsCustomSlot
       ? (mbCustomSlotText.trim() || 'Walk-in / Immediate (No Slot)')
@@ -135,9 +282,9 @@ export const EmployeeDashboard: React.FC = () => {
       customerEmail: mbEmail.trim() || undefined,
       vehicleInfo: mbVehicle.trim() || undefined,
       bookingSource: mbSource,
-      serviceId: selectedSvc?.id,
-      serviceName: selectedSvc?.name || 'Standard Wash',
-      price: parseFloat(mbPrice) || selectedSvc?.price || 15.00,
+      serviceId: mbSelectedItems.length > 0 ? mbSelectedItems[0].id : catalog[0]?.id,
+      serviceName: combinedName,
+      price: calculatedPrice,
       notes: mbNotes.trim() || undefined,
       status: mbStatus,
     });
@@ -154,6 +301,7 @@ export const EmployeeDashboard: React.FC = () => {
       setMbIsCustomSlot(false);
       setMbCustomSlotText('');
       setMbSelectedSlots([]);
+      setMbSelectedItems([]);
     }
   };
 
@@ -1090,45 +1238,68 @@ export const EmployeeDashboard: React.FC = () => {
               </div>
 
               {/* Service Selection & Custom Price */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
-                    Selected Service / Add-on
+              <div className="col-span-full space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider">
+                    Selected Services & Products ({mbSelectedItems.length})
                   </label>
-                  <select
-                    value={mbSelectedServiceId}
-                    onChange={(e) => {
-                      const svcId = e.target.value;
-                      setMbSelectedServiceId(svcId);
-                      const svc = myLocation?.services?.find((s) => s.id === svcId);
-                      if (svc) setMbPrice(svc.price.toFixed(2));
-                    }}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm outline-none focus:border-amber-500 font-medium"
+                  <button
+                    type="button"
+                    onClick={() => setShowServicePickerModal(true)}
+                    className="text-xs font-black text-amber-800 hover:text-amber-950 bg-amber-50 hover:bg-amber-100 px-3 py-1.5 rounded-xl border border-amber-200 transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
                   >
-                    {(!myLocation?.services || myLocation.services.length === 0) ? (
-                      <option value="default_wash">Standard Car Wash</option>
-                    ) : (
-                      myLocation.services.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name} (BND ${s.price.toFixed(2)})
-                        </option>
-                      ))
-                    )}
-                  </select>
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                    <span>+ Tick & Choose Services (Multi-Select)</span>
+                  </button>
                 </div>
 
-                <div>
-                  <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
-                    Charge Price (BND $)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    value={mbPrice}
-                    onChange={(e) => setMbPrice(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm outline-none focus:border-amber-500 font-mono font-bold"
-                  />
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                  {mbSelectedItems.length === 0 ? (
+                    <div className="text-center py-3 text-xs text-slate-400 font-medium">
+                      No services selected yet. Click "+ Tick & Choose Services" above.
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                      {mbSelectedItems.map((item, idx) => (
+                        <div
+                          key={`${item.id}_${idx}`}
+                          className="flex items-center justify-between bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-2xs text-xs"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase ${
+                              item.type === 'product'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : item.type === 'addon'
+                                ? 'bg-purple-100 text-purple-800'
+                                : 'bg-sky-100 text-sky-800'
+                            }`}>
+                              {item.type === 'product' ? 'Product' : item.type === 'addon' ? 'Add-on' : 'Main'}
+                            </span>
+                            <span className="font-extrabold text-slate-800 truncate">{item.name}</span>
+                          </div>
+                          <span className="font-mono font-black text-slate-900 shrink-0 ml-2">
+                            BND ${(Number(item.price) || 0).toFixed(2)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-xs font-extrabold">
+                    <span className="text-slate-500">Calculated Charge Total:</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-400 font-normal">
+                        (or override price manually)
+                      </span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={mbPrice}
+                        onChange={(e) => setMbPrice(e.target.value)}
+                        className="w-24 px-2 py-1 border border-slate-300 rounded-lg text-right font-mono font-black text-slate-900 bg-white"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -1194,6 +1365,19 @@ export const EmployeeDashboard: React.FC = () => {
         }}
         booking={editingBooking}
         location={myLocation}
+      />
+
+      {/* Multi-Item Tick Selection Picker Sub-Modal */}
+      <ServicePickerModal
+        isOpen={showServicePickerModal}
+        onClose={() => setShowServicePickerModal(false)}
+        catalog={getCatalogForLocation(myLocation)}
+        selectedItems={mbSelectedItems}
+        onConfirm={(items) => {
+          setMbSelectedItems(items);
+          const total = items.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
+          setMbPrice(total.toFixed(2));
+        }}
       />
 
       <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex gap-3 text-xs text-slate-500 text-left">

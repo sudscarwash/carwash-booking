@@ -63,6 +63,8 @@ function convertQueryToPg(sql: string): string {
     passwordhash: 'password_hash',
     isActive: 'is_active',
     isactive: 'is_active',
+    isEmailVerified: 'is_email_verified',
+    isemailverified: 'is_email_verified',
     businessId: 'business_id',
     businessid: 'business_id',
     createdAt: 'created_at',
@@ -219,12 +221,14 @@ async function runExec(sql: string): Promise<void> {
 const mapUser = (row: any): UserWithPassword => {
   if (!row) return row;
   const isActiveVal = row.isActive !== undefined ? row.isActive : (row.is_active !== undefined ? row.is_active : row.isactive);
+  const isEmailVerifiedVal = row.isEmailVerified !== undefined ? row.isEmailVerified : (row.is_email_verified !== undefined ? row.is_email_verified : row.isemailverified);
   return {
     id: row.id,
     email: row.email,
     name: row.name,
     role: row.role,
     isActive: isActiveVal === 1 || isActiveVal === true || isActiveVal === '1',
+    isEmailVerified: isEmailVerifiedVal === undefined ? true : (isEmailVerifiedVal === 1 || isEmailVerifiedVal === true || isEmailVerifiedVal === '1'),
     businessId: row.businessId ?? row.business_id ?? row.businessid ?? undefined,
     passwordHash: row.passwordHash ?? row.password_hash ?? row.passwordhash ?? '',
     createdAt: row.createdAt ?? row.created_at ?? row.createdat ?? '',
@@ -438,6 +442,7 @@ export async function seedFirestoreIfEmpty() {
   // Dynamically add rich user profile columns and ensure all required core columns exist
   const alterColumns = [
     'ALTER TABLE users ADD COLUMN isActive INTEGER DEFAULT 1',
+    'ALTER TABLE users ADD COLUMN isEmailVerified INTEGER DEFAULT 1',
     'ALTER TABLE users ADD COLUMN businessId TEXT',
     'ALTER TABLE users ADD COLUMN passwordHash TEXT',
     'ALTER TABLE users ADD COLUMN createdAt TEXT',
@@ -893,8 +898,8 @@ export async function createUser(user: UserWithPassword): Promise<void> {
       assignedRole = Role.ADMIN;
     }
     await runQueryRun(`
-      INSERT INTO users (id, email, name, role, isActive, businessId, passwordHash, createdAt, dateOfBirth, gender, profileImageUrl, address, phone)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO users (id, email, name, role, isActive, businessId, passwordHash, createdAt, dateOfBirth, gender, profileImageUrl, address, phone, isEmailVerified)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       user.id,
       user.email,
@@ -908,7 +913,8 @@ export async function createUser(user: UserWithPassword): Promise<void> {
       user.gender || null,
       user.profileImageUrl || null,
       user.address || null,
-      user.phone || null
+      user.phone || null,
+      user.isEmailVerified === false ? 0 : 1
     ]);
   } catch (error) {
     console.error('Database createUser Error:', error);
@@ -923,7 +929,7 @@ export async function updateUser(id: string, data: Partial<UserWithPassword>): P
 
     Object.entries(data).forEach(([key, val]) => {
       sets.push(`${key} = ?`);
-      if (key === 'isActive') {
+      if (key === 'isActive' || key === 'isEmailVerified') {
         values.push(val ? 1 : 0);
       } else {
         values.push(val === undefined ? null : val);
@@ -1198,6 +1204,21 @@ export async function createPasswordReset(email: string, token: string, expiresA
   } catch (error) {
     console.error('Database createPasswordReset Error:', error);
     throw error;
+  }
+}
+
+export async function getPasswordResetByEmail(email: string): Promise<PasswordReset | null> {
+  try {
+    const row = await runQueryOne('SELECT * FROM password_resets WHERE LOWER(email) = ?', [email.toLowerCase()]);
+    if (!row) return null;
+    return {
+      email: row.email,
+      token: row.token,
+      expiresAt: row.expiresAt ?? row.expires_at ?? row.expiresat ?? ''
+    };
+  } catch (error) {
+    console.error('Database getPasswordResetByEmail Error:', error);
+    return null;
   }
 }
 
