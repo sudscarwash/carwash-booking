@@ -292,7 +292,6 @@ async function startServer() {
         requireOtp: true,
         email: newUser.email,
         message: 'Account created! Please enter the 6-digit verification code sent to your email to verify your address.',
-        sandboxCode: process.env.NODE_ENV !== 'production' ? verificationOtp : undefined,
         user: safeUser
       });
     } catch (error: any) {
@@ -374,8 +373,7 @@ async function startServer() {
       const emailSent = await sendEmailVerificationOTP(sanitizedEmail, user.name, newOtp);
 
       res.json({
-        message: 'A new 6-digit verification code has been dispatched to your email!',
-        sandboxCode: process.env.NODE_ENV !== 'production' ? newOtp : undefined
+        message: 'A new 6-digit verification code has been dispatched to your email!'
       });
     } catch (error: any) {
       res.status(500).json({ error: error.message || 'Internal server error' });
@@ -527,8 +525,7 @@ async function startServer() {
         res.status(403).json({
           error: 'Your email address is not verified yet. Please enter the 6-digit verification code sent to your email to log in.',
           requireOtp: true,
-          email: user.email,
-          sandboxCode: process.env.NODE_ENV !== 'production' ? otpCode : undefined
+          email: user.email
         });
         return;
       }
@@ -631,8 +628,7 @@ async function startServer() {
 
       // Return sandboxCode in non-production for fast local testing
       res.json({
-        message: 'A secure 6-digit password reset verification code has been dispatched to your email address.',
-        sandboxCode: process.env.NODE_ENV !== 'production' ? resetCode : undefined
+        message: 'A secure 6-digit password reset verification code has been dispatched to your email address.'
       });
     } catch (error: any) {
       res.status(500).json({ error: error.message || 'Internal server error' });

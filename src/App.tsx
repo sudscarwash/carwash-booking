@@ -26,7 +26,6 @@ const MainAppContent: React.FC = () => {
   const [isRegisterOtpMode, setIsRegisterOtpMode] = useState(false);
   const [pendingRegisterEmail, setPendingRegisterEmail] = useState('');
   const [registerOtpCode, setRegisterOtpCode] = useState('');
-  const [registerSandboxCode, setRegisterSandboxCode] = useState<string | undefined>(undefined);
   const [showExitConfirmModal, setShowExitConfirmModal] = useState(false);
 
   // Ask for browser confirmation when closing/reloading tab or navigating away
@@ -178,10 +177,6 @@ const MainAppContent: React.FC = () => {
         if (res.requireOtp) {
           setIsRegisterOtpMode(true);
           setPendingRegisterEmail(res.email || trimmedEmail);
-          setRegisterSandboxCode(res.sandboxCode);
-          if (res.sandboxCode) {
-            setRegisterOtpCode(res.sandboxCode); // auto-fill code in developer sandbox
-          }
         } else {
           setIsRegisterMode(false);
           setEmail('');
@@ -194,10 +189,6 @@ const MainAppContent: React.FC = () => {
       if (typeof res === 'object' && res.requireOtp) {
         setIsRegisterOtpMode(true);
         setPendingRegisterEmail(res.email);
-        setRegisterSandboxCode(res.sandboxCode);
-        if (res.sandboxCode) {
-          setRegisterOtpCode(res.sandboxCode);
-        }
       }
     }
     setAuthLoading(false);
@@ -224,11 +215,7 @@ const MainAppContent: React.FC = () => {
   const handleResendRegistrationOtpSubmit = async () => {
     if (!pendingRegisterEmail) return;
     setAuthLoading(true);
-    const newCode = await resendRegistrationOtp(pendingRegisterEmail);
-    if (newCode) {
-      setRegisterSandboxCode(newCode);
-      setRegisterOtpCode(newCode);
-    }
+    await resendRegistrationOtp(pendingRegisterEmail);
     setAuthLoading(false);
   };
 
@@ -239,16 +226,8 @@ const MainAppContent: React.FC = () => {
     setAuthLoading(true);
     const code = await forgotPassword(email);
     if (code !== null) {
-      if (code === 'SUPABASE_SENT') {
-        setIsForgotMode(false);
-        setIsResetMode(false);
-      } else {
-        setIsForgotMode(false);
-        setIsResetMode(true);
-        if (code) {
-          setResetCode(code); // auto-fill code in developer sandbox environment
-        }
-      }
+      setIsForgotMode(false);
+      setIsResetMode(true);
     }
     setAuthLoading(false);
   };
@@ -395,21 +374,6 @@ const MainAppContent: React.FC = () => {
                       <p className="text-xs text-slate-500">OTP code sent to <strong className="text-slate-700">{pendingRegisterEmail}</strong></p>
                     </div>
                   </div>
-
-                  {registerSandboxCode && (
-                    <div className="my-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs flex flex-col gap-1">
-                      <div className="font-bold flex items-center gap-1.5 text-amber-800">
-                        <Info className="h-3.5 w-3.5 shrink-0" />
-                        <span>Developer Sandbox Verification Code</span>
-                      </div>
-                      <p className="text-[11px] text-amber-700">
-                        Code: <code className="font-bold font-mono text-xs bg-amber-100 px-1.5 py-0.5 rounded text-amber-900">{registerSandboxCode}</code>
-                      </p>
-                      <p className="text-[10px] text-amber-600">
-                        (Resend delivers emails to verified addresses/owners. In sandbox/dev mode, code is provided above or logged in server console.)
-                      </p>
-                    </div>
-                  )}
 
                   <form onSubmit={handleVerifyRegistrationOtpSubmit} className="space-y-4 mt-4">
                     <div>
