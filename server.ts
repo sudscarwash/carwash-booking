@@ -292,7 +292,7 @@ async function startServer() {
         requireOtp: true,
         email: newUser.email,
         message: 'Account created! Please enter the 6-digit verification code sent to your email to verify your address.',
-        sandboxCode: verificationOtp, // provided so developer sandbox / testing with arbitrary emails works seamlessly
+        sandboxCode: process.env.NODE_ENV !== 'production' ? verificationOtp : undefined,
         user: safeUser
       });
     } catch (error: any) {
@@ -375,7 +375,7 @@ async function startServer() {
 
       res.json({
         message: 'A new 6-digit verification code has been dispatched to your email!',
-        sandboxCode: newOtp
+        sandboxCode: process.env.NODE_ENV !== 'production' ? newOtp : undefined
       });
     } catch (error: any) {
       res.status(500).json({ error: error.message || 'Internal server error' });
@@ -528,7 +528,7 @@ async function startServer() {
           error: 'Your email address is not verified yet. Please enter the 6-digit verification code sent to your email to log in.',
           requireOtp: true,
           email: user.email,
-          sandboxCode: otpCode
+          sandboxCode: process.env.NODE_ENV !== 'production' ? otpCode : undefined
         });
         return;
       }
