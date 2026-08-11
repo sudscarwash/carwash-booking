@@ -943,10 +943,17 @@ export const OwnerDashboard: React.FC = () => {
   };
 
   useEffect(() => {
-    // Select first owned location if not already selected
+    // Select first owned location if not already selected, or sync with fresh location data
     if (ownerLocations.length > 0) {
-      if (!selectedBusiness || !ownerLocations.some((loc) => loc.id === selectedBusiness.id)) {
+      if (!selectedBusiness) {
         setSelectedBusiness(ownerLocations[0]);
+      } else {
+        const fresh = ownerLocations.find((loc) => loc.id === selectedBusiness.id);
+        if (fresh) {
+          setSelectedBusiness(fresh);
+        } else {
+          setSelectedBusiness(ownerLocations[0]);
+        }
       }
     } else {
       setSelectedBusiness(null);
@@ -3364,8 +3371,26 @@ export const OwnerDashboard: React.FC = () => {
                     {/* Services List */}
                     <div className="space-y-2">
                       {editServices.length === 0 ? (
-                        <div className="text-center py-4 bg-white rounded-xl border border-dashed border-slate-200 text-[11px] text-slate-400">
-                          No customized services or products added yet. Add your first item below!
+                        <div className="text-center py-5 bg-slate-50/80 rounded-xl border border-dashed border-slate-200 p-4 space-y-2">
+                          <p className="text-xs text-slate-500 font-medium">No customized services or products added yet. Add your first item below or load the standard template!</p>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const templateList = [...DEFAULT_MAIN_SERVICES, ...DEFAULT_ADDONS, ...DEFAULT_PRODUCTS];
+                              setEditServices(templateList);
+                              if (selectedBusiness) {
+                                await updateLocationConfig(selectedBusiness.id, {
+                                  ...selectedBusiness,
+                                  services: templateList,
+                                });
+                                showNotification('Standard wash catalog loaded & saved to database!', 'success');
+                              }
+                            }}
+                            className="px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold rounded-xl transition-all cursor-pointer inline-flex items-center gap-1.5 shadow-2xs"
+                          >
+                            <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                            <span>⚡ Load Standard Catalog Template</span>
+                          </button>
                         </div>
                       ) : (
                         <div className="grid grid-cols-1 gap-2 max-h-60 overflow-y-auto pr-1 text-left">

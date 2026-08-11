@@ -944,19 +944,25 @@ export async function createUser(user: UserWithPassword): Promise<void> {
 
 export async function updateUser(id: string, data: Partial<UserWithPassword>): Promise<void> {
   try {
-    const sets: string[] = [];
-    const values: any[] = [];
+    const columnMap = new Map<string, any>();
 
     Object.entries(data).forEach(([key, val]) => {
-      sets.push(`${key} = ?`);
+      if (val === undefined) return;
       if (key === 'isActive' || key === 'isEmailVerified') {
-        values.push(val ? 1 : 0);
+        columnMap.set(key, val ? 1 : 0);
       } else {
-        values.push(val === undefined ? null : val);
+        columnMap.set(key, val);
       }
     });
 
-    if (sets.length === 0) return;
+    if (columnMap.size === 0) return;
+
+    const sets: string[] = [];
+    const values: any[] = [];
+    columnMap.forEach((val, col) => {
+      sets.push(`${col} = ?`);
+      values.push(val);
+    });
 
     values.push(id);
     await runQueryRun(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`, values);
@@ -1045,31 +1051,46 @@ export async function createCarWash(carWash: CarWash): Promise<void> {
 
 export async function updateCarWash(id: string, data: Partial<CarWash>): Promise<void> {
   try {
-    const sets: string[] = [];
-    const values: any[] = [];
+    const columnMap = new Map<string, any>();
 
     Object.entries(data).forEach(([key, val]) => {
+      if (val === undefined) return;
+
       if (key === 'customPaymentMethods') {
         return;
       }
       if (key === 'services') {
-        sets.push(`servicesJson = ?`);
-        values.push(typeof val === 'string' ? val : JSON.stringify(val));
+        columnMap.set('servicesJson', typeof val === 'string' ? val : JSON.stringify(val));
+        return;
+      }
+      if (key === 'servicesJson') {
+        columnMap.set('servicesJson', typeof val === 'string' ? val : JSON.stringify(val));
+        return;
+      }
+      if (key === 'customPaymentsJson') {
+        columnMap.set('customPaymentsJson', typeof val === 'string' ? val : JSON.stringify(val));
         return;
       }
       if (key === 'openingHours') {
-        sets.push(`${key} = ?`);
-        values.push(typeof val === 'string' ? val : JSON.stringify(val));
-      } else if (key === 'isActive' || key === 'bibdEnabled' || key === 'baiduriEnabled') {
-        sets.push(`${key} = ?`);
-        values.push(val ? 1 : 0);
-      } else {
-        sets.push(`${key} = ?`);
-        values.push(val === undefined ? null : val);
+        columnMap.set('openingHours', typeof val === 'string' ? val : JSON.stringify(val));
+        return;
       }
+      if (key === 'isActive' || key === 'bibdEnabled' || key === 'baiduriEnabled') {
+        columnMap.set(key, val ? 1 : 0);
+        return;
+      }
+      columnMap.set(key, val);
     });
 
-    if (sets.length === 0) return;
+    if (columnMap.size === 0) return;
+
+    const sets: string[] = [];
+    const values: any[] = [];
+
+    columnMap.forEach((val, col) => {
+      sets.push(`${col} = ?`);
+      values.push(val);
+    });
 
     values.push(id);
     const sql = `UPDATE car_washes SET ${sets.join(', ')} WHERE id = ?`;
@@ -1194,15 +1215,22 @@ export async function getBookingByTxnRef(txnReference: string): Promise<Booking 
 
 export async function updateBooking(id: string, data: Partial<Booking>): Promise<void> {
   try {
+    const columnMap = new Map<string, any>();
+
+    Object.entries(data).forEach(([key, val]) => {
+      if (val === undefined) return;
+      columnMap.set(key, val);
+    });
+
+    if (columnMap.size === 0) return;
+
     const sets: string[] = [];
     const values: any[] = [];
 
-    Object.entries(data).forEach(([key, val]) => {
-      sets.push(`${key} = ?`);
-      values.push(val === undefined ? null : val);
+    columnMap.forEach((val, col) => {
+      sets.push(`${col} = ?`);
+      values.push(val);
     });
-
-    if (sets.length === 0) return;
 
     values.push(id);
     await runQueryRun(`UPDATE bookings SET ${sets.join(', ')} WHERE id = ?`, values);
