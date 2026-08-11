@@ -1,12 +1,10 @@
 {
-  "projectId": "velvety-ensign-t6shk",
-  "appId": "1:567432589182:web:38c2d11139194ed6158d2f",
-  "apiKey": "AIzaSyBEdjBS-ZFHvEm-KzFnEgvQrbOXrNRI3jw",
-  "authDomain": "velvety-ensign-t6shk.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-remixremixcarwas-ec545cef-ca9c-44e5-9c74-a15e802d5b6e",
-  "storageBucket": "velvety-ensign-t6shk.firebasestorage.app",
-  "messagingSenderId": "567432589182",
-  "measurementId": "",
-  "oAuthClientId": "567432589182-8ev005n3a3oude9fm4hbimvk8kklspdm.apps.googleusercontent.com",
-  "recaptchaSiteKey": ""
+  "projectId": "remixed-project-id",
+  "appId": "remixed-app-id",
+  "apiKey": "remixed-api-key",
+  "authDomain": "remixed-auth-domain",
+  "firestoreDatabaseId": "remixed-firestore-database-id",
+  "storageBucket": "remixed-storage-bucket",
+  "messagingSenderId": "remixed-messaging-sender-id",
+  "measurementId": "remixed-measurement-id"
 }
