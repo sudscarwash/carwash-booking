@@ -137,6 +137,8 @@ function convertQueryToPg(sql: string): string {
     expiresat: 'expires_at',
     logoUrl: 'logo_url',
     logourl: 'logo_url',
+    openingHours: 'opening_hours',
+    openinghours: 'opening_hours',
     isCustom: 'is_custom',
     iscustom: 'is_custom',
     bookingId: 'booking_id',
@@ -447,6 +449,14 @@ export async function seedFirestoreIfEmpty() {
     'ALTER TABLE users ADD COLUMN passwordHash TEXT',
     'ALTER TABLE users ADD COLUMN createdAt TEXT',
     'ALTER TABLE car_washes ADD COLUMN isActive INTEGER DEFAULT 1',
+    'ALTER TABLE car_washes ADD COLUMN description TEXT',
+    'ALTER TABLE car_washes ADD COLUMN locationLat REAL DEFAULT 4.8917',
+    'ALTER TABLE car_washes ADD COLUMN locationLng REAL DEFAULT 114.9401',
+    'ALTER TABLE car_washes ADD COLUMN address TEXT',
+    'ALTER TABLE car_washes ADD COLUMN openingHours TEXT',
+    'ALTER TABLE car_washes ADD COLUMN slotDuration INTEGER DEFAULT 30',
+    'ALTER TABLE car_washes ADD COLUMN capacityPerSlot INTEGER DEFAULT 2',
+    'ALTER TABLE car_washes ADD COLUMN ownerId TEXT',
     'ALTER TABLE users ADD COLUMN dateOfBirth TEXT',
     'ALTER TABLE users ADD COLUMN gender TEXT',
     'ALTER TABLE users ADD COLUMN profileImageUrl TEXT',
@@ -499,6 +509,16 @@ export async function seedFirestoreIfEmpty() {
       'ALTER TABLE bookings RENAME COLUMN timeslot TO time_slot',
       'ALTER TABLE bookings RENAME COLUMN createdat TO created_at',
       'ALTER TABLE bookings RENAME COLUMN updatedat TO updated_at',
+      'ALTER TABLE car_washes RENAME COLUMN locationlat TO location_lat',
+      'ALTER TABLE car_washes RENAME COLUMN locationlng TO location_lng',
+      'ALTER TABLE car_washes RENAME COLUMN slotduration TO slot_duration',
+      'ALTER TABLE car_washes RENAME COLUMN capacityperslot TO capacity_per_slot',
+      'ALTER TABLE car_washes RENAME COLUMN ownerid TO owner_id',
+      'ALTER TABLE car_washes RENAME COLUMN openinghours TO opening_hours',
+      'ALTER TABLE car_washes RENAME COLUMN servicesjson TO services_json',
+      'ALTER TABLE car_washes RENAME COLUMN custompaymentsjson TO custom_payments_json',
+      'ALTER TABLE car_washes RENAME COLUMN logourl TO logo_url',
+      'ALTER TABLE car_washes RENAME COLUMN isactive TO is_active',
     ];
     for (const renameSql of renameQueries) {
       try {
@@ -1034,12 +1054,12 @@ export async function updateCarWash(id: string, data: Partial<CarWash>): Promise
       }
       if (key === 'services') {
         sets.push(`servicesJson = ?`);
-        values.push(JSON.stringify(val));
+        values.push(typeof val === 'string' ? val : JSON.stringify(val));
         return;
       }
       if (key === 'openingHours') {
         sets.push(`${key} = ?`);
-        values.push(JSON.stringify(val));
+        values.push(typeof val === 'string' ? val : JSON.stringify(val));
       } else if (key === 'isActive' || key === 'bibdEnabled' || key === 'baiduriEnabled') {
         sets.push(`${key} = ?`);
         values.push(val ? 1 : 0);
@@ -1052,7 +1072,37 @@ export async function updateCarWash(id: string, data: Partial<CarWash>): Promise
     if (sets.length === 0) return;
 
     values.push(id);
-    await runQueryRun(`UPDATE car_washes SET ${sets.join(', ')} WHERE id = ?`, values);
+    const sql = `UPDATE car_washes SET ${sets.join(', ')} WHERE id = ?`;
+
+    try {
+      await runQueryRun(sql, values);
+    } catch (dbErr: any) {
+      console.warn('First attempt at updateCarWash failed, ensuring all columns exist and retrying...', dbErr?.message || dbErr);
+      if (usePostgres) {
+        const fixCols = [
+          'ALTER TABLE car_washes ADD COLUMN location_lat REAL DEFAULT 4.8917',
+          'ALTER TABLE car_washes ADD COLUMN location_lng REAL DEFAULT 114.9401',
+          'ALTER TABLE car_washes ADD COLUMN address TEXT',
+          'ALTER TABLE car_washes ADD COLUMN description TEXT',
+          'ALTER TABLE car_washes ADD COLUMN opening_hours TEXT',
+          'ALTER TABLE car_washes ADD COLUMN slot_duration INTEGER DEFAULT 30',
+          'ALTER TABLE car_washes ADD COLUMN capacity_per_slot INTEGER DEFAULT 2',
+          'ALTER TABLE car_washes ADD COLUMN owner_id TEXT',
+          'ALTER TABLE car_washes ADD COLUMN services_json TEXT',
+          'ALTER TABLE car_washes ADD COLUMN custom_payments_json TEXT',
+          'ALTER TABLE car_washes ADD COLUMN logo_url TEXT',
+          'ALTER TABLE car_washes ADD COLUMN phone TEXT',
+          'ALTER TABLE car_washes ADD COLUMN instagram TEXT',
+        ];
+        for (const colSql of fixCols) {
+          try { await pgPool!.query(colSql); } catch (e) {}
+        }
+        // Retry execution
+        await runQueryRun(sql, values);
+      } else {
+        throw dbErr;
+      }
+    }
   } catch (error) {
     console.error('Database updateCarWash Error:', error);
     throw error;

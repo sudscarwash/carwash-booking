@@ -193,23 +193,13 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
     }
   ];
 
-  // Helper to resolve location services catalog, ensuring main services, add-ons, and products are all available
+  // Helper to resolve location services catalog: returns custom items if configured, otherwise defaults
   const getCatalogForLocation = (loc: CarWash) => {
     const customItems = Array.isArray(loc.services) ? loc.services : [];
-    if (customItems.length === 0) {
-      return [...DEFAULT_MAIN_SERVICES, ...DEFAULT_ADDONS, ...DEFAULT_PRODUCTS];
+    if (customItems.length > 0) {
+      return customItems;
     }
-
-    const hasService = customItems.some((i: any) => !i.type || i.type === 'service');
-    const hasAddon = customItems.some((i: any) => i.type === 'addon');
-    const hasProduct = customItems.some((i: any) => i.type === 'product');
-
-    const result = [...customItems];
-    if (!hasService) result.push(...DEFAULT_MAIN_SERVICES);
-    if (!hasAddon) result.push(...DEFAULT_ADDONS);
-    if (!hasProduct) result.push(...DEFAULT_PRODUCTS);
-
-    return result;
+    return [...DEFAULT_MAIN_SERVICES, ...DEFAULT_ADDONS, ...DEFAULT_PRODUCTS];
   };
 
   const catalog = getCatalogForLocation(location);

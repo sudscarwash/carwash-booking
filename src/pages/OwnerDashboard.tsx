@@ -140,18 +140,10 @@ const DEFAULT_PRODUCTS: WashService[] = [
 const getCatalogForLocation = (loc?: CarWash | null): WashService[] => {
   if (!loc) return [...DEFAULT_MAIN_SERVICES, ...DEFAULT_ADDONS, ...DEFAULT_PRODUCTS];
   const customItems = Array.isArray(loc.services) ? loc.services : [];
-  if (customItems.length === 0) {
-    return [...DEFAULT_MAIN_SERVICES, ...DEFAULT_ADDONS, ...DEFAULT_PRODUCTS];
+  if (customItems.length > 0) {
+    return customItems;
   }
-  const hasService = customItems.some((i: any) => !i.type || i.type === 'service');
-  const hasAddon = customItems.some((i: any) => i.type === 'addon');
-  const hasProduct = customItems.some((i: any) => i.type === 'product');
-
-  const result = [...customItems];
-  if (!hasService) result.push(...DEFAULT_MAIN_SERVICES);
-  if (!hasAddon) result.push(...DEFAULT_ADDONS);
-  if (!hasProduct) result.push(...DEFAULT_PRODUCTS);
-  return result;
+  return [...DEFAULT_MAIN_SERVICES, ...DEFAULT_ADDONS, ...DEFAULT_PRODUCTS];
 };
 
 export const OwnerDashboard: React.FC = () => {
@@ -3362,23 +3354,10 @@ export const OwnerDashboard: React.FC = () => {
                       </div>
 
                       {selectedBusiness && (
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            if (!selectedBusiness) return;
-                            const success = await updateLocationConfig(selectedBusiness.id, {
-                              ...selectedBusiness,
-                              services: editServices,
-                            });
-                            if (success) {
-                              showNotification('Services & Add-ons updated and saved to database!', 'success');
-                            }
-                          }}
-                          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <Save className="w-3.5 h-3.5" />
-                          <span>Save Services to DB</span>
-                        </button>
+                        <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200/80 rounded-xl text-xs font-bold shadow-2xs">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Direct Auto-Save Active</span>
+                        </div>
                       )}
                     </div>
 
@@ -3432,7 +3411,17 @@ export const OwnerDashboard: React.FC = () => {
                                   <span className="font-extrabold text-xs text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg">BND ${svc.price.toFixed(2)}</span>
                                   <button
                                     type="button"
-                                    onClick={() => setEditServices(editServices.filter((s) => s.id !== svc.id))}
+                                    onClick={async () => {
+                                      const updatedList = editServices.filter((s) => s.id !== svc.id);
+                                      setEditServices(updatedList);
+                                      if (selectedBusiness) {
+                                        await updateLocationConfig(selectedBusiness.id, {
+                                          ...selectedBusiness,
+                                          services: updatedList,
+                                        });
+                                        showNotification(`"${svc.name}" removed and database updated!`, 'info');
+                                      }
+                                    }}
                                     className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
                                     title="Delete item"
                                   >
