@@ -138,12 +138,8 @@ const DEFAULT_PRODUCTS: WashService[] = [
 ];
 
 const getCatalogForLocation = (loc?: CarWash | null): WashService[] => {
-  if (!loc) return [...DEFAULT_MAIN_SERVICES, ...DEFAULT_ADDONS, ...DEFAULT_PRODUCTS];
-  const customItems = Array.isArray(loc.services) ? loc.services : [];
-  if (customItems.length > 0) {
-    return customItems;
-  }
-  return [...DEFAULT_MAIN_SERVICES, ...DEFAULT_ADDONS, ...DEFAULT_PRODUCTS];
+  if (!loc) return [];
+  return Array.isArray(loc.services) ? loc.services : [];
 };
 
 export const OwnerDashboard: React.FC = () => {

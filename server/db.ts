@@ -1023,9 +1023,13 @@ export async function getCarWashById(id: string): Promise<CarWash | null> {
 
 export async function createCarWash(carWash: CarWash): Promise<void> {
   try {
+    const servicesStr = carWash.services ? JSON.stringify(carWash.services) : (carWash.servicesJson || '[]');
+    const customPaymentsStr = carWash.customPaymentsJson || null;
     await runQueryRun(`
-      INSERT INTO car_washes (id, name, description, locationLat, locationLng, address, openingHours, slotDuration, capacityPerSlot, ownerId, isActive, createdAt, phone, instagram, paymentPolicy)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO car_washes (
+        id, name, description, locationLat, locationLng, address, openingHours, slotDuration, capacityPerSlot, ownerId, isActive, createdAt, phone, instagram, paymentPolicy, logoUrl, bibdAccountName, bibdAccountNo, bibdEnabled, baiduriAccountName, baiduriAccountNo, baiduriEnabled, bibdQrImageUrl, baiduriQrImageUrl, customPaymentsJson, servicesJson
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       carWash.id,
       carWash.name,
@@ -1041,7 +1045,18 @@ export async function createCarWash(carWash: CarWash): Promise<void> {
       carWash.createdAt,
       carWash.phone || null,
       carWash.instagram || null,
-      carWash.paymentPolicy || 'PRE_PAYMENT'
+      carWash.paymentPolicy || 'PRE_PAYMENT',
+      carWash.logoUrl || null,
+      carWash.bibdAccountName || null,
+      carWash.bibdAccountNo || null,
+      carWash.bibdEnabled ? 1 : 0,
+      carWash.baiduriAccountName || null,
+      carWash.baiduriAccountNo || null,
+      carWash.baiduriEnabled ? 1 : 0,
+      carWash.bibdQrImageUrl || null,
+      carWash.baiduriQrImageUrl || null,
+      customPaymentsStr,
+      servicesStr,
     ]);
   } catch (error) {
     console.error('Database createCarWash Error:', error);
