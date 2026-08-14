@@ -586,9 +586,9 @@ export async function seedFirestoreIfEmpty() {
       ]);
     }
 
-    // Normalize all car wash payment policies to PAY_ON_SITE & assign sample logo to locations if missing
+    // Normalize all car wash payment policies to PAY_ON_SITE & clean up legacy dev asset paths
     await runQueryRun("UPDATE car_washes SET paymentPolicy = 'PAY_ON_SITE'");
-    await runQueryRun("UPDATE car_washes SET logoUrl = '/src/assets/images/sample_carwash_logo_1785395152772.jpg' WHERE logoUrl IS NULL OR logoUrl = ''");
+    await runQueryRun("UPDATE car_washes SET logoUrl = NULL WHERE logoUrl LIKE '/src/assets/%'");
   } catch (err) {
     console.error('Error ensuring Brunei location is seeded:', err);
   }

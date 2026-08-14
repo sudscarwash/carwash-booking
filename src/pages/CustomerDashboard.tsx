@@ -746,7 +746,14 @@ export const CustomerDashboard: React.FC = () => {
                               : 'bg-sky-50 text-sky-600 border-sky-100'
                           }`}>
                             {loc.logoUrl ? (
-                              <img src={loc.logoUrl} alt={loc.name} className="w-full h-full object-cover" />
+                              <img 
+                                src={loc.logoUrl} 
+                                alt={loc.name} 
+                                className="w-full h-full object-cover" 
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                }}
+                              />
                             ) : (
                               <MapPin className="h-5 w-5" />
                             )}
@@ -1099,7 +1106,16 @@ export const CustomerDashboard: React.FC = () => {
                                 {(() => {
                                   const matchedLoc = locations.find(l => l.id === bk.carWashId || l.name === (bk as any).carWashName);
                                   if (matchedLoc?.logoUrl) {
-                                    return <img src={matchedLoc.logoUrl} alt={matchedLoc.name} className="w-8 h-8 rounded-xl object-cover border border-slate-200 shrink-0 shadow-2xs" />;
+                                    return (
+                                      <img 
+                                        src={matchedLoc.logoUrl} 
+                                        alt={matchedLoc.name} 
+                                        className="w-8 h-8 rounded-xl object-cover border border-slate-200 shrink-0 shadow-2xs" 
+                                        onError={(e) => {
+                                          e.currentTarget.style.display = 'none';
+                                        }}
+                                      />
+                                    );
                                   }
                                   return null;
                                 })()}

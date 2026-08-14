@@ -1197,59 +1197,50 @@ export const OwnerDashboard: React.FC = () => {
     setIsUploadingLogo(true);
     try {
       const compressedBlob = await compressLogoToMax100KB(file);
-      const compressedFile = new File([compressedBlob], `logo_${Date.now()}.jpg`, {
-        type: compressedBlob.type || 'image/jpeg',
-      });
-
-      const formData = new FormData();
-      formData.append('image', compressedFile);
-
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('cw_token')}`,
-        },
-        body: formData,
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        setEditLogoUrl(data.url);
-        showNotification('Business logo uploaded & compressed under 100KB successfully!', 'success');
-      } else {
-        alert('Failed to upload logo image.');
-      }
+      
+      // Convert compressed blob into a persistent Data URL (<100KB) stored directly in database
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const dataUrl = e.target?.result as string;
+        if (dataUrl) {
+          setEditLogoUrl(dataUrl);
+          showNotification('Business logo uploaded & compressed under 100KB! Click "Save Changes" to apply.', 'success');
+        }
+        setIsUploadingLogo(false);
+      };
+      reader.onerror = () => {
+        alert('Error processing business logo.');
+        setIsUploadingLogo(false);
+      };
+      reader.readAsDataURL(compressedBlob);
     } catch (err) {
       console.error('Error uploading logo:', err);
       alert('Error uploading business logo.');
-    } finally {
       setIsUploadingLogo(false);
     }
   };
 
   const handleQrUpload = async (file: File, type: 'bibd' | 'baiduri' | 'custom') => {
-    const formData = new FormData();
-    formData.append('image', file);
     try {
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('cw_token')}`,
-        },
-        body: formData,
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (type === 'bibd') {
-          setEditBibdQrImageUrl(data.url);
-        } else if (type === 'baiduri') {
-          setEditBaiduriQrImageUrl(data.url);
-        } else {
-          setNewQrImageUrl(data.url);
+      const compressedBlob = await compressLogoToMax100KB(file);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const dataUrl = e.target?.result as string;
+        if (dataUrl) {
+          if (type === 'bibd') {
+            setEditBibdQrImageUrl(dataUrl);
+          } else if (type === 'baiduri') {
+            setEditBaiduriQrImageUrl(dataUrl);
+          } else {
+            setNewQrImageUrl(dataUrl);
+          }
+          showNotification('QR code processed & ready! Click "Save Changes" to apply.', 'success');
         }
-      } else {
-        alert('Failed to upload QR code image. Please make sure it is a JPG/PNG under 3MB.');
-      }
+      };
+      reader.onerror = () => {
+        alert('Error processing QR code image.');
+      };
+      reader.readAsDataURL(compressedBlob);
     } catch (error) {
       console.error('Error uploading QR code:', error);
       alert('An error occurred during QR upload.');
@@ -2637,6 +2628,9 @@ export const OwnerDashboard: React.FC = () => {
                         src={selectedBusiness.logoUrl}
                         alt={selectedBusiness.name}
                         className="w-14 h-14 object-cover rounded-xl border border-slate-200 shadow-xs shrink-0"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                        }}
                       />
                       <div>
                         <span className="text-xs font-bold text-slate-800 block">Official Business Logo</span>

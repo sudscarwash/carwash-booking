@@ -406,7 +406,14 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                 <span className="hidden sm:inline">Back</span>
               </button>
             )}
-            <img src={location.logoUrl || autoshineLogo} alt={location.name} className="w-9 h-9 rounded-xl object-cover ring-2 ring-white/20 shrink-0" />
+            <img 
+              src={location.logoUrl || autoshineLogo} 
+              alt={location.name} 
+              className="w-9 h-9 rounded-xl object-cover ring-2 ring-white/20 shrink-0" 
+              onError={(e) => {
+                e.currentTarget.src = autoshineLogo;
+              }}
+            />
             <div>
               <h3 className="font-extrabold text-sm sm:text-base text-white line-clamp-1">{location.name}</h3>
               <p className="text-[11px] text-sky-400 font-medium flex items-center gap-1">
