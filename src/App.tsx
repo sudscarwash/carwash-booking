@@ -126,7 +126,9 @@ const MainAppContent: React.FC = () => {
   // Auth form state
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [registerConfirmPassword, setRegisterConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [showRegisterConfirmPassword, setShowRegisterConfirmPassword] = useState(false);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
@@ -154,6 +156,14 @@ const MainAppContent: React.FC = () => {
     }
 
     if (isRegisterMode) {
+      if (password.length < 6) {
+        showNotification("Password must be at least 6 characters.", "error");
+        return;
+      }
+      if (password !== registerConfirmPassword) {
+        showNotification("Passwords do not match. Please confirm your password.", "error");
+        return;
+      }
       if (!phone.trim()) {
         showNotification("Please enter a valid phone number.", "error");
         return;
@@ -181,6 +191,7 @@ const MainAppContent: React.FC = () => {
           setIsRegisterMode(false);
           setEmail('');
           setPassword('');
+          setRegisterConfirmPassword('');
           setName('');
         }
       }
@@ -634,7 +645,9 @@ const MainAppContent: React.FC = () => {
 
                     <div>
                       <div className="flex justify-between items-center mb-1">
-                        <label className="block text-xs font-bold text-slate-700 uppercase">Password</label>
+                        <label className="block text-xs font-bold text-slate-700 uppercase">
+                          Password {isRegisterMode && <span className="text-red-500">*</span>}
+                        </label>
                         {!isRegisterMode && (
                           <button
                             type="button"
@@ -672,6 +685,35 @@ const MainAppContent: React.FC = () => {
                         </button>
                       </div>
                     </div>
+
+                    {isRegisterMode && (
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                          Confirm Password <span className="text-red-500">*</span>
+                        </label>
+                        <div className="relative">
+                          <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+                          <input
+                            type={showRegisterConfirmPassword ? 'text' : 'password'}
+                            placeholder="••••••••"
+                            value={registerConfirmPassword}
+                            onChange={(e) => setRegisterConfirmPassword(e.target.value)}
+                            className="w-full pl-10 pr-10 py-2.5 border border-slate-200 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 rounded-xl outline-none text-slate-800 text-sm transition-all"
+                            required
+                            id="auth-confirm-password-input"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowRegisterConfirmPassword(!showRegisterConfirmPassword)}
+                            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none cursor-pointer p-1"
+                            id="toggle-auth-confirm-password-btn"
+                            aria-label={showRegisterConfirmPassword ? "Hide password" : "Show password"}
+                          >
+                            {showRegisterConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
                     {isRegisterMode && (
                       <div className="space-y-4 pt-3 border-t border-slate-100 mt-3 animate-fade-in">

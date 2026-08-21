@@ -272,13 +272,6 @@ async function startServer() {
       // Dispatch Email Verification OTP via Resend
       const emailSent = await sendEmailVerificationOTP(newUser.email, newUser.name, verificationOtp);
 
-      // Also send welcome email background task
-      sendRegistrationWelcomeEmail({
-        email: newUser.email,
-        name: newUser.name,
-        role: Role.CUSTOMER
-      }).catch((e) => console.error('[Register Welcome Email Error]:', e));
-
       await addAuditLog(
         newUser.id,
         newUser.email,
@@ -335,7 +328,14 @@ async function startServer() {
       await updateUser(user.id, { isEmailVerified: true });
       user.isEmailVerified = true;
 
-      await addAuditLog(user.id, user.email, 'USER_EMAIL_VERIFIED', `Email address verified successfully with OTP for ${user.email}`);
+      // Dispatch official Welcome Email now that the account is validated!
+      sendRegistrationWelcomeEmail({
+        email: user.email,
+        name: user.name,
+        role: user.role
+      }).catch((e) => console.error('[Verified Welcome Email Error]:', e));
+
+      await addAuditLog(user.id, user.email, 'USER_EMAIL_VERIFIED', `Email address verified successfully with OTP for ${user.email}. Official welcome email dispatched.`);
 
       const { passwordHash: _, ...safeUser } = user;
       const token = generateToken(safeUser);

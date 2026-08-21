@@ -41,6 +41,30 @@ function recordEmailLog(entry: Omit<EmailLogEntry, 'id' | 'timestamp'>) {
   }
 }
 
+export function formatResendFromAddress(rawFrom?: string): string {
+  let from = (rawFrom || process.env.EMAIL_FROM_ADDRESS || 'onboarding@resend.dev').trim();
+
+  // Normalize common typo
+  if (from.endsWith('@resend.com')) {
+    from = from.replace('@resend.com', '@resend.dev');
+  }
+
+  // If already formatted like 'Name <email@domain.com>', extract and format cleanly
+  const bracketMatch = from.match(/^(.*?)\s*<([^>]+)>$/);
+  if (bracketMatch) {
+    const displayName = bracketMatch[1].replace(/["']/g, '').trim() || 'AutoShine BN';
+    const emailAddress = bracketMatch[2].trim();
+    return `${displayName} <${emailAddress}>`;
+  }
+
+  // If bare email address provided, attach clean display name
+  if (from.includes('@')) {
+    return `AutoShine BN <${from}>`;
+  }
+
+  return 'AutoShine BN <onboarding@resend.dev>';
+}
+
 /**
  * Sends a transactional email using the Resend API.
  * If the RESEND_API_KEY is not configured or is a placeholder,
@@ -48,23 +72,17 @@ function recordEmailLog(entry: Omit<EmailLogEntry, 'id' | 'timestamp'>) {
  */
 export async function sendEmail(to: string, subject: string, html: string): Promise<boolean> {
   const apiKey = process.env.RESEND_API_KEY;
-  let rawFrom = process.env.EMAIL_FROM_ADDRESS || 'onboarding@resend.dev';
-  
-  // Normalize resend.com -> resend.dev for Resend sandbox domain
-  if (rawFrom.endsWith('@resend.com')) {
-    rawFrom = rawFrom.replace('@resend.com', '@resend.dev');
-  }
-  const fromAddress = rawFrom;
+  const formattedFrom = formatResendFromAddress(process.env.EMAIL_FROM_ADDRESS);
 
   console.log(`[EmailService] Preparing email dispatch to: ${to}`);
-  console.log(`[EmailService] Sender: Autoshine BN <${fromAddress}>`);
+  console.log(`[EmailService] Sender: ${formattedFrom}`);
   console.log(`[EmailService] Subject: "${subject}"`);
 
   if (!apiKey || apiKey.startsWith('your_') || apiKey.startsWith('re_12345')) {
     console.log('========================================================');
     console.log('📬 [EMAIL SERVICE SIMULATOR - RESEND OFFLINE FALLBACK]');
     console.log(`To: ${to}`);
-    console.log(`From: Autoshine BN <${fromAddress}>`);
+    console.log(`From: ${formattedFrom}`);
     console.log(`Subject: ${subject}`);
     console.log('--------------------------------------------------------');
     console.log('HTML Content Preview:');
@@ -73,7 +91,7 @@ export async function sendEmail(to: string, subject: string, html: string): Prom
 
     recordEmailLog({
       to,
-      from: `Autoshine BN <${fromAddress}>`,
+      from: formattedFrom,
       subject,
       html,
       status: 'SIMULATED',
@@ -91,7 +109,7 @@ export async function sendEmail(to: string, subject: string, html: string): Prom
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: `Autoshine BN <${fromAddress}>`,
+        from: formattedFrom,
         to: [to],
         subject,
         html,
@@ -107,7 +125,7 @@ export async function sendEmail(to: string, subject: string, html: string): Prom
 
       recordEmailLog({
         to,
-        from: `Autoshine BN <${fromAddress}>`,
+        from: formattedFrom,
         subject,
         html,
         status: 'FAILED',
@@ -123,7 +141,7 @@ export async function sendEmail(to: string, subject: string, html: string): Prom
 
     recordEmailLog({
       to,
-      from: `Autoshine BN <${fromAddress}>`,
+      from: formattedFrom,
       subject,
       html,
       status: 'DELIVERED',
@@ -136,7 +154,7 @@ export async function sendEmail(to: string, subject: string, html: string): Prom
 
     recordEmailLog({
       to,
-      from: `Autoshine BN <${fromAddress}>`,
+      from: formattedFrom,
       subject,
       html,
       status: 'FAILED',
@@ -303,7 +321,7 @@ export async function sendBookingConfirmationEmail(options: {
 }
 
 /**
- * Send Welcome & Registration Confirmation Email for new accounts (Customer, Owner, Employee)
+ * Send Welcome & Registration Confirmation Email for new accounts (Customer, Owner, Employee, Special VIP, Admin)
  */
 export async function sendRegistrationWelcomeEmail(options: {
   email: string;
@@ -314,51 +332,74 @@ export async function sendRegistrationWelcomeEmail(options: {
 }): Promise<boolean> {
   const isEmployee = options.role === 'EMPLOYEE';
   const isOwner = options.role === 'OWNER';
+  const isSpecial = options.role === 'SPECIAL';
+  const isAdmin = options.role === 'ADMIN';
 
-  const roleTitle = isEmployee
-    ? 'Staff / Employee Account'
-    : isOwner
-    ? 'Car Wash Owner Account'
-    : 'Customer Account';
+  let roleTitle = 'Customer Account';
+  let welcomeHeadline = 'Welcome to Autoshine BN!';
+  let welcomeBody = 'Your customer account has been successfully verified. You are all set to book premium car wash appointments across Brunei!';
 
-  const subject = `Welcome to Autoshine BN - ${roleTitle} Created!`;
+  if (isEmployee) {
+    roleTitle = 'Staff / Employee Account';
+    welcomeHeadline = 'Welcome to the Team!';
+    welcomeBody = `You have been added as an authorized staff member for ${options.businessName || 'your car wash location'}.`;
+  } else if (isOwner) {
+    roleTitle = 'Car Wash Owner Account';
+    welcomeHeadline = 'Welcome, Business Partner!';
+    welcomeBody = `Your owner portal for ${options.businessName || 'your car wash business'} is now active. You can manage slots, review appointments, track revenue, and add team members.`;
+  } else if (isSpecial) {
+    roleTitle = 'VIP / Special Partner Account';
+    welcomeHeadline = 'Welcome, VIP Partner!';
+    welcomeBody = 'Your VIP Partner account is now active with prioritized booking and onboarding capabilities.';
+  } else if (isAdmin) {
+    roleTitle = 'Platform Administrator Account';
+    welcomeHeadline = 'Admin Access Granted';
+    welcomeBody = 'Your system administrator account has been provisioned on Autoshine BN.';
+  }
+
+  const subject = `Welcome to Autoshine BN - ${roleTitle} Verified & Active!`;
 
   const passwordNote = options.initialPassword
     ? `
       <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; padding: 16px; border-radius: 12px; margin: 20px 0;">
         <p style="margin: 0; font-size: 13px; color: #166534; font-weight: 600;">Your Initial Login Password:</p>
         <p style="margin: 6px 0 0 0; font-family: monospace; font-size: 18px; font-weight: bold; color: #15803d;">${options.initialPassword}</p>
-        <p style="margin: 4px 0 0 0; font-size: 11px; color: #166534;">For security, please change your password after your initial login.</p>
+        <p style="margin: 4px 0 0 0; font-size: 11px; color: #166534;">For security, please change your password after logging in.</p>
       </div>
     `
     : '';
 
   const businessNote = options.businessName
-    ? `<p style="font-size: 14px; color: #334155; margin: 4px 0;">Assigned Location: <strong>${options.businessName}</strong></p>`
+    ? `<p style="font-size: 14px; color: #334155; margin: 4px 0;">Location: <strong>${options.businessName}</strong></p>`
     : '';
 
   const html = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff; color: #1e293b;">
       <div style="text-align: center; margin-bottom: 24px;">
         <h1 style="color: #0284c7; margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.025em;">Autoshine BN</h1>
-        <p style="color: #64748b; margin: 4px 0 0 0; font-size: 14px;">Welcome to the Platform</p>
+        <p style="color: #64748b; margin: 4px 0 0 0; font-size: 14px;">Brunei's Premier Car Wash Platform</p>
       </div>
       <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 24px 0;" />
 
-      <h2 style="color: #0f172a; font-size: 20px; font-weight: 700; margin-top: 0; margin-bottom: 12px;">Account Registration Confirmed</h2>
+      <h2 style="color: #0f172a; font-size: 20px; font-weight: 700; margin-top: 0; margin-bottom: 12px;">${welcomeHeadline}</h2>
       <p style="font-size: 15px; line-height: 1.6; color: #334155;">Hello <strong>${options.name}</strong>,</p>
-      <p style="font-size: 15px; line-height: 1.6; color: #334155;">Your account on Autoshine BN has been successfully registered and verified with the email address: <strong>${options.email}</strong>.</p>
+      <p style="font-size: 15px; line-height: 1.6; color: #334155;">${welcomeBody}</p>
 
       <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 20px; border-radius: 12px; margin: 20px 0;">
-        <p style="margin: 0; font-size: 13px; color: #64748b; font-weight: 600;">Account Details:</p>
-        <p style="margin: 6px 0 2px 0; font-size: 14px; color: #0f172a;">Account Type: <strong>${roleTitle}</strong></p>
-        <p style="margin: 2px 0 0 0; font-size: 14px; color: #0f172a;">Registered Email: <strong>${options.email}</strong></p>
+        <p style="margin: 0; font-size: 13px; color: #64748b; font-weight: 600;">Account Profile:</p>
+        <p style="margin: 6px 0 2px 0; font-size: 14px; color: #0f172a;">Role: <strong>${roleTitle}</strong></p>
+        <p style="margin: 2px 0 0 0; font-size: 14px; color: #0f172a;">Email: <strong>${options.email}</strong></p>
+        <p style="margin: 2px 0 0 0; font-size: 14px; color: #10b981;">Status: <strong>✅ Active & Verified</strong></p>
         ${businessNote}
       </div>
 
       ${passwordNote}
 
-      <p style="font-size: 14px; line-height: 1.6; color: #475569;">You can now log in to access your customized dashboard, manage bookings, and explore features.</p>
+      <div style="text-align: center; margin: 28px 0;">
+        <a href="https://autoshinebn.com" style="display: inline-block; background-color: #0284c7; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-weight: 600; font-size: 15px;">Go to Autoshine BN Dashboard &rarr;</a>
+      </div>
+
+      <p style="font-size: 14px; line-height: 1.6; color: #475569;">If you ever have questions or need assistance, feel free to contact us or your business administrator.</p>
 
       <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 30px 0;" />
       <div style="text-align: center;">
