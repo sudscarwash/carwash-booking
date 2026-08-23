@@ -54,7 +54,17 @@ interface AppContextType {
   fetchBookings: () => Promise<void>;
   fetchEmployees: () => Promise<void>;
   fetchLogs: () => Promise<void>;
-  createBooking: (carWashId: string, date: string, timeSlot: string, notes?: string, serviceId?: string, serviceName?: string, price?: number) => Promise<{ success: boolean; error?: string }>;
+  createBooking: (
+    carWashId: string,
+    date: string,
+    timeSlot: string,
+    notes?: string,
+    serviceId?: string,
+    serviceName?: string,
+    price?: number,
+    customerPhone?: string,
+    vehicleInfo?: string
+  ) => Promise<{ success: boolean; error?: string }>;
   createManualBooking: (data: {
     carWashId: string;
     date: string;
@@ -487,11 +497,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const createBooking = async (carWashId: string, date: string, timeSlot: string, notes?: string, serviceId?: string, serviceName?: string, price?: number): Promise<{ success: boolean; error?: string }> => {
+  const createBooking = async (
+    carWashId: string,
+    date: string,
+    timeSlot: string,
+    notes?: string,
+    serviceId?: string,
+    serviceName?: string,
+    price?: number,
+    customerPhone?: string,
+    vehicleInfo?: string
+  ): Promise<{ success: boolean; error?: string }> => {
     try {
       await apiFetch('/api/bookings', {
         method: 'POST',
-        body: JSON.stringify({ carWashId, date, timeSlot, notes, serviceId, serviceName, price }),
+        body: JSON.stringify({
+          carWashId,
+          date,
+          timeSlot,
+          notes,
+          serviceId,
+          serviceName,
+          price,
+          customerPhone: customerPhone || user?.phone,
+          vehicleInfo,
+        }),
       });
       showNotification('Wash slot booked successfully!', 'success');
       fetchBookings();

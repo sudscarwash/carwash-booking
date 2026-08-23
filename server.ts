@@ -59,7 +59,9 @@ import {
   createNotification,
   getNotificationsByUserId,
   markNotificationAsRead,
-  markAllNotificationsAsRead
+  markAllNotificationsAsRead,
+  getCustomersForOwner,
+  syncUserBookings
 } from './server/db.js';
 import { 
   isSupabaseAuthEnabled, 
@@ -754,6 +756,9 @@ async function startServer() {
 
       await updateUser(req.user.id, updateData);
       
+      // Keep user's past and future bookings in sync with their updated profile phone/name
+      await syncUserBookings(req.user.id, name, phone);
+      
       const updatedUser = await getUserById(req.user.id);
       if (!updatedUser) {
         res.status(404).json({ error: 'User not found' });
@@ -1161,7 +1166,10 @@ async function startServer() {
     });
   }, async (req: AuthenticatedRequest, res) => {
     try {
-      const { carWashId, date, timeSlot, notes, paymentBank, txnReference, serviceId, serviceName, price } = req.body;
+      const { 
+        carWashId, date, timeSlot, notes, paymentBank, txnReference, 
+        serviceId, serviceName, price, customerPhone, vehicleInfo 
+      } = req.body;
 
       if (!carWashId || !date || !timeSlot) {
         res.status(400).json({ error: 'Fields (carWashId, date, timeSlot) are required.' });
@@ -1234,12 +1242,25 @@ async function startServer() {
         dbReceiptFilename = req.file.filename;
       }
 
+      // Fetch customer database record to get their stored phone number & vehicle
+      const dbUser = await getUserById(req.user!.id);
+      const rawPhone = (customerPhone || dbUser?.phone || '').trim();
+      const finalCustomerPhone = rawPhone && rawPhone.toUpperCase() !== 'NA' && rawPhone.toUpperCase() !== 'N/A' ? rawPhone : undefined;
+      const finalVehicleInfo = (vehicleInfo || '').trim() || undefined;
+
+      // If user provided a phone number and their profile didn't have one, update their profile
+      if (finalCustomerPhone && (!dbUser?.phone || dbUser.phone.toUpperCase() === 'NA')) {
+        await updateUser(req.user!.id, { phone: finalCustomerPhone }).catch(() => {});
+      }
+
       const newBooking: Booking = {
         id: `bk_${Math.random().toString(36).substr(2, 9)}`,
         carWashId,
         customerId: req.user!.id,
         customerName: req.user!.name,
         customerEmail: req.user!.email,
+        customerPhone: finalCustomerPhone,
+        vehicleInfo: finalVehicleInfo,
         date,
         timeSlot,
         status: BookingStatus.PENDING,
@@ -1895,6 +1916,22 @@ async function startServer() {
         );
 
         res.json({ success: true, message: 'Employee deleted successfully.' });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Internal server error' });
+      }
+    }
+  );
+
+  // Owner specific Customer Directory with full booking history, vehicle list, and contact details
+  app.get(
+    '/api/owner/customers',
+    authenticateToken,
+    requireRoles([Role.OWNER, Role.ADMIN, Role.SPECIAL]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const isAdmin = req.user!.role === Role.ADMIN || req.user!.role === Role.SPECIAL;
+        const customers = await getCustomersForOwner(req.user!.id, isAdmin);
+        res.json(customers);
       } catch (error: any) {
         res.status(500).json({ error: error.message || 'Internal server error' });
       }

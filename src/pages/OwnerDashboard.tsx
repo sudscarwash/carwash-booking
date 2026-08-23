@@ -177,6 +177,36 @@ export const OwnerDashboard: React.FC = () => {
   const [customerAlphabetFilter, setCustomerAlphabetFilter] = useState<string>('ALL');
   const [customerSearchQuery, setCustomerSearchQuery] = useState<string>('');
   const [isSeedingLedger, setIsSeedingLedger] = useState(false);
+  const [serverCustomers, setServerCustomers] = useState<any[]>([]);
+  const [isLoadingCustomers, setIsLoadingCustomers] = useState(false);
+
+  const fetchServerCustomers = async () => {
+    if (!token) return;
+    setIsLoadingCustomers(true);
+    try {
+      const res = await fetch('/api/owner/customers', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setServerCustomers(data);
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to load server customers:', err);
+    } finally {
+      setIsLoadingCustomers(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'customers' || activeTab === 'overview') {
+      fetchServerCustomers();
+    }
+  }, [activeTab, selectedBusiness, token]);
 
   // Edit Booking Modal state
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
@@ -1378,8 +1408,10 @@ export const OwnerDashboard: React.FC = () => {
   // Customer Directory Map Calculation
   const customerMap = new Map<string, {
     id: string;
+    customerId?: string;
     name: string;
     phone: string;
+    email?: string;
     vehicles: string[];
     totalBookings: number;
     completedBookings: number;
@@ -1388,12 +1420,58 @@ export const OwnerDashboard: React.FC = () => {
     firstLetter: string;
   }>();
 
+  // Helper to sanitize phone strings
+  const sanitizePhone = (phone?: string): string => {
+    if (!phone) return '';
+    const clean = phone.trim();
+    if (clean.toUpperCase() === 'NA' || clean.toUpperCase() === 'N/A' || clean === '-') return '';
+    return clean;
+  };
+
+  // Pre-seed with server customers if available
+  serverCustomers.forEach((sc) => {
+    const rawName = (sc.name || 'Customer').trim();
+    const cleanPhone = sanitizePhone(sc.phone);
+    const key = (sc.customerId || sc.id || sc.email || cleanPhone || rawName).toLowerCase();
+    
+    let letter = rawName.charAt(0).toUpperCase();
+    if (!/^[A-Z]$/i.test(letter)) {
+      letter = '#';
+    }
+
+    customerMap.set(key, {
+      id: sc.id || sc.customerId || key,
+      customerId: sc.customerId || sc.id,
+      name: rawName,
+      phone: cleanPhone,
+      email: sc.email || undefined,
+      vehicles: Array.isArray(sc.vehicles) ? sc.vehicles : [],
+      totalBookings: Number(sc.totalBookings) || 0,
+      completedBookings: Number(sc.completedBookings) || 0,
+      totalSpent: Number(sc.totalSpent) || 0,
+      lastBookingDate: sc.lastBookingDate || '',
+      firstLetter: letter,
+    });
+  });
+
+  // Supplement or build from bookings
   filteredBookings.forEach((b) => {
     const rawName = (b.customerName || 'Anonymous Customer').trim();
-    const rawPhone = (b.customerPhone || '').trim();
-    const key = (rawPhone || rawName).toLowerCase();
+    const rawPhone = sanitizePhone(b.customerPhone);
+    const rawEmail = (b.customerEmail || '').trim().toLowerCase();
 
-    const existing = customerMap.get(key);
+    // Look for existing by customerId, email, phone, or name
+    let existing: any = null;
+    if (b.customerId && customerMap.has(b.customerId.toLowerCase())) {
+      existing = customerMap.get(b.customerId.toLowerCase());
+    } else if (rawEmail && customerMap.has(rawEmail)) {
+      existing = customerMap.get(rawEmail);
+    } else if (rawPhone && customerMap.has(rawPhone.toLowerCase())) {
+      existing = customerMap.get(rawPhone.toLowerCase());
+    } else if (customerMap.has(rawName.toLowerCase())) {
+      existing = customerMap.get(rawName.toLowerCase());
+    }
+
     const bPrice = Number(b.price) || 0;
     const isCompleted = b.status === BookingStatus.COMPLETED;
     const vehicleStr = b.vehicleInfo ? b.vehicleInfo.trim() : '';
@@ -1403,10 +1481,13 @@ export const OwnerDashboard: React.FC = () => {
       if (!/^[A-Z]$/i.test(letter)) {
         letter = '#';
       }
+      const key = (b.customerId || rawEmail || rawPhone || rawName).toLowerCase();
       customerMap.set(key, {
-        id: key,
+        id: b.customerId || key,
+        customerId: b.customerId,
         name: rawName,
         phone: rawPhone,
+        email: rawEmail || undefined,
         vehicles: vehicleStr ? [vehicleStr] : [],
         totalBookings: 1,
         completedBookings: isCompleted ? 1 : 0,
@@ -1415,15 +1496,24 @@ export const OwnerDashboard: React.FC = () => {
         firstLetter: letter,
       });
     } else {
-      existing.totalBookings += 1;
-      if (isCompleted) {
-        existing.completedBookings += 1;
-        existing.totalSpent += bPrice;
+      // If server customers wasn't loaded, increment counts
+      if (serverCustomers.length === 0) {
+        existing.totalBookings += 1;
+        if (isCompleted) {
+          existing.completedBookings += 1;
+          existing.totalSpent += bPrice;
+        }
+      }
+      if (rawPhone && (!existing.phone || existing.phone.toUpperCase() === 'NA')) {
+        existing.phone = rawPhone;
+      }
+      if (rawEmail && !existing.email) {
+        existing.email = rawEmail;
       }
       if (vehicleStr && !existing.vehicles.includes(vehicleStr)) {
         existing.vehicles.push(vehicleStr);
       }
-      if (b.date && b.date > existing.lastBookingDate) {
+      if (b.date && (!existing.lastBookingDate || b.date > existing.lastBookingDate)) {
         existing.lastBookingDate = b.date;
       }
     }
@@ -2505,6 +2595,7 @@ export const OwnerDashboard: React.FC = () => {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
                   {filteredCustomersList.map((cust) => {
+                    const hasValidPhone = cust.phone && cust.phone.trim() !== '' && cust.phone.trim().toUpperCase() !== 'NA' && cust.phone.trim().toUpperCase() !== 'N/A';
                     return (
                       <div
                         key={cust.id}
@@ -2516,13 +2607,29 @@ export const OwnerDashboard: React.FC = () => {
                               <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-700 font-black text-sm flex items-center justify-center shrink-0">
                                 {cust.name.charAt(0).toUpperCase() || 'C'}
                               </div>
-                              <div>
-                                <h3 className="font-extrabold text-slate-900 text-sm leading-snug">
+                              <div className="min-w-0">
+                                <h3 className="font-extrabold text-slate-900 text-sm leading-snug truncate">
                                   {cust.name}
                                 </h3>
-                                <p className="text-[11px] text-slate-500 font-mono">
-                                  {cust.phone || 'No Phone Recorded'}
-                                </p>
+                                {hasValidPhone ? (
+                                  <a
+                                    href={`tel:${cust.phone}`}
+                                    className="text-[11px] text-slate-600 hover:text-indigo-600 font-mono font-bold flex items-center gap-1 mt-0.5"
+                                    title="Call Customer"
+                                  >
+                                    <Phone className="w-3 h-3 text-emerald-600 shrink-0" />
+                                    <span>{cust.phone}</span>
+                                  </a>
+                                ) : (
+                                  <span className="text-[10px] text-slate-400 font-medium italic mt-0.5 block">
+                                    No Phone Recorded
+                                  </span>
+                                )}
+                                {cust.email && (
+                                  <p className="text-[10px] text-slate-400 truncate mt-0.5" title={cust.email}>
+                                    {cust.email}
+                                  </p>
+                                )}
                               </div>
                             </div>
 
@@ -2537,33 +2644,44 @@ export const OwnerDashboard: React.FC = () => {
                               <Car className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                               <span className="font-bold text-slate-800">Vehicles:</span>
                               <span className="truncate text-slate-600 font-mono">
-                                {cust.vehicles.length > 0 ? cust.vehicles.join(', ') : 'N/A'}
+                                {cust.vehicles.length > 0 ? cust.vehicles.join(', ') : 'None registered'}
                               </span>
                             </div>
                             <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-200/60">
                               <span>Total Washes: <strong className="text-slate-700 font-bold">{cust.totalBookings}</strong></span>
-                              <span>Last Visit: <strong className="text-slate-700 font-bold">{cust.lastBookingDate || 'N/A'}</strong></span>
+                              <span>Last Visit: <strong className="text-slate-700 font-bold">{cust.lastBookingDate || 'Never'}</strong></span>
                             </div>
                           </div>
                         </div>
 
                         {/* Quick Contact & Booking Buttons */}
-                        <div className="pt-2 border-t border-slate-100 flex items-center gap-2">
-                          {cust.phone && (
-                            <button
-                              type="button"
-                              onClick={() => openWhatsAppCustomer(cust.phone, cust.name)}
-                              className="flex-1 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/80 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
-                            >
-                              <MessageCircle className="w-3.5 h-3.5 fill-emerald-600 text-emerald-600" />
-                              <span>WhatsApp</span>
-                            </button>
+                        <div className="pt-2 border-t border-slate-100 flex items-center gap-1.5">
+                          {hasValidPhone && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => openWhatsAppCustomer(cust.phone, cust.name)}
+                                className="flex-1 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/80 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
+                                title="Chat on WhatsApp"
+                              >
+                                <MessageCircle className="w-3.5 h-3.5 fill-emerald-600 text-emerald-600" />
+                                <span>WhatsApp</span>
+                              </button>
+                              <a
+                                href={`tel:${cust.phone}`}
+                                className="px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer shrink-0"
+                                title="Direct Phone Call"
+                              >
+                                <Phone className="w-3.5 h-3.5 text-slate-600" />
+                                <span>Call</span>
+                              </a>
+                            </>
                           )}
                           <button
                             type="button"
                             onClick={() => {
                               setMbName(cust.name);
-                              setMbPhone(cust.phone);
+                              setMbPhone(hasValidPhone ? cust.phone : '');
                               setMbVehicle(cust.vehicles[0] || '');
                               setShowManualBookingModal(true);
                             }}
@@ -3955,7 +4073,45 @@ export const OwnerDashboard: React.FC = () => {
                     >
                     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-50 pb-2.5">
                       <div>
-                        <strong className="text-slate-800 text-xs sm:text-sm block">{bk.customerName}</strong>
+                        <div className="flex items-center gap-2">
+                          <strong className="text-slate-800 text-xs sm:text-sm block">{bk.customerName}</strong>
+                          {bk.bookingSource && (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded font-mono font-bold bg-slate-100 text-slate-500">
+                              {bk.bookingSource}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 mt-1 text-[11px] text-slate-500 flex-wrap">
+                          {bk.customerPhone && bk.customerPhone.trim() !== '' && bk.customerPhone.trim().toUpperCase() !== 'NA' && bk.customerPhone.trim().toUpperCase() !== 'N/A' ? (
+                            <div className="flex items-center gap-1.5 font-mono">
+                              <Phone className="w-3 h-3 text-emerald-600 shrink-0" />
+                              <a href={`tel:${bk.customerPhone}`} onClick={(e) => e.stopPropagation()} className="text-slate-700 font-bold hover:text-indigo-600">
+                                {bk.customerPhone}
+                              </a>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openWhatsAppCustomer(bk.customerPhone, bk.customerName, bk.date, bk.timeSlot, bk.serviceName);
+                                }}
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded text-[10px] font-bold border border-emerald-200 cursor-pointer"
+                                title="Chat on WhatsApp"
+                              >
+                                <MessageCircle className="w-3 h-3 fill-emerald-600" />
+                                <span>WA</span>
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 text-[10px] italic">No phone recorded</span>
+                          )}
+
+                          {bk.vehicleInfo && (
+                            <div className="flex items-center gap-1 font-mono font-bold text-slate-600">
+                              <Car className="w-3 h-3 text-slate-400 shrink-0" />
+                              <span>{bk.vehicleInfo}</span>
+                            </div>
+                          )}
+                        </div>
                       </div>
 
                       <div className="flex items-center gap-2">

@@ -314,13 +314,18 @@ const mapCarWash = (row: any): CarWash => {
 
 const mapBooking = (row: any): Booking => {
   if (!row) return row;
+  const rawPhone = row.customerPhone ?? row.customer_phone ?? row.customerphone ?? row.user_phone ?? row.userphone ?? undefined;
+  const validPhone = rawPhone && String(rawPhone).trim() !== '' && String(rawPhone).trim().toUpperCase() !== 'NA' && String(rawPhone).trim().toUpperCase() !== 'N/A'
+    ? String(rawPhone).trim()
+    : (row.user_phone && String(row.user_phone).trim() !== '' && String(row.user_phone).trim().toUpperCase() !== 'NA' && String(row.user_phone).trim().toUpperCase() !== 'N/A' ? String(row.user_phone).trim() : undefined);
+
   return {
     id: row.id,
     carWashId: row.carWashId ?? row.car_wash_id ?? row.carwashid,
     customerId: row.customerId ?? row.customer_id ?? row.customerid,
-    customerName: row.customerName ?? row.customer_name ?? row.customername,
-    customerEmail: row.customerEmail ?? row.customer_email ?? row.customeremail,
-    customerPhone: row.customerPhone ?? row.customer_phone ?? row.customerphone ?? undefined,
+    customerName: row.customerName ?? row.customer_name ?? row.customername ?? row.user_name ?? 'Customer',
+    customerEmail: row.customerEmail ?? row.customer_email ?? row.customeremail ?? row.user_email,
+    customerPhone: validPhone,
     vehicleInfo: row.vehicleInfo ?? row.vehicle_info ?? row.vehicleinfo ?? undefined,
     bookingSource: (row.bookingSource ?? row.booking_source ?? row.bookingsource) || 'ONLINE',
     createdByRole: row.createdByRole ?? row.created_by_role ?? row.createdbyrole ?? undefined,
@@ -1172,7 +1177,16 @@ export async function deleteCarWash(id: string): Promise<void> {
 // Booking Operations
 export async function getBookings(): Promise<Booking[]> {
   try {
-    const rows = await runQueryAll('SELECT * FROM bookings');
+    const rows = await runQueryAll(`
+      SELECT 
+        b.*, 
+        u.phone AS user_phone, 
+        u.name AS user_name, 
+        u.email AS user_email 
+      FROM bookings b 
+      LEFT JOIN users u ON b.customerId = u.id 
+      ORDER BY b.createdAt DESC
+    `);
     return rows.map(mapBooking);
   } catch (error) {
     console.error('Database getBookings Error:', error);
@@ -1182,7 +1196,16 @@ export async function getBookings(): Promise<Booking[]> {
 
 export async function getBookingById(id: string): Promise<Booking | null> {
   try {
-    const row = await runQueryOne('SELECT * FROM bookings WHERE id = ?', [id]);
+    const row = await runQueryOne(`
+      SELECT 
+        b.*, 
+        u.phone AS user_phone, 
+        u.name AS user_name, 
+        u.email AS user_email 
+      FROM bookings b 
+      LEFT JOIN users u ON b.customerId = u.id 
+      WHERE b.id = ?
+    `, [id]);
     return row ? mapBooking(row) : null;
   } catch (error) {
     console.error('Database getBookingById Error:', error);
@@ -1233,11 +1256,154 @@ export async function createBooking(booking: Booking): Promise<void> {
 
 export async function getBookingByTxnRef(txnReference: string): Promise<Booking | null> {
   try {
-    const row = await runQueryOne('SELECT * FROM bookings WHERE txnReference = ?', [txnReference]);
+    const row = await runQueryOne(`
+      SELECT 
+        b.*, 
+        u.phone AS user_phone, 
+        u.name AS user_name, 
+        u.email AS user_email 
+      FROM bookings b 
+      LEFT JOIN users u ON b.customerId = u.id 
+      WHERE b.txnReference = ?
+    `, [txnReference]);
     return row ? mapBooking(row) : null;
   } catch (error) {
     console.error('Database getBookingByTxnRef Error:', error);
     return null;
+  }
+}
+
+export async function getCustomersForOwner(ownerId: string, isAdmin = false): Promise<any[]> {
+  try {
+    const carWashes = await getCarWashes();
+    const ownedIds = isAdmin ? carWashes.map(cw => cw.id) : carWashes.filter(cw => cw.ownerId === ownerId).map(cw => cw.id);
+    
+    const allUsers = await getUsers();
+    const allBookings = await getBookings();
+    
+    const relevantBookings = allBookings.filter(b => ownedIds.includes(b.carWashId));
+    
+    const customerMap = new Map<string, {
+      id: string;
+      customerId?: string;
+      name: string;
+      phone: string;
+      email?: string;
+      address?: string;
+      dateOfBirth?: string;
+      gender?: string;
+      profileImageUrl?: string;
+      vehicles: string[];
+      totalBookings: number;
+      completedBookings: number;
+      totalSpent: number;
+      lastBookingDate: string;
+      firstLetter: string;
+    }>();
+
+    // 1. Seed registered customers
+    const registeredCustomers = allUsers.filter(u => u.role === Role.CUSTOMER || u.role === Role.SPECIAL);
+    for (const u of registeredCustomers) {
+      const validPhone = u.phone && String(u.phone).trim() !== '' && String(u.phone).trim().toUpperCase() !== 'NA' && String(u.phone).trim().toUpperCase() !== 'N/A' ? String(u.phone).trim() : '';
+      const key = (u.id || u.email || validPhone || u.name).toLowerCase();
+      let letter = (u.name || 'C').charAt(0).toUpperCase();
+      if (!/^[A-Z]$/i.test(letter)) letter = '#';
+      
+      customerMap.set(key, {
+        id: u.id,
+        customerId: u.id,
+        name: u.name || 'Customer',
+        phone: validPhone,
+        email: u.email,
+        address: u.address,
+        dateOfBirth: u.dateOfBirth,
+        gender: u.gender,
+        profileImageUrl: u.profileImageUrl,
+        vehicles: [],
+        totalBookings: 0,
+        completedBookings: 0,
+        totalSpent: 0,
+        lastBookingDate: '',
+        firstLetter: letter,
+      });
+    }
+
+    // 2. Merge bookings
+    for (const b of relevantBookings) {
+      const rawName = (b.customerName || 'Customer').trim();
+      const rawPhone = (b.customerPhone && String(b.customerPhone).trim().toUpperCase() !== 'NA' && String(b.customerPhone).trim().toUpperCase() !== 'N/A' ? String(b.customerPhone).trim() : '');
+      const rawEmail = (b.customerEmail || '').trim().toLowerCase();
+      
+      let existing: any = null;
+      if (b.customerId && customerMap.has(b.customerId.toLowerCase())) {
+        existing = customerMap.get(b.customerId.toLowerCase());
+      } else if (rawEmail && customerMap.has(rawEmail)) {
+        existing = customerMap.get(rawEmail);
+      } else if (rawPhone && customerMap.has(rawPhone.toLowerCase())) {
+        existing = customerMap.get(rawPhone.toLowerCase());
+      } else if (customerMap.has(rawName.toLowerCase())) {
+        existing = customerMap.get(rawName.toLowerCase());
+      }
+
+      const bPrice = Number(b.price) || 0;
+      const isCompleted = b.status === BookingStatus.COMPLETED;
+      const vehicleStr = b.vehicleInfo ? b.vehicleInfo.trim() : '';
+
+      if (!existing) {
+        let letter = rawName.charAt(0).toUpperCase();
+        if (!/^[A-Z]$/i.test(letter)) letter = '#';
+        const newKey = (b.customerId || rawEmail || rawPhone || rawName).toLowerCase();
+        
+        customerMap.set(newKey, {
+          id: b.customerId || `guest_${newKey}`,
+          customerId: b.customerId,
+          name: rawName,
+          phone: rawPhone,
+          email: rawEmail || undefined,
+          vehicles: vehicleStr ? [vehicleStr] : [],
+          totalBookings: 1,
+          completedBookings: isCompleted ? 1 : 0,
+          totalSpent: isCompleted ? bPrice : 0,
+          lastBookingDate: b.date || '',
+          firstLetter: letter,
+        });
+      } else {
+        existing.totalBookings += 1;
+        if (isCompleted) {
+          existing.completedBookings += 1;
+          existing.totalSpent += bPrice;
+        }
+        if (rawPhone && (!existing.phone || existing.phone.toUpperCase() === 'NA' || existing.phone.toUpperCase() === 'N/A')) {
+          existing.phone = rawPhone;
+        }
+        if (vehicleStr && !existing.vehicles.includes(vehicleStr)) {
+          existing.vehicles.push(vehicleStr);
+        }
+        if (b.date && b.date > existing.lastBookingDate) {
+          existing.lastBookingDate = b.date;
+        }
+      }
+    }
+
+    return Array.from(customerMap.values()).sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true })
+    );
+  } catch (error) {
+    console.error('getCustomersForOwner error:', error);
+    return [];
+  }
+}
+
+export async function syncUserBookings(userId: string, name?: string, phone?: string): Promise<void> {
+  try {
+    if (phone && phone.trim() !== '' && phone.trim().toUpperCase() !== 'NA') {
+      await runQueryRun('UPDATE bookings SET customerPhone = ? WHERE customerId = ?', [phone.trim(), userId]);
+    }
+    if (name && name.trim() !== '') {
+      await runQueryRun('UPDATE bookings SET customerName = ? WHERE customerId = ?', [name.trim(), userId]);
+    }
+  } catch (error) {
+    console.error('Database syncUserBookings Error:', error);
   }
 }
 

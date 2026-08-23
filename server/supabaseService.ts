@@ -43,7 +43,7 @@ export async function registerSupabaseUser(email: string, password: string, name
           console.log('[Supabase Auth] User already exists in Supabase. Retrieving existing ID...');
           const { data: listData, error: listError } = await supabaseClient.auth.admin.listUsers();
           if (!listError && listData?.users) {
-            const existingUser = listData.users.find(u => u.email?.toLowerCase() === email.toLowerCase());
+            const existingUser = (listData.users as any[]).find((u: any) => u.email?.toLowerCase() === email.toLowerCase());
             if (existingUser) {
               return existingUser.id;
             }
@@ -95,7 +95,7 @@ export async function updateSupabasePassword(email: string, newPassword: string)
         throw new Error(listError?.message || 'Failed to retrieve Supabase user list');
       }
 
-      const user = listData.users.find(u => u.email?.toLowerCase() === email.toLowerCase());
+      const user = (listData.users as any[]).find((u: any) => u.email?.toLowerCase() === email.toLowerCase());
       if (!user) {
         console.warn(`[Supabase Auth] No user found in Supabase Auth matching email ${email}`);
         return false;
@@ -184,7 +184,7 @@ export async function deleteSupabaseUser(email: string): Promise<boolean> {
         throw new Error(listError?.message || 'Failed to retrieve Supabase user list');
       }
 
-      const user = listData.users.find(u => u.email?.toLowerCase() === email.toLowerCase());
+      const user = (listData.users as any[]).find((u: any) => u.email?.toLowerCase() === email.toLowerCase());
       if (!user) {
         console.warn(`[Supabase Auth] No user found in Supabase Auth matching email ${email}`);
         return false;

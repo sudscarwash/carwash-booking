@@ -355,7 +355,9 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
         fullNotes,
         combinedServiceId || undefined,
         combinedServiceName || 'Standard Car Wash',
-        totalSelectedPrice || 15.00
+        totalSelectedPrice || 15.00,
+        user.phone,
+        vehicleInfo.trim()
       );
 
       if (res.success) {
