@@ -28,17 +28,17 @@ const MainAppContent: React.FC = () => {
   const [registerOtpCode, setRegisterOtpCode] = useState('');
   const [showExitConfirmModal, setShowExitConfirmModal] = useState(false);
 
-  // Ask for browser confirmation when closing/reloading tab or navigating away
-  React.useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-      e.returnValue = '';
-      return '';
-    };
+  // Track if we are navigating back from an auth sub-view
+  const currentAuthModeRef = React.useRef<'login' | 'register' | 'forgot' | 'reset'>('login');
+  const isExitingRef = React.useRef(false);
 
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, []);
+  // Sync ref with current auth state
+  React.useEffect(() => {
+    if (isRegisterMode) currentAuthModeRef.current = 'register';
+    else if (isForgotMode) currentAuthModeRef.current = 'forgot';
+    else if (isResetMode) currentAuthModeRef.current = 'reset';
+    else currentAuthModeRef.current = 'login';
+  }, [isRegisterMode, isForgotMode, isResetMode]);
 
   // Navigation helper
   const navigate = (path: string, replace = false) => {
@@ -91,14 +91,22 @@ const MainAppContent: React.FC = () => {
   // Mobile Back button / browser popstate listener
   React.useEffect(() => {
     const handlePopState = () => {
-      const path = window.location.pathname;
+      if (isExitingRef.current) return;
 
-      if ((path === '/' || path === '/login') && !user) {
-        setShowExitConfirmModal(true);
-        window.history.pushState({ appGuarded: true }, '', path);
-      }
+      const path = window.location.pathname;
+      const prevMode = currentAuthModeRef.current;
 
       if (!user) {
+        // If navigating back from a sub-screen (register, forgot, reset) to login, smoothly switch to login without trapping
+        if (prevMode !== 'login' && (path === '/' || path === '/login')) {
+          setIsRegisterMode(false);
+          setIsForgotMode(false);
+          setIsResetMode(false);
+          setIsRegisterOtpMode(false);
+          setShowExitConfirmModal(false);
+          return;
+        }
+
         if (path === '/register') {
           setIsRegisterMode(true);
           setIsForgotMode(false);
@@ -775,6 +783,22 @@ const MainAppContent: React.FC = () => {
                         </>
                       )}
                     </button>
+
+                    {isRegisterMode && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsRegisterMode(false);
+                          setIsForgotMode(false);
+                          setIsResetMode(false);
+                          navigate('/login');
+                        }}
+                        className="w-full text-center text-xs text-slate-500 hover:text-slate-700 font-bold font-sans cursor-pointer pt-2 block"
+                        id="back-to-login-btn"
+                      >
+                        Already have an account? <span className="text-sky-600 hover:underline">Log In</span>
+                      </button>
+                    )}
                   </form>
                 </>
               )}
@@ -968,8 +992,13 @@ const MainAppContent: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
+                  isExitingRef.current = true;
                   setShowExitConfirmModal(false);
-                  window.history.back();
+                  if (window.history.length > 1) {
+                    window.history.back();
+                  } else {
+                    window.close();
+                  }
                 }}
                 className="flex-1 py-3 bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs rounded-xl shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1.5"
               >

@@ -222,7 +222,6 @@ export const OwnerDashboard: React.FC = () => {
   const [mbSource, setMbSource] = useState<'PHONE' | 'WALK_IN' | 'ONLINE'>('PHONE');
   const [mbName, setMbName] = useState('');
   const [mbPhone, setMbPhone] = useState('');
-  const [mbEmail, setMbEmail] = useState('');
   const [mbVehicle, setMbVehicle] = useState('');
   const [mbDate, setMbDate] = useState<string>(getTodayDateString());
   const [mbTimeSlot, setMbTimeSlot] = useState<string>('09:00 - 09:30');
@@ -1058,7 +1057,6 @@ export const OwnerDashboard: React.FC = () => {
       timeSlot: finalSlot,
       customerName: mbName.trim(),
       customerPhone: mbPhone.trim(),
-      customerEmail: mbEmail.trim() || undefined,
       vehicleInfo: mbVehicle.trim() || undefined,
       bookingSource: mbSource,
       serviceId: mbSelectedItems.length > 0 ? mbSelectedItems[0].id : catalog[0]?.id,
@@ -1074,7 +1072,6 @@ export const OwnerDashboard: React.FC = () => {
       setShowManualBookingModal(false);
       setMbName('');
       setMbPhone('');
-      setMbEmail('');
       setMbVehicle('');
       setMbNotes('');
       setMbSelectedSlots([]);
@@ -1383,7 +1380,6 @@ export const OwnerDashboard: React.FC = () => {
     id: string;
     name: string;
     phone: string;
-    email?: string;
     vehicles: string[];
     totalBookings: number;
     completedBookings: number;
@@ -1411,7 +1407,6 @@ export const OwnerDashboard: React.FC = () => {
         id: key,
         name: rawName,
         phone: rawPhone,
-        email: b.customerEmail || '',
         vehicles: vehicleStr ? [vehicleStr] : [],
         totalBookings: 1,
         completedBookings: isCompleted ? 1 : 0,
@@ -1430,9 +1425,6 @@ export const OwnerDashboard: React.FC = () => {
       }
       if (b.date && b.date > existing.lastBookingDate) {
         existing.lastBookingDate = b.date;
-      }
-      if (b.customerEmail && !existing.email) {
-        existing.email = b.customerEmail;
       }
     }
   });
@@ -1453,9 +1445,8 @@ export const OwnerDashboard: React.FC = () => {
       const q = customerSearchQuery.toLowerCase();
       const matchName = cust.name.toLowerCase().includes(q);
       const matchPhone = cust.phone.toLowerCase().includes(q);
-      const matchEmail = cust.email?.toLowerCase().includes(q);
       const matchVehicle = cust.vehicles.some((v) => v.toLowerCase().includes(q));
-      if (!matchName && !matchPhone && !matchEmail && !matchVehicle) return false;
+      if (!matchName && !matchPhone && !matchVehicle) return false;
     }
     return true;
   });
@@ -2399,7 +2390,6 @@ export const OwnerDashboard: React.FC = () => {
                   setMbName('');
                   setMbPhone('');
                   setMbVehicle('');
-                  setMbEmail('');
                   setMbNotes('');
                   setShowManualBookingModal(true);
                 }}
@@ -2541,7 +2531,7 @@ export const OwnerDashboard: React.FC = () => {
                             </span>
                           </div>
 
-                          {/* Vehicles & Email */}
+                          {/* Vehicles */}
                           <div className="mt-3 space-y-1.5 text-xs text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
                             <div className="flex items-center gap-1.5 text-[11px]">
                               <Car className="w-3.5 h-3.5 text-slate-400 shrink-0" />
@@ -2550,12 +2540,6 @@ export const OwnerDashboard: React.FC = () => {
                                 {cust.vehicles.length > 0 ? cust.vehicles.join(', ') : 'N/A'}
                               </span>
                             </div>
-                            {cust.email && (
-                              <div className="flex items-center gap-1.5 text-[11px] truncate">
-                                <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                                <span className="truncate font-mono text-slate-500">{cust.email}</span>
-                              </div>
-                            )}
                             <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-200/60">
                               <span>Total Washes: <strong className="text-slate-700 font-bold">{cust.totalBookings}</strong></span>
                               <span>Last Visit: <strong className="text-slate-700 font-bold">{cust.lastBookingDate || 'N/A'}</strong></span>
@@ -2581,7 +2565,6 @@ export const OwnerDashboard: React.FC = () => {
                               setMbName(cust.name);
                               setMbPhone(cust.phone);
                               setMbVehicle(cust.vehicles[0] || '');
-                              setMbEmail(cust.email || '');
                               setShowManualBookingModal(true);
                             }}
                             className="flex-1 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
@@ -2797,42 +2780,16 @@ export const OwnerDashboard: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => setEditPaymentPolicy('PAY_ON_SITE')}
-                        className={`p-3 rounded-xl border text-left flex flex-col justify-between transition-all cursor-pointer ${
-                          editPaymentPolicy === 'PAY_ON_SITE'
-                            ? 'bg-emerald-50 border-emerald-500 text-emerald-900 ring-2 ring-emerald-50'
-                            : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
-                        }`}
-                      >
+                    <div className="pt-1">
+                      <div className="p-3 rounded-xl border bg-emerald-50 border-emerald-500 text-emerald-900 ring-2 ring-emerald-50 text-left flex flex-col justify-between">
                         <div className="flex items-center gap-1.5 mb-1">
                           <span className="h-2 w-2 rounded-full bg-emerald-500" />
                           <span className="text-xs font-bold">Flexible / Pay on Site</span>
                         </div>
-                        <p className="text-[10px] text-slate-400 leading-relaxed font-normal">
-                          Allow customers to choose between Cash (Pay on Site) and manual Bank Transfer prepaid screenshots.
+                        <p className="text-[10px] text-slate-500 leading-relaxed font-normal">
+                          Customers pay on site (Pay at Counter / Cash upon arrival at the car wash).
                         </p>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setEditPaymentPolicy('PRE_PAYMENT')}
-                        className={`p-3 rounded-xl border text-left flex flex-col justify-between transition-all cursor-pointer ${
-                          editPaymentPolicy === 'PRE_PAYMENT'
-                            ? 'bg-indigo-50 border-indigo-500 text-indigo-900 ring-2 ring-indigo-50'
-                            : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
-                        }`}
-                      >
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <span className="h-2 w-2 rounded-full bg-indigo-500" />
-                          <span className="text-xs font-bold">Prepayment Only</span>
-                        </div>
-                        <p className="text-[10px] text-slate-400 leading-relaxed font-normal">
-                          Enforce upfront bank transfer (BIBD/Baiduri) prepayments. Customers must upload screenshots to confirm.
-                        </p>
-                      </button>
+                      </div>
                     </div>
                   </div>
 
@@ -3229,31 +3186,37 @@ export const OwnerDashboard: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Duration (min)</label>
+                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                        Base Slot Interval (Grid Step)
+                      </label>
                       <select
                         value={editDuration}
                         onChange={(e) => setEditDuration(parseInt(e.target.value))}
-                        className="w-full px-3 py-1.5 border border-slate-200 rounded-xl text-sm"
+                        className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium bg-white"
                       >
+                        <option value="30">30 mins (Standard Half-Hour Grid)</option>
                         <option value="15">15 mins</option>
-                        <option value="30">30 mins</option>
                         <option value="45">45 mins</option>
                         <option value="60">60 mins</option>
                       </select>
+                      <p className="text-[10px] text-slate-400 mt-1">Defines the atomic time grid for customer booking slots.</p>
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Capacity / Slot</label>
+                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                        Wash Bay Capacity / Slot
+                      </label>
                       <input
                         type="number"
                         min="1"
-                        max="10"
+                        max="20"
                         value={editCapacity}
                         onChange={(e) => setEditCapacity(parseInt(e.target.value))}
-                        className="w-full px-3 py-1.5 border border-slate-200 rounded-xl text-sm"
+                        className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm font-mono font-bold"
                         required
                       />
+                      <p className="text-[10px] text-slate-400 mt-1">Max concurrent vehicle bookings allowed per time slot.</p>
                     </div>
                   </div>
 
@@ -3478,6 +3441,8 @@ export const OwnerDashboard: React.FC = () => {
                             onClick={() => {
                               setNewServiceType('addon');
                               setNewServiceVehicleType('All');
+                              setNewServiceDuration('30');
+                              setNewServiceSlotsRequired(1);
                             }}
                             className={`py-1.5 px-2 border rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${
                               newServiceType === 'addon'
@@ -3493,6 +3458,8 @@ export const OwnerDashboard: React.FC = () => {
                             onClick={() => {
                               setNewServiceType('product');
                               setNewServiceVehicleType('N/A');
+                              setNewServiceDuration('0');
+                              setNewServiceSlotsRequired(0);
                             }}
                             className={`py-1.5 px-2 border rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${
                               newServiceType === 'product'
@@ -3540,16 +3507,29 @@ export const OwnerDashboard: React.FC = () => {
                         {/* Duration (Hidden/Set to 0 if product) */}
                         <div className="sm:col-span-6">
                           <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5">
-                            {newServiceType === 'product' ? "Duration (N/A)" : "Duration (minutes)"}
+                            {newServiceType === 'product' ? "Duration (N/A for Retail)" : "Duration (30-min intervals)"}
                           </label>
-                          <input
-                            type="number"
-                            placeholder="Duration (min)"
+                          <select
                             disabled={newServiceType === 'product'}
                             value={newServiceType === 'product' ? '0' : newServiceDuration}
-                            onChange={(e) => setNewServiceDuration(e.target.value)}
-                            className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-mono disabled:bg-slate-50 disabled:text-slate-400"
-                          />
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setNewServiceDuration(val);
+                              if (newServiceType !== 'product') {
+                                const slots = val === '0' ? 0 : Math.max(1, Math.round(parseInt(val, 10) / 30));
+                                setNewServiceSlotsRequired(slots);
+                              }
+                            }}
+                            className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-medium bg-white text-slate-700 disabled:bg-slate-50 disabled:text-slate-400"
+                          >
+                            <option value="0">0 mins (Instant / Retail Product)</option>
+                            <option value="30">30 mins (0.5 hr • 1 Slot)</option>
+                            <option value="60">60 mins (1.0 hr • 2 Slots)</option>
+                            <option value="90">90 mins (1.5 hrs • 3 Slots)</option>
+                            <option value="120">120 mins (2.0 hrs • 4 Slots)</option>
+                            <option value="150">150 mins (2.5 hrs • 5 Slots)</option>
+                            <option value="180">180 mins (3.0 hrs • 6 Slots)</option>
+                          </select>
                         </div>
 
                         {/* Vehicle Type */}
@@ -3579,10 +3559,13 @@ export const OwnerDashboard: React.FC = () => {
                             onChange={(e) => setNewServiceSlotsRequired(parseInt(e.target.value, 10))}
                             className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs bg-white text-slate-700 disabled:bg-slate-50 disabled:text-slate-400 font-medium"
                           >
-                            <option value={0}>0 Slots (Takes 0 Capacity - Add/Book Anytime)</option>
-                            <option value={1}>1 Slot (Standard ~30 min)</option>
-                            <option value={2}>2 Slots (1 Hour / Multi-Slot Wash)</option>
-                            <option value={3}>3 Slots (1.5 Hours / Full Detail)</option>
+                            <option value={0}>0 Slots (0 Bay Capacity • Retail / Non-slot)</option>
+                            <option value={1}>1 Slot (Takes 1 x 30m window)</option>
+                            <option value={2}>2 Slots (Takes 2 x 30m = 1.0 hr window)</option>
+                            <option value={3}>3 Slots (Takes 3 x 30m = 1.5 hrs window)</option>
+                            <option value={4}>4 Slots (Takes 4 x 30m = 2.0 hrs window)</option>
+                            <option value={5}>5 Slots (Takes 5 x 30m = 2.5 hrs window)</option>
+                            <option value={6}>6 Slots (Takes 6 x 30m = 3.0 hrs window)</option>
                           </select>
                         </div>
 
@@ -3646,6 +3629,7 @@ export const OwnerDashboard: React.FC = () => {
                           setNewServiceName('');
                           setNewServicePrice('15.00');
                           setNewServiceDuration('30');
+                          setNewServiceSlotsRequired(1);
                           setNewServiceDesc('');
                           setNewServiceIsAvailable(true);
                         }}
@@ -3972,7 +3956,6 @@ export const OwnerDashboard: React.FC = () => {
                     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-50 pb-2.5">
                       <div>
                         <strong className="text-slate-800 text-xs sm:text-sm block">{bk.customerName}</strong>
-                        <span className="text-[10px] text-slate-400 font-mono block">{bk.customerEmail}</span>
                       </div>
 
                       <div className="flex items-center gap-2">
@@ -4757,33 +4740,18 @@ export const OwnerDashboard: React.FC = () => {
                 </div>
               </div>
 
-              {/* Vehicle Info & Email */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
-                    Vehicle Info / Plate Number
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Toyota Fortuner - BAA 1234"
-                    value={mbVehicle}
-                    onChange={(e) => setMbVehicle(e.target.value)}
-                    className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm outline-none focus:border-indigo-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
-                    Customer Email (Optional)
-                  </label>
-                  <input
-                    type="email"
-                    placeholder="ahmad@gmail.com"
-                    value={mbEmail}
-                    onChange={(e) => setMbEmail(e.target.value)}
-                    className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm outline-none focus:border-indigo-500"
-                  />
-                </div>
+              {/* Vehicle Info */}
+              <div>
+                <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
+                  Vehicle Info / Plate Number
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Toyota Fortuner - BAA 1234"
+                  value={mbVehicle}
+                  onChange={(e) => setMbVehicle(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm outline-none focus:border-indigo-500"
+                />
               </div>
 
               {/* Booking Date */}

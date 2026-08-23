@@ -22,14 +22,23 @@ let postgresConnectionError: string | null = null;
 let pgPool: pg.Pool | null = null;
 let sqliteDb: Database.Database | null = null;
 
-// Always initialize SQLite database as the core of our local fallback architecture
+// Always initialize SQLite database safely as the core of our local fallback architecture
 const dataDir = path.resolve(process.cwd(), 'data');
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
-}
 const dbPath = path.resolve(dataDir, 'carwash.db');
-sqliteDb = new Database(dbPath);
-sqliteDb.pragma('journal_mode = WAL');
+
+try {
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+  }
+  sqliteDb = new Database(dbPath);
+  try {
+    sqliteDb.pragma('journal_mode = WAL');
+  } catch (pErr) {
+    console.warn('[SQLite Pragma Warning]:', pErr);
+  }
+} catch (sqliteInitErr) {
+  console.warn('[SQLite Init Fallback Notice]:', sqliteInitErr);
+}
 
 if (usePostgres) {
   console.log('Using PostgreSQL database connection for Supabase...');
@@ -46,6 +55,10 @@ if (usePostgres) {
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false }, // Always bypass strict SSL checks for local development with hosted Postgres (Supabase, Render, neon)
     connectionTimeoutMillis: 5000, // 5 seconds connection timeout
+  });
+
+  pgPool.on('error', (err) => {
+    console.error('[pgPool Idle Client Warning]:', err.message || err);
   });
 } else {
   console.log('Using SQLite database at:', dbPath);

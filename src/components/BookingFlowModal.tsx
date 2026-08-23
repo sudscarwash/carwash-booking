@@ -270,11 +270,12 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
     setPaymentMethod('cash');
   }, [location]);
 
-  // Fetch time slots when location or date changes
-  const fetchAvailableSlots = async (dateStr: string) => {
+  // Fetch time slots when location, date, or selected duration changes
+  const fetchAvailableSlots = async (dateStr: string, durationMin?: number) => {
     setIsLoadingSlots(true);
     try {
-      const res = await fetch(`/api/bookings/available-slots?carWashId=${location.id}&date=${dateStr}`);
+      const effDuration = durationMin !== undefined ? durationMin : (totalSelectedDuration > 0 ? totalSelectedDuration : 30);
+      const res = await fetch(`/api/bookings/available-slots?carWashId=${location.id}&date=${dateStr}&duration=${effDuration}`);
       if (res.ok) {
         const slots: TimeSlotItem[] = await res.json();
         setAvailableSlots(slots);
@@ -291,9 +292,9 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
 
   useEffect(() => {
     if (isOpen && location) {
-      fetchAvailableSlots(bookingDate);
+      fetchAvailableSlots(bookingDate, totalSelectedDuration);
     }
-  }, [isOpen, location, bookingDate]);
+  }, [isOpen, location, bookingDate, totalSelectedDuration]);
 
   if (!isOpen) return null;
 
@@ -810,7 +811,7 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                 <div className="space-y-5 animate-fade-in">
                   {/* Selected items summary chip */}
                   {selectedItems.length > 0 && (
-                    <div className="bg-sky-50 border border-sky-200 p-3.5 rounded-2xl flex items-center justify-between gap-2">
+                    <div className="bg-sky-50 border border-sky-200 p-3.5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div className="flex items-center gap-2.5 min-w-0">
                         <div className="bg-sky-500 text-white p-2 rounded-xl shrink-0">
                           <Sparkles className="w-4 h-4" />
@@ -818,9 +819,15 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                         <div className="min-w-0">
                           <span className="text-[10px] text-sky-600 font-bold uppercase tracking-wider block">Selected Package & Add-ons ({selectedItems.length})</span>
                           <span className="font-extrabold text-slate-800 text-xs sm:text-sm line-clamp-1">{combinedServiceName}</span>
+                          <span className="text-[11px] text-slate-500 font-medium flex items-center gap-1.5 mt-0.5">
+                            <Clock className="w-3 h-3 text-sky-600 shrink-0" />
+                            <span>
+                              Total Duration: <strong>{totalSelectedDuration > 0 ? totalSelectedDuration : 30} mins</strong> ({Math.ceil((totalSelectedDuration > 0 ? totalSelectedDuration : 30) / 30)} bay {Math.ceil((totalSelectedDuration > 0 ? totalSelectedDuration : 30) / 30) === 1 ? 'slot' : 'slots'} required)
+                            </span>
+                          </span>
                         </div>
                       </div>
-                      <div className="text-right flex items-center gap-3 shrink-0">
+                      <div className="text-right flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-sky-100">
                         <span className="font-black text-sky-700 text-sm sm:text-base font-mono">BND ${totalSelectedPrice.toFixed(2)}</span>
                         <button
                           type="button"
@@ -885,6 +892,37 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                         View Location Map
                       </button>
                     </div>
+
+                    {selectedSlot && (
+                      <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center justify-between text-xs text-emerald-800 font-bold">
+                        <span className="flex items-center gap-1.5">
+                          <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <span>
+                            Selected Window:{' '}
+                            <strong>
+                              {(() => {
+                                const parts = selectedSlot.split('-');
+                                const startTimeStr = parts[0]?.trim();
+                                if (!startTimeStr || !startTimeStr.includes(':')) return selectedSlot;
+                                const [hStr, mStr] = startTimeStr.split(':');
+                                const startH = parseInt(hStr, 10);
+                                const startM = parseInt(mStr, 10);
+                                if (isNaN(startH) || isNaN(startM)) return selectedSlot;
+                                const dur = totalSelectedDuration > 0 ? totalSelectedDuration : 30;
+                                const totalEndM = startH * 60 + startM + dur;
+                                const endH = Math.floor(totalEndM / 60);
+                                const endM = totalEndM % 60;
+                                const formattedEnd = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+                                return `${startTimeStr} – ${formattedEnd} (${dur >= 60 ? (dur / 60).toFixed(1) + ' hrs' : dur + ' mins'})`;
+                              })()}
+                            </strong>
+                          </span>
+                        </span>
+                        <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md font-extrabold uppercase">
+                          {Math.ceil((totalSelectedDuration > 0 ? totalSelectedDuration : 30) / 30)} Bay {Math.ceil((totalSelectedDuration > 0 ? totalSelectedDuration : 30) / 30) === 1 ? 'Slot' : 'Slots'} Reserved
+                        </span>
+                      </div>
+                    )}
 
                     {isLoadingSlots ? (
                       <div className="py-8 text-center text-xs text-slate-400 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-center gap-2">

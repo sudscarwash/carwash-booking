@@ -3,6 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+process.on('uncaughtException', (err) => {
+  console.error('[CRITICAL UNCAUGHT EXCEPTION]:', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[CRITICAL UNHANDLED REJECTION]:', reason);
+});
+
 import dns from 'node:dns';
 // Force IPv4 DNS resolution first to bypass IPv6 ENETUNREACH errors in hosting environments (e.g., Render, Cloud Run, AIS)
 if (typeof dns.setDefaultResultOrder === 'function') {
@@ -11,7 +18,7 @@ if (typeof dns.setDefaultResultOrder === 'function') {
 
 import express from 'express';
 import path from 'path';
-import { createServer as createViteServer } from 'vite';
+import fs from 'fs';
 import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
 import { uploadReceipt } from './server/upload.js';
@@ -74,7 +81,7 @@ import {
 } from './server/emailService.js';
 import { isValidEmail } from './server/validation.js';
 import { authenticateToken, requireRoles, generateToken, AuthenticatedRequest } from './server/auth.js';
-import { generateSlotsForDate } from './server/slots.js';
+import { generateSlotsForDate, validateSlotCapacity, isZeroSlotBooking } from './server/slots.js';
 import { authRateLimiter, apiRateLimiter } from './server/production/middleware/rateLimiter.js';
 
 dotenv.config();
@@ -82,6 +89,16 @@ dotenv.config();
 async function startServer() {
   const app = express();
   const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+
+  // Cloud Run & Container Health Probes MUST be mounted first
+  app.get(['/api/health', '/_healthz', '/healthz', '/health'], (req, res) => {
+    res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+  });
+
+  // Immediately bind to port 0.0.0.0:PORT so Cloud Run health check passes in <10ms
+  const server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Car Wash Booking Server listening on http://0.0.0.0:${PORT}`);
+  });
 
   // Enable trust proxy for cloud deployment & container proxies
   app.set('trust proxy', true);
@@ -124,11 +141,15 @@ async function startServer() {
   // Apply general API rate limiter to protect the server
   app.use('/api', apiRateLimiter);
 
-  // Run database automatic seeding to populate Firestore on initial boot
-  await seedFirestoreIfEmpty();
+  // Run database automatic seeding in background without blocking server listen
+  seedFirestoreIfEmpty().catch((err) => {
+    console.warn('[DB Init] Seeding notice:', err?.message || err);
+  });
 
   // Clean up any expired OTP / password reset tokens on server startup
-  await cleanupExpiredPasswordResets();
+  cleanupExpiredPasswordResets().catch((err) => {
+    console.warn('[OTP Cleanup] Failed to purge expired tokens:', err);
+  });
 
   // Schedule background cleanup every 15 minutes to purge stale expired OTP tokens
   setInterval(() => {
@@ -141,7 +162,9 @@ async function startServer() {
   if (isSupabaseAuthEnabled) {
     const adminEmail = process.env.INITIAL_ADMIN_EMAIL || 'admin@carwash.com';
     const adminPassword = process.env.INITIAL_ADMIN_PASSWORD || 'admin123';
-    await ensureInitialAdminInSupabase(adminEmail, adminPassword, 'System Admin');
+    ensureInitialAdminInSupabase(adminEmail, adminPassword, 'System Admin').catch((err) => {
+      console.warn('[Supabase Init] Notice:', err?.message || err);
+    });
   }
 
   // Helper function to calculate distance using Haversine formula (simulated maps distance filtering)
@@ -1057,7 +1080,7 @@ async function startServer() {
   // Public: Dynamic available time slots generator for a given date
   app.get('/api/bookings/available-slots', async (req, res) => {
     try {
-      const { carWashId, date } = req.query;
+      const { carWashId, date, duration } = req.query;
 
       if (!carWashId || !date) {
         res.status(400).json({ error: 'Parameters carWashId and date (YYYY-MM-DD) are required.' });
@@ -1071,8 +1094,9 @@ async function startServer() {
         return;
       }
 
+      const requestedDuration = duration ? parseInt(duration as string, 10) : 30;
       const allBookings = await getBookings();
-      const slots = generateSlotsForDate(carWash, date as string, allBookings);
+      const slots = generateSlotsForDate(carWash, date as string, allBookings, requestedDuration);
       res.json(slots);
     } catch (error: any) {
       res.status(500).json({ error: error.message || 'Internal server error' });
@@ -1157,20 +1181,11 @@ async function startServer() {
       }
 
       // Check slot availability and capacity limits (exempt Walk-in, 0-slot items, or flexible slots)
-      const isWalkInOrFlex = !timeSlot || 
-        timeSlot.toLowerCase().includes('walk-in') || 
-        timeSlot.toLowerCase().includes('anytime') || 
-        timeSlot.toLowerCase().includes('no slot') || 
-        timeSlot.toLowerCase().includes('flex') ||
-        timeSlot.includes('(0 Slots)');
-
-      if (!isWalkInOrFlex) {
+      if (!isZeroSlotBooking(timeSlot)) {
         const allBookings = await getBookings();
-        const slots = generateSlotsForDate(carWash, date, allBookings);
-        const targetSlot = slots.find((s) => s.timeSlot === timeSlot || (timeSlot && s.timeSlot && timeSlot.startsWith(s.timeSlot.split(' - ')[0])));
-
-        if (targetSlot && !targetSlot.isAvailable) {
-          res.status(400).json({ error: 'This time slot is fully booked or no longer available.' });
+        const validation = validateSlotCapacity(carWash, date, timeSlot, allBookings);
+        if (!validation.isValid) {
+          res.status(400).json({ error: validation.error || 'This time slot is fully booked or no longer available.' });
           return;
         }
       }
@@ -1340,6 +1355,16 @@ async function startServer() {
           }
         }
 
+        // Validate bay capacity on all covered 30-min slices
+        if (!isZeroSlotBooking(timeSlot)) {
+          const allBookings = await getBookings();
+          const validation = validateSlotCapacity(carWash, date, timeSlot, allBookings);
+          if (!validation.isValid) {
+            res.status(400).json({ error: validation.error || 'This time slot is fully booked or no longer available.' });
+            return;
+          }
+        }
+
         const newManualBooking: Booking = {
           id: `bk_manual_${Math.random().toString(36).substr(2, 9)}`,
           carWashId,
@@ -1455,17 +1480,12 @@ async function startServer() {
       }
 
       // Check slot capacity on the new slot (exempting the current booking if it is the same slot)
-      const slots = generateSlotsForDate(carWash, date, bookingsList.filter(b => b.id !== booking.id));
-      const targetSlot = slots.find((s) => s.timeSlot === timeSlot);
-
-      if (!targetSlot) {
-        res.status(400).json({ error: 'Selected slot is outside of operating hours.' });
-        return;
-      }
-
-      if (!targetSlot.isAvailable) {
-        res.status(400).json({ error: 'New slot is fully booked.' });
-        return;
+      if (!isZeroSlotBooking(timeSlot)) {
+        const validation = validateSlotCapacity(carWash, date, timeSlot, bookingsList, booking.id);
+        if (!validation.isValid) {
+          res.status(400).json({ error: validation.error || 'The selected reschedule slot is fully booked or no longer available.' });
+          return;
+        }
       }
 
       const oldDate = booking.date;
@@ -2473,6 +2493,7 @@ async function startServer() {
   app.use('/uploads', express.static(path.resolve(process.cwd(), 'uploads')));
 
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
@@ -2483,14 +2504,15 @@ async function startServer() {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+      const indexPath = path.join(distPath, 'index.html');
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        res.status(200).send('<!DOCTYPE html><html><head><title>Car Wash Booking</title></head><body><div id="root"></div></body></html>');
+      }
     });
     console.log('Production static asset serving mounted from dist/');
   }
-
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Car Wash Booking Server listening on http://localhost:${PORT}`);
-  });
 }
 
 startServer().catch((err) => {

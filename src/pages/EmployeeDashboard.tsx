@@ -153,7 +153,6 @@ export const EmployeeDashboard: React.FC = () => {
   const [showManualBookingModal, setShowManualBookingModal] = useState(false);
   const [mbName, setMbName] = useState('');
   const [mbPhone, setMbPhone] = useState('');
-  const [mbEmail, setMbEmail] = useState('');
   const [mbVehicle, setMbVehicle] = useState('');
   const [mbDate, setMbDate] = useState<string>(getTodayDateString());
   const [mbTimeSlot, setMbTimeSlot] = useState<string>('09:00 - 09:30');
@@ -267,7 +266,6 @@ export const EmployeeDashboard: React.FC = () => {
       timeSlot: finalSlot,
       customerName: mbName.trim(),
       customerPhone: mbPhone.trim(),
-      customerEmail: mbEmail.trim() || undefined,
       vehicleInfo: mbVehicle.trim() || undefined,
       bookingSource: mbSource,
       serviceId: mbSelectedItems.length > 0 ? mbSelectedItems[0].id : catalog[0]?.id,
@@ -283,7 +281,6 @@ export const EmployeeDashboard: React.FC = () => {
       setShowManualBookingModal(false);
       setMbName('');
       setMbPhone('');
-      setMbEmail('');
       setMbVehicle('');
       setMbNotes('');
       setMbIsCustomSlot(false);
@@ -461,7 +458,6 @@ export const EmployeeDashboard: React.FC = () => {
 
                         <div className="text-left">
                           <strong className="text-slate-800 text-sm sm:text-base block">{bk.customerName}</strong>
-                          <span className="text-xs text-slate-400 font-mono block">{bk.customerEmail}</span>
                           {bk.paymentBank ? (
                             <span className="inline-flex items-center gap-1 text-[10px] bg-indigo-50 border border-indigo-100 text-indigo-700 font-extrabold px-2 py-0.5 rounded-lg mt-1 font-mono uppercase">
                               💳 Bank Transfer: {bk.paymentBank}
@@ -1068,32 +1064,18 @@ export const EmployeeDashboard: React.FC = () => {
                 </div>
               </div>
 
-              {/* Vehicle Specs & Email */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
-                    Vehicle Model / Plate
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. BAA 1234 (Toyota Fortuner)"
-                    value={mbVehicle}
-                    onChange={(e) => setMbVehicle(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm outline-none focus:border-amber-500 font-medium"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
-                    Customer Email (Optional)
-                  </label>
-                  <input
-                    type="email"
-                    placeholder="e.g. john@gmail.com"
-                    value={mbEmail}
-                    onChange={(e) => setMbEmail(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm outline-none focus:border-amber-500 font-medium"
-                  />
-                </div>
+              {/* Vehicle Specs */}
+              <div>
+                <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
+                  Vehicle Model / Plate
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. BAA 1234 (Toyota Fortuner)"
+                  value={mbVehicle}
+                  onChange={(e) => setMbVehicle(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm outline-none focus:border-amber-500 font-medium"
+                />
               </div>
 
               {/* Booking Date */}
