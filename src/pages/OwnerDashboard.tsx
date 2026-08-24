@@ -2204,6 +2204,13 @@ export const OwnerDashboard: React.FC = () => {
                               <div className="flex items-center justify-between gap-2">
                                 <div>
                                   <span className="font-bold text-slate-900 block">{bk.customerName}</span>
+                                  {bk.customerPhone && bk.customerPhone.trim() !== '' && bk.customerPhone.trim().toUpperCase() !== 'NA' && bk.customerPhone.trim().toUpperCase() !== 'N/A' && (
+                                    <span className="text-[11px] text-slate-600 flex items-center gap-1 mt-0.5 font-mono font-bold">
+                                      <Phone className="w-3 h-3 text-emerald-600 shrink-0" />
+                                      <span className="text-[10px] text-slate-400 font-sans uppercase font-bold">Phone:</span>
+                                      <a href={`tel:${bk.customerPhone}`} className="hover:text-indigo-600 hover:underline">{bk.customerPhone}</a>
+                                    </span>
+                                  )}
                                   <span className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
                                     <Car className="w-3 h-3 text-slate-400 shrink-0" />
                                     <span>{bk.vehicleInfo || 'N/A'}</span>
@@ -2355,6 +2362,13 @@ export const OwnerDashboard: React.FC = () => {
                               <span className="text-xs text-slate-600 font-semibold block mt-0.5">
                                 {bk.customerName}
                               </span>
+                              {bk.customerPhone && bk.customerPhone.trim() !== '' && bk.customerPhone.trim().toUpperCase() !== 'NA' && bk.customerPhone.trim().toUpperCase() !== 'N/A' && (
+                                <span className="text-[11px] text-slate-600 flex items-center gap-1 mt-0.5 font-mono font-bold">
+                                  <Phone className="w-3 h-3 text-emerald-600 shrink-0" />
+                                  <span className="text-[10px] text-slate-400 font-sans uppercase font-bold">Phone:</span>
+                                  <a href={`tel:${bk.customerPhone}`} className="hover:text-indigo-600 hover:underline">{bk.customerPhone}</a>
+                                </span>
+                              )}
                             </div>
                           </div>
 
@@ -2618,6 +2632,7 @@ export const OwnerDashboard: React.FC = () => {
                                     title="Call Customer"
                                   >
                                     <Phone className="w-3 h-3 text-emerald-600 shrink-0" />
+                                    <span className="text-[10px] text-slate-400 font-sans uppercase font-bold">Phone:</span>
                                     <span>{cust.phone}</span>
                                   </a>
                                 ) : (
@@ -4085,6 +4100,7 @@ export const OwnerDashboard: React.FC = () => {
                           {bk.customerPhone && bk.customerPhone.trim() !== '' && bk.customerPhone.trim().toUpperCase() !== 'NA' && bk.customerPhone.trim().toUpperCase() !== 'N/A' ? (
                             <div className="flex items-center gap-1.5 font-mono">
                               <Phone className="w-3 h-3 text-emerald-600 shrink-0" />
+                              <span className="text-[10px] text-slate-400 font-sans uppercase font-bold">Phone:</span>
                               <a href={`tel:${bk.customerPhone}`} onClick={(e) => e.stopPropagation()} className="text-slate-700 font-bold hover:text-indigo-600">
                                 {bk.customerPhone}
                               </a>
@@ -4570,7 +4586,29 @@ export const OwnerDashboard: React.FC = () => {
                         <div className="bg-white p-2.5 rounded-xl border border-slate-200/80 space-y-1">
                           <div className="flex items-center justify-between gap-2">
                             <span className="font-bold text-slate-800 text-xs truncate">{bk.customerName}</span>
-                            <span className="text-[10px] font-mono text-slate-500 font-bold">{bk.customerPhone || 'Phone N/A'}</span>
+                            {bk.customerPhone && bk.customerPhone.trim() !== '' && bk.customerPhone.trim().toUpperCase() !== 'NA' && bk.customerPhone.trim().toUpperCase() !== 'N/A' ? (
+                              <div className="flex items-center gap-1.5 font-mono">
+                                <span className="text-[11px] text-slate-700 font-bold flex items-center gap-1">
+                                  <Phone className="w-3 h-3 text-emerald-600 shrink-0" />
+                                  <span className="text-[9px] text-slate-400 font-sans uppercase font-bold">Phone:</span>
+                                  <a href={`tel:${bk.customerPhone}`} className="hover:text-indigo-600 hover:underline">{bk.customerPhone}</a>
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => openWhatsAppCustomer(bk.customerPhone, bk.customerName, bk.date, bk.timeSlot, bk.serviceName)}
+                                  className="inline-flex items-center gap-0.5 px-1 py-0.2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded text-[9px] font-bold border border-emerald-200 cursor-pointer shadow-2xs"
+                                  title="Send WhatsApp Message"
+                                >
+                                  <MessageCircle className="w-2.5 h-2.5 fill-emerald-600" />
+                                  <span>WA</span>
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-[10px] text-slate-400 italic flex items-center gap-1">
+                                <Phone className="w-2.5 h-2.5 text-slate-300" />
+                                <span>No phone</span>
+                              </span>
+                            )}
                           </div>
 
                           {bk.vehicleInfo && (
@@ -4653,7 +4691,7 @@ export const OwnerDashboard: React.FC = () => {
                 <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Employee Name</label>
                 <input
                   type="text"
-                  placeholder="e.g. Sam Employee"
+                  placeholder="e.g. Sam Wilson"
                   value={empName}
                   onChange={(e) => setEmpName(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl"
@@ -4666,7 +4704,7 @@ export const OwnerDashboard: React.FC = () => {
                 <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Email Address</label>
                 <input
                   type="email"
-                  placeholder="sam@carwash.com"
+                  placeholder="Email Address"
                   value={empEmail}
                   onChange={(e) => setEmpEmail(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl"
@@ -4882,8 +4920,9 @@ export const OwnerDashboard: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
-                    Customer Phone Number *
+                  <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1 flex items-center gap-1">
+                    <Phone className="w-3 h-3 text-emerald-600 shrink-0" />
+                    <span>Customer Phone Number *</span>
                   </label>
                   <input
                     type="tel"

@@ -10,7 +10,7 @@ import { BookingStatus, Booking, CarWash, WashService } from '../types.js';
 import {
   Briefcase as BriefcaseIcon, Calendar as CalendarIcon, Clock as ClockIcon, Check as CheckIcon, ChevronRight as ChevronRightIcon,
   CheckCircle as CheckCircleIcon, Info as InfoIcon, MapPin as MapPinIcon, CalendarDays, ChevronLeft, ChevronRight, Plus,
-  Sparkles, Phone, Car, User as UserIcon, X, CheckCheck, Pencil
+  Sparkles, Phone, Car, User as UserIcon, X, CheckCheck, Pencil, MessageCircle
 } from 'lucide-react';
 import { EditBookingModal } from '../components/EditBookingModal.js';
 import { ServicePickerModal } from '../components/ServicePickerModal.js';
@@ -199,6 +199,21 @@ export const EmployeeDashboard: React.FC = () => {
   // Employees can view and manage bookings for their assigned business
   const myLocation = locations.find((loc) => loc.id === user?.businessId);
   const filteredBookings = bookings.filter((b) => b.carWashId === user?.businessId);
+
+  const openWhatsAppCustomer = (phone?: string, customerName?: string, date?: string, timeSlot?: string, serviceName?: string) => {
+    if (!phone) {
+      return;
+    }
+    let cleaned = phone.replace(/[^0-9]/g, '');
+    if (cleaned.length === 7) {
+      cleaned = '673' + cleaned;
+    } else if (!cleaned.startsWith('673') && cleaned.length === 8) {
+      cleaned = '673' + cleaned;
+    }
+    const text = `Halo ${customerName || 'Customer'}! This is ${myLocation?.name || 'Autoshine BN'}. Regarding your booking for ${serviceName || 'Car Wash Service'} on ${date || ''} (${timeSlot || ''}): `;
+    const url = `https://wa.me/${cleaned}?text=${encodeURIComponent(text)}`;
+    window.open(url, '_blank');
+  };
 
   // Auto set initial service price when service selected
   useEffect(() => {
@@ -456,8 +471,41 @@ export const EmployeeDashboard: React.FC = () => {
                           )}
                         </div>
 
-                        <div className="text-left">
+                        <div className="text-left space-y-1">
                           <strong className="text-slate-800 text-sm sm:text-base block">{bk.customerName}</strong>
+
+                          {/* Customer Phone Number with Icon & Label */}
+                          {bk.customerPhone && bk.customerPhone.trim() !== '' && bk.customerPhone.trim().toUpperCase() !== 'NA' && bk.customerPhone.trim().toUpperCase() !== 'N/A' ? (
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="inline-flex items-center gap-1 text-xs text-slate-700 font-mono font-bold bg-slate-50 px-2 py-0.5 rounded-lg border border-slate-200">
+                                <Phone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                <span className="text-[10px] text-slate-400 font-sans uppercase font-bold">Phone:</span>
+                                <a href={`tel:${bk.customerPhone}`} className="hover:text-amber-600 hover:underline">{bk.customerPhone}</a>
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => openWhatsAppCustomer(bk.customerPhone, bk.customerName, bk.date, bk.timeSlot, bk.serviceName)}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-[10px] font-bold border border-emerald-200 cursor-pointer shadow-2xs"
+                                title="Send WhatsApp Message"
+                              >
+                                <MessageCircle className="w-3 h-3 fill-emerald-600" />
+                                <span>WhatsApp</span>
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 text-[10px] italic flex items-center gap-1">
+                              <Phone className="w-3 h-3 text-slate-300" />
+                              <span>No phone recorded</span>
+                            </span>
+                          )}
+
+                          {bk.vehicleInfo && (
+                            <div className="flex items-center gap-1.5 text-xs text-slate-600 font-semibold">
+                              <Car className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              <span>Vehicle: <strong>{bk.vehicleInfo}</strong></span>
+                            </div>
+                          )}
+
                           {bk.paymentBank ? (
                             <span className="inline-flex items-center gap-1 text-[10px] bg-indigo-50 border border-indigo-100 text-indigo-700 font-extrabold px-2 py-0.5 rounded-lg mt-1 font-mono uppercase">
                               💳 Bank Transfer: {bk.paymentBank}
@@ -867,10 +915,42 @@ export const EmployeeDashboard: React.FC = () => {
                                   </span>
                                 </div>
 
-                                <div className="text-[11px] text-slate-600 space-y-0.5 font-mono">
-                                  <p>⏰ Slot: <strong>{bk.timeSlot}</strong></p>
-                                  <p>🚗 Info: {bk.vehicleInfo || bk.customerPhone || 'N/A'}</p>
-                                  <p>🧼 Service: {bk.serviceName || 'Standard Wash'} (BND ${(bk.price || 15).toFixed(2)})</p>
+                                <div className="text-[11px] text-slate-600 space-y-1 font-mono">
+                                  <p className="flex items-center gap-1.5 font-sans font-bold text-slate-700">
+                                    <ClockIcon className="w-3 h-3 text-slate-400 shrink-0" />
+                                    <span>Slot: <strong>{bk.timeSlot}</strong></span>
+                                  </p>
+                                  {bk.customerPhone && bk.customerPhone.trim() !== '' && bk.customerPhone.trim().toUpperCase() !== 'NA' && bk.customerPhone.trim().toUpperCase() !== 'N/A' ? (
+                                    <div className="flex items-center justify-between gap-1 py-0.5 font-mono">
+                                      <span className="flex items-center gap-1.5 text-slate-700 font-bold">
+                                        <Phone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                        <span className="text-[10px] text-slate-400 font-sans uppercase font-bold">Phone:</span>
+                                        <a href={`tel:${bk.customerPhone}`} className="hover:text-amber-600 hover:underline">{bk.customerPhone}</a>
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => openWhatsAppCustomer(bk.customerPhone, bk.customerName, bk.date, bk.timeSlot, bk.serviceName)}
+                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded text-[9px] font-bold border border-emerald-200 cursor-pointer shadow-2xs"
+                                        title="Send WhatsApp Message"
+                                      >
+                                        <MessageCircle className="w-2.5 h-2.5 fill-emerald-600" />
+                                        <span>WhatsApp</span>
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <p className="flex items-center gap-1 text-slate-400 text-[10px] italic">
+                                      <Phone className="w-3 h-3 text-slate-300 shrink-0" />
+                                      <span>No phone recorded</span>
+                                    </p>
+                                  )}
+                                  <p className="flex items-center gap-1.5 text-slate-600">
+                                    <Car className="w-3 h-3 text-slate-400 shrink-0" />
+                                    <span>Plate / Model: {bk.vehicleInfo || 'N/A'}</span>
+                                  </p>
+                                  <p className="flex items-center gap-1.5 text-slate-600">
+                                    <Sparkles className="w-3 h-3 text-amber-500 shrink-0" />
+                                    <span>Service: {bk.serviceName || 'Standard Wash'} (${(bk.price || 15).toFixed(2)})</span>
+                                  </p>
                                 </div>
 
                                 {/* Status Toggle Actions */}
@@ -1050,8 +1130,9 @@ export const EmployeeDashboard: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
-                    Customer Phone *
+                  <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1 flex items-center gap-1">
+                    <Phone className="w-3 h-3 text-emerald-600 shrink-0" />
+                    <span>Customer Phone *</span>
                   </label>
                   <input
                     type="text"

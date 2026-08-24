@@ -378,7 +378,7 @@ export const SpecialUserDashboard: React.FC = () => {
                           <label className="block text-xs font-bold text-slate-600 mb-1">Email Address (Login ID)</label>
                           <input
                             type="email"
-                            placeholder="owner@carwash.bn"
+                            placeholder="Email Address"
                             value={ownerEmail}
                             onChange={(e) => setOwnerEmail(e.target.value)}
                             className="w-full px-3.5 py-2.5 border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-50 rounded-xl outline-none font-medium"

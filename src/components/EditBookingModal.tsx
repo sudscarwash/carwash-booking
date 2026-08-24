@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Check, Plus, Trash2, Tag, Car, FileText, AlertCircle, Sparkles, DollarSign } from 'lucide-react';
+import { X, Check, Plus, Trash2, Tag, Car, FileText, AlertCircle, Sparkles, DollarSign, Phone } from 'lucide-react';
 import { Booking, CarWash, WashService } from '../types';
 import { useApp } from '../context/AppContext';
 
@@ -256,9 +256,17 @@ export const EditBookingModal: React.FC<EditBookingModalProps> = ({
             <h2 className="text-lg sm:text-xl font-black tracking-tight text-white">
               Edit Booking Services & Add-ons
             </h2>
-            <p className="text-xs text-slate-300 font-medium mt-0.5">
-              Customer: <strong className="text-amber-300 font-extrabold">{booking.customerName}</strong> ({booking.date} @ {booking.timeSlot})
-            </p>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-300 font-medium mt-1">
+              <span>Customer: <strong className="text-amber-300 font-extrabold">{booking.customerName}</strong></span>
+              {booking.customerPhone && (
+                <span className="inline-flex items-center gap-1 font-mono text-emerald-300 font-bold bg-white/10 px-2 py-0.5 rounded-md">
+                  <Phone className="w-3 h-3 text-emerald-400 shrink-0" />
+                  <span className="text-[10px] text-slate-300 font-sans uppercase font-bold">Phone:</span>
+                  <span>{booking.customerPhone}</span>
+                </span>
+              )}
+              <span className="text-slate-400">({booking.date} @ {booking.timeSlot})</span>
+            </div>
           </div>
           <button
             onClick={onClose}

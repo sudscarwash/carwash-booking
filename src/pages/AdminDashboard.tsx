@@ -858,7 +858,7 @@ export const AdminDashboard: React.FC = () => {
                   <input
                     type="email"
                     required
-                    placeholder="e.g. test.user@gmail.com"
+                    placeholder="Email Address"
                     value={testEmailRecipient}
                     onChange={(e) => setTestEmailRecipient(e.target.value)}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:bg-white focus:border-red-500 outline-none"
@@ -1553,7 +1553,7 @@ export const AdminDashboard: React.FC = () => {
                       <div className="space-y-2">
                         <input
                           type="email"
-                          placeholder="your-email@example.com"
+                          placeholder="Email Address"
                           value={testEmailAddress}
                           onChange={(e) => setTestEmailAddress(e.target.value)}
                           className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-500 bg-white text-slate-800 font-medium"
@@ -1948,7 +1948,7 @@ export const AdminDashboard: React.FC = () => {
                         <label className="block text-xs font-semibold text-slate-600 mb-1">Owner Contact Name</label>
                         <input
                           type="text"
-                          placeholder="e.g. Jack Owner"
+                          placeholder="e.g. Jack Wilson"
                           value={onboardOwnerName}
                           onChange={(e) => setOnboardOwnerName(e.target.value)}
                           className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-500"
@@ -1959,7 +1959,7 @@ export const AdminDashboard: React.FC = () => {
                         <label className="block text-xs font-semibold text-slate-600 mb-1">Email Address</label>
                         <input
                           type="email"
-                          placeholder="owner@carwash.com"
+                          placeholder="Email Address"
                           value={onboardOwnerEmail}
                           onChange={(e) => setOnboardOwnerEmail(e.target.value)}
                           className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-500"

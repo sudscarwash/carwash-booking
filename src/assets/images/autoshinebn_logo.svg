@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" width="100%" height="100%">
+  <defs>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@800;900&amp;display=swap');
+      .brand-text-white {
+        font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+        font-weight: 800;
+        fill: #FFFFFF;
+        font-size: 104px;
+        letter-spacing: -2px;
+      }
+      .brand-text-yellow {
+        font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+        font-weight: 800;
+        fill: #FFD200;
+        font-size: 104px;
+        letter-spacing: -2px;
+      }
+    </style>
+  </defs>
+
+  <!-- Solid Royal Blue Background -->
+  <rect width="1000" height="1000" fill="#0058E6"/>
+
+  <!-- Top-Right 4-Point Golden Sparkle Star -->
+  <path d="M 712 260 
+           Q 712 312 764 312 
+           Q 712 312 712 364 
+           Q 712 312 660 312 
+           Q 712 312 712 260 Z" 
+        fill="#FFD200"/>
+
+  <!-- Speed Lines (3 horizontal rounded pills on the left) -->
+  <!-- Top line -->
+  <rect x="304" y="354" width="170" height="26" rx="13" fill="#FFFFFF"/>
+  <!-- Middle line (longest) -->
+  <rect x="225" y="413" width="225" height="26" rx="13" fill="#FFFFFF"/>
+  <!-- Bottom line -->
+  <rect x="280" y="478" width="170" height="26" rx="13" fill="#FFFFFF"/>
+
+  <!-- Front View Car Silhouette (White Body) -->
+  <g fill="#FFFFFF">
+    <!-- Main Car Body Front Profile -->
+    <path d="
+      M 436 414
+      C 434 374, 452 354, 542 354
+      L 630 354
+      C 720 354, 738 374, 736 414
+      L 744 414
+      C 752 414, 757 420, 757 427
+      C 757 434, 752 440, 744 440
+      L 736 440
+      C 742 458, 754 485, 754 515
+      C 754 532, 750 548, 738 548
+      L 698 548
+      L 698 522
+      C 698 520, 696 518, 694 518
+      L 478 518
+      C 476 518, 474 520, 474 522
+      L 474 548
+      L 434 548
+      C 422 548, 418 532, 418 515
+      C 418 485, 430 458, 436 440
+      L 428 440
+      C 420 440, 415 434, 415 427
+      C 415 420, 420 414, 428 414
+      Z
+    "/>
+  </g>
+
+  <!-- Front Car Cutouts in Royal Blue (Windshield & Headlights) -->
+  <g fill="#0058E6">
+    <!-- Windshield Cutout -->
+    <path d="
+      M 464 416
+      C 460 380, 475 370, 542 370
+      L 630 370
+      C 697 370, 712 380, 708 416
+      C 706 424, 694 426, 680 426
+      L 492 426
+      C 478 426, 466 424, 464 416
+      Z
+    "/>
+
+    <!-- Left Headlight (Slanted Front View) -->
+    <path d="
+      M 436 456
+      C 455 456, 474 466, 492 481
+      C 474 484, 452 484, 436 476
+      C 434 469, 434 462, 436 456
+      Z
+    "/>
+
+    <!-- Right Headlight (Slanted Front View) -->
+    <path d="
+      M 736 456
+      C 717 456, 698 466, 680 481
+      C 698 484, 720 484, 736 476
+      C 738 469, 738 462, 736 456
+      Z
+    "/>
+  </g>
+
+  <!-- Brand Typography: autoshinebn -->
+  <g id="brand-text">
+    <text x="500" y="725" text-anchor="middle">
+      <tspan class="brand-text-white">autoshine</tspan><tspan class="brand-text-yellow">bn</tspan>
+    </text>
+  </g>
+</svg>

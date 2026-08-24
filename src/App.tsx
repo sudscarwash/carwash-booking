@@ -14,7 +14,7 @@ import { SpecialUserDashboard } from './pages/SpecialUserDashboard.js';
 import { Role } from './types.js';
 import { isValidEmail } from './lib/validation.js';
 import { Lock, Mail, UserPlus, LogIn, Sparkles, Compass, Sliders, Briefcase, Shield, Check, Info, X, AlertTriangle, LogOut, Eye, EyeOff } from 'lucide-react';
-import autoshineLogo from './assets/images/autoshine_logo_1783916518342.jpg';
+import autoshineLogo from './assets/images/autoshinebn_logo.jpg';
 
 const MainAppContent: React.FC = () => {
   const { user, loading, login, register, verifyRegistrationOtp, resendRegistrationOtp, notification, clearNotification, forgotPassword, resetPassword, showNotification } = useApp();
@@ -452,7 +452,7 @@ const MainAppContent: React.FC = () => {
                         <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
                         <input
                           type="email"
-                          placeholder="your-email@carwash.com"
+                          placeholder="Email Address"
                           value={email}
                           onChange={(e) => setEmail(e.target.value)}
                           className="w-full pl-10 pr-3 py-2.5 border border-slate-200 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 rounded-xl outline-none text-slate-800 text-sm transition-all"
@@ -625,7 +625,7 @@ const MainAppContent: React.FC = () => {
                         <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Full Name</label>
                         <input
                           type="text"
-                          placeholder="Alex Customer"
+                          placeholder="e.g. Alex Tan"
                           value={name}
                           onChange={(e) => setName(e.target.value)}
                           className="w-full px-3 py-2.5 border border-slate-200 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 rounded-xl outline-none text-slate-800 text-sm transition-all"
@@ -641,7 +641,7 @@ const MainAppContent: React.FC = () => {
                         <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
                         <input
                           type="email"
-                          placeholder="customer@carwash.com"
+                          placeholder="Email Address"
                           value={email}
                           onChange={(e) => setEmail(e.target.value)}
                           className="w-full pl-10 pr-3 py-2.5 border border-slate-200 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 rounded-xl outline-none text-slate-800 text-sm transition-all"
