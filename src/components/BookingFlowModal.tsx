@@ -28,7 +28,7 @@ import { CarWash, User, WashService } from '../types.js';
 import { useApp } from '../context/AppContext.js';
 import { MapSimulation } from './MapSimulation.js';
 import { LocalPaymentForm } from './LocalPaymentForm.js';
-import autoshineLogo from '../assets/images/autoshinebn_logo.jpg';
+import autoshineLogo from '../assets/images/autoshine_logo.jpg';
 
 interface TimeSlotItem {
   timeSlot: string;

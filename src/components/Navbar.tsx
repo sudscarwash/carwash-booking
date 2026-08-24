@@ -7,7 +7,7 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext.js';
 import { LogOut, Shield, User as UserIcon, Calendar, Compass, Sliders, Briefcase, Sparkles, Key, Lock, X, ChevronDown, Bell, CheckCheck, Clock, MessageSquare } from 'lucide-react';
 import { Role } from '../types.js';
-import autoshineLogo from '../assets/images/autoshinebn_logo.jpg';
+import autoshineLogo from '../assets/images/autoshine_logo.jpg';
 
 interface NavbarProps {
   activeTab: string;

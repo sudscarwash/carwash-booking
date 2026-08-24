@@ -14,7 +14,7 @@ import { SpecialUserDashboard } from './pages/SpecialUserDashboard.js';
 import { Role } from './types.js';
 import { isValidEmail } from './lib/validation.js';
 import { Lock, Mail, UserPlus, LogIn, Sparkles, Compass, Sliders, Briefcase, Shield, Check, Info, X, AlertTriangle, LogOut, Eye, EyeOff } from 'lucide-react';
-import autoshineLogo from './assets/images/autoshinebn_logo.jpg';
+import autoshineLogo from './assets/images/autoshine_logo.jpg';
 
 const MainAppContent: React.FC = () => {
   const { user, loading, login, register, verifyRegistrationOtp, resendRegistrationOtp, notification, clearNotification, forgotPassword, resetPassword, showNotification } = useApp();

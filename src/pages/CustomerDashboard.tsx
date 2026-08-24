@@ -10,7 +10,7 @@ import { LocalPaymentForm } from '../components/LocalPaymentForm.js';
 import { BookingFlowModal } from '../components/BookingFlowModal.js';
 import { Search, Calendar, Clock, MapPin, History, CheckCircle, AlertTriangle, X, ChevronRight, ChevronLeft, ChevronDown, Sliders, Info, Sparkles, Navigation, User, Edit3, Check, Instagram, Landmark, Lock, Key, FileText, Maximize2, Filter } from 'lucide-react';
 import { CarWash, Booking, BookingStatus } from '../types.js';
-import autoshineLogo from '../assets/images/autoshinebn_logo.jpg';
+import autoshineLogo from '../assets/images/autoshine_logo.jpg';
 
 interface TimeSlotItem {
   timeSlot: string;
