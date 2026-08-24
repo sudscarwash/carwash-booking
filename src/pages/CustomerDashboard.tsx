@@ -1591,8 +1591,8 @@ export const CustomerDashboard: React.FC = () => {
             {/* Header / Brand */}
             <div className="flex items-center justify-between p-6 border-b border-slate-100 shrink-0">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 flex items-center justify-center overflow-hidden rounded-xl bg-slate-50 border border-slate-200">
-                  <img src={autoshineLogo} alt="Autoshine BN Logo" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                <div className="h-10 w-10 flex items-center justify-center overflow-hidden rounded-xl bg-[#0058E6] shadow-xs">
+                  <img src={autoshineLogo} alt="Autoshine BN Logo" className="h-full w-full object-contain" referrerPolicy="no-referrer" />
                 </div>
                 <div>
                   <h3 className="font-extrabold text-slate-800 text-sm sm:text-base">AUTOSHINE BN Terms</h3>

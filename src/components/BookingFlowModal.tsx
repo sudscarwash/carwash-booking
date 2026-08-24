@@ -412,7 +412,7 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
             <img 
               src={location.logoUrl || autoshineLogo} 
               alt={location.name} 
-              className="w-9 h-9 rounded-xl object-cover ring-2 ring-white/20 shrink-0" 
+              className="w-9 h-9 rounded-xl object-contain bg-[#0058E6] shrink-0" 
               onError={(e) => {
                 e.currentTarget.src = autoshineLogo;
               }}

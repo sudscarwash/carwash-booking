@@ -369,8 +369,8 @@ const MainAppContent: React.FC = () => {
         /* Dynamic Landing Auth Screen */
         <div className="flex-1 flex flex-col justify-center py-12 sm:px-6 lg:px-8 bg-gradient-to-b from-slate-50 to-slate-100">
           <div className="sm:mx-auto sm:w-full sm:max-w-md text-center px-4">
-            <div className="mx-auto w-24 h-24 overflow-hidden rounded-3xl bg-white shadow-lg border border-slate-100 flex items-center justify-center p-1">
-              <img src={autoshineLogo} alt="Autoshine BN" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+            <div className="mx-auto w-24 h-24 overflow-hidden rounded-3xl bg-[#0058E6] shadow-xl flex items-center justify-center">
+              <img src={autoshineLogo} alt="Autoshine BN" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
             </div>
             <h2 className="mt-4 text-3xl font-black text-slate-800 tracking-tight">
               autoshine bn
@@ -873,8 +873,8 @@ const MainAppContent: React.FC = () => {
             {/* Header */}
             <div className="px-6 py-5 border-b border-slate-150 flex items-center justify-between bg-slate-50">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 overflow-hidden rounded-xl bg-white border border-slate-250 p-0.5 flex items-center justify-center">
-                  <img src={autoshineLogo} alt="Autoshine BN" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                <div className="h-10 w-10 overflow-hidden rounded-xl bg-[#0058E6] flex items-center justify-center shadow-xs">
+                  <img src={autoshineLogo} alt="Autoshine BN" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
                 </div>
                 <div>
                   <h3 className="text-base font-black text-slate-800 tracking-tight">Terms &amp; Conditions</h3>

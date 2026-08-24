@@ -115,8 +115,8 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
         <div className="flex items-center justify-between h-16">
           {/* Logo Brand branding */}
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 flex items-center justify-center overflow-hidden rounded-xl bg-slate-50 border border-slate-150 shadow-xs">
-              <img src={autoshineLogo} alt="Autoshine BN Logo" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+            <div className="h-10 w-10 flex items-center justify-center overflow-hidden rounded-xl bg-[#0058E6] shadow-xs">
+              <img src={autoshineLogo} alt="Autoshine BN Logo" className="h-full w-full object-contain" referrerPolicy="no-referrer" />
             </div>
             <div>
               <span className="text-base font-black text-slate-800 tracking-tight block">
