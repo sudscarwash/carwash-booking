@@ -109,6 +109,79 @@ async function startServer() {
   // Disable X-Powered-By fingerprinting header to prevent stack footprinting
   app.disable('x-powered-by');
 
+  // 🌐 SEO & HOST-BASED SEARCH ENGINE INDEXING CONTROLS
+  // 1. Canonical 301 Redirect: Automatically redirect www.autoshinebn.com -> https://autoshinebn.com
+  // 2. Host-Based noindex: Attach X-Robots-Tag: noindex on non-production domains (Render, Cloud Run, localhost)
+  app.use((req, res, next) => {
+    const rawHost = req.headers.host || req.hostname || '';
+    const hostname = rawHost.split(':')[0].toLowerCase();
+
+    // Canonical 301 redirect from www to apex domain
+    if (hostname === 'www.autoshinebn.com') {
+      res.redirect(301, `https://autoshinebn.com${req.originalUrl}`);
+      return;
+    }
+
+    // Host-Based noindex guard: if not the live production domain, prevent search engine indexing
+    const isProductionDomain = hostname === 'autoshinebn.com';
+    if (!isProductionDomain) {
+      res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive, nosnippet');
+    }
+
+    next();
+  });
+
+  // Dynamic /robots.txt Route
+  app.get('/robots.txt', (req, res) => {
+    const rawHost = req.headers.host || req.hostname || '';
+    const hostname = rawHost.split(':')[0].toLowerCase();
+    const isProductionDomain = hostname === 'autoshinebn.com' || hostname === 'www.autoshinebn.com';
+
+    res.type('text/plain');
+    if (isProductionDomain) {
+      res.send(`User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /uploads/\n\nSitemap: https://autoshinebn.com/sitemap.xml\n`);
+    } else {
+      res.send(`User-agent: *\nDisallow: /\n`);
+    }
+  });
+
+  // Dynamic /sitemap.xml Route
+  app.get('/sitemap.xml', (req, res) => {
+    const rawHost = req.headers.host || req.hostname || '';
+    const hostname = rawHost.split(':')[0].toLowerCase();
+    const isProductionDomain = hostname === 'autoshinebn.com' || hostname === 'www.autoshinebn.com';
+
+    if (!isProductionDomain) {
+      res.status(404).send('Not Found');
+      return;
+    }
+
+    res.type('application/xml');
+    const today = new Date().toISOString().split('T')[0];
+    const sitemapContent = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://autoshinebn.com/</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://autoshinebn.com/login</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://autoshinebn.com/register</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+</urlset>`;
+    res.send(sitemapContent);
+  });
+
   // Enforce HTTP security headers to protect clients (A05: Security Misconfiguration)
   app.use((req, res, next) => {
     // 1. Enforce HTTPS in production (HSTS)
