@@ -61,7 +61,10 @@ import {
   markNotificationAsRead,
   markAllNotificationsAsRead,
   getCustomersForOwner,
-  syncUserBookings
+  syncUserBookings,
+  getPlatformInfo,
+  updatePlatformInfo,
+  getDatabaseDiagnostics
 } from './server/db.js';
 import { 
   isSupabaseAuthEnabled, 
@@ -93,8 +96,29 @@ async function startServer() {
   const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
   // Cloud Run & Container Health Probes MUST be mounted first
-  app.get(['/api/health', '/_healthz', '/healthz', '/health'], (req, res) => {
-    res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+  app.get(['/api/health', '/_healthz', '/healthz', '/health'], async (req, res) => {
+    try {
+      const diag = await getDatabaseDiagnostics();
+      res.status(200).json({ 
+        status: 'ok', 
+        timestamp: new Date().toISOString(),
+        database: diag.storagePersistence,
+        postgresConnected: diag.postgresConnected,
+        databaseType: diag.databaseType,
+      });
+    } catch (e) {
+      res.status(200).json({ status: 'ok', timestamp: new Date().toISOString(), database: 'checking' });
+    }
+  });
+
+  // Diagnostic Endpoint: Provides full visibility into Supabase / PostgreSQL connectivity vs local SQLite
+  app.get('/api/database/diagnostics', async (req, res) => {
+    try {
+      const diag = await getDatabaseDiagnostics();
+      res.json(diag);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Error running database diagnostics' });
+    }
   });
 
   // Immediately bind to port 0.0.0.0:PORT so Cloud Run health check passes in <10ms
@@ -940,13 +964,15 @@ async function startServer() {
   // CAR WASH LOCATION ENDPOINTS
   // ==========================================
 
-  // Public: List all active car washes (with optional search and location-based filtering)
+  // Public: List all active car washes (with optional search and location-based filtering, or includeInactive=true for Admin/Owner management)
   app.get('/api/car-washes', async (req, res) => {
     try {
       const allWashes = await getCarWashes();
-      let locations = allWashes.filter((cw) => cw.isActive);
+      const { search, lat, lng, radius, includeInactive } = req.query;
 
-      const { search, lat, lng, radius } = req.query;
+      let locations = includeInactive === 'true' 
+        ? allWashes 
+        : allWashes.filter((cw) => cw.isActive);
 
       if (search) {
         const q = (search as string).toLowerCase();
@@ -1068,7 +1094,8 @@ async function startServer() {
           slotDuration, capacityPerSlot, isActive, phone, instagram, logoUrl,
           bibdAccountName, bibdAccountNo, bibdEnabled, bibdQrImageUrl,
           baiduriAccountName, baiduriAccountNo, baiduriEnabled, baiduriQrImageUrl,
-          customPaymentsJson, paymentPolicy, services, servicesJson, ownerId
+          customPaymentsJson, paymentPolicy, services, servicesJson, ownerId,
+          scheduleOverrides, scheduleOverridesJson
         } = req.body;
 
         let parsedServices = carWash.services;
@@ -1079,6 +1106,17 @@ async function startServer() {
             parsedServices = typeof servicesJson === 'string' ? JSON.parse(servicesJson) : servicesJson;
           } catch (e) {
             console.error('Error parsing servicesJson in PUT /api/car-washes/:id:', e);
+          }
+        }
+
+        let parsedOverrides = carWash.scheduleOverrides;
+        if (scheduleOverrides !== undefined) {
+          parsedOverrides = scheduleOverrides;
+        } else if (scheduleOverridesJson !== undefined) {
+          try {
+            parsedOverrides = typeof scheduleOverridesJson === 'string' ? JSON.parse(scheduleOverridesJson) : scheduleOverridesJson;
+          } catch (e) {
+            console.error('Error parsing scheduleOverridesJson in PUT /api/car-washes/:id:', e);
           }
         }
 
@@ -1107,14 +1145,65 @@ async function startServer() {
           paymentPolicy: paymentPolicy !== undefined ? paymentPolicy : carWash.paymentPolicy,
           services: parsedServices,
           servicesJson: parsedServices ? JSON.stringify(parsedServices) : carWash.servicesJson,
+          scheduleOverrides: parsedOverrides,
+          scheduleOverridesJson: parsedOverrides ? JSON.stringify(parsedOverrides) : carWash.scheduleOverridesJson,
           ownerId: (req.user!.role === Role.ADMIN || req.user!.role === Role.SPECIAL) && ownerId ? ownerId : carWash.ownerId,
         };
 
-
         await updateCarWash(req.params.id, updatedData);
-        await addAuditLog(req.user!.id, req.user!.email, 'CAR_WASH_UPDATE', `Updated configuration for location: ${carWash.name}`);
+        await addAuditLog(
+          req.user!.id, 
+          req.user!.email, 
+          'CAR_WASH_UPDATE', 
+          `Updated configuration for location: ${carWash.name}${isActive !== undefined ? ` (Status: ${isActive ? 'ACTIVE' : 'SUSPENDED'})` : ''}`
+        );
 
         res.json({ ...carWash, ...updatedData });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Internal server error' });
+      }
+    }
+  );
+
+  // ==========================================
+  // PLATFORM INFORMATION & ENQUIRY ENDPOINTS
+  // ==========================================
+
+  // Public: Get global Autoshine contact and enquiry information
+  app.get('/api/platform-info', async (req, res) => {
+    try {
+      const info = await getPlatformInfo();
+      res.json(info);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Admin / Special User: Update global Autoshine platform contact information
+  app.put(
+    '/api/admin/platform-info',
+    authenticateToken,
+    requireRoles([Role.ADMIN, Role.SPECIAL]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { email, contact, whatsapp, address, companyName, description } = req.body;
+        const updated = await updatePlatformInfo({
+          email,
+          contact,
+          whatsapp,
+          address,
+          companyName,
+          description,
+        });
+
+        await addAuditLog(
+          req.user!.id,
+          req.user!.email,
+          'PLATFORM_INFO_UPDATE',
+          `Updated Autoshine Global Information (Email: ${updated.email}, Contact: ${updated.contact}, WhatsApp: ${updated.whatsapp})`
+        );
+
+        res.json(updated);
       } catch (error: any) {
         res.status(500).json({ error: error.message || 'Internal server error' });
       }

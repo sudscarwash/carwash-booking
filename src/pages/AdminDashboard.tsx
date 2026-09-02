@@ -9,7 +9,7 @@ import { MapSimulation } from '../components/MapSimulation.js';
 import {
   ShieldAlert, ShieldCheck, Users, Activity, Sliders, Check, X,
   Plus, Edit, UserPlus, FileText, Ban, CheckCircle, Info, Lock, Key, Sparkles, MapPin, Navigation,
-  Database, Mail, AlertTriangle, RefreshCw, Server, Send, Eye, Trash2, Terminal
+  Database, Mail, AlertTriangle, RefreshCw, Server, Send, Eye, Trash2, Terminal, Building, Phone
 } from 'lucide-react';
 import { Role, User, MapPreset } from '../types.js';
 import { isValidEmail } from '../lib/validation.js';
@@ -20,6 +20,8 @@ export const AdminDashboard: React.FC = () => {
     bookings,
     locations,
     logs,
+    platformInfo,
+    updatePlatformInfo,
     adminCreateUser,
     adminUpdateUser,
     createOwnerWithBusiness,
@@ -81,7 +83,41 @@ export const AdminDashboard: React.FC = () => {
   const [editLocSubmitting, setEditLocSubmitting] = useState(false);
   const [deletingLocId, setDeletingLocId] = useState<string | null>(null);
 
-  const [activeSubTab, setActiveSubTab] = useState<'users' | 'logs' | 'emails' | 'businesses' | 'presets' | 'system'>('users');
+  const [activeSubTab, setActiveSubTab] = useState<'users' | 'logs' | 'emails' | 'businesses' | 'presets' | 'info' | 'system'>('users');
+
+  // Platform & Enquiry Info States
+  const [infoEmail, setInfoEmail] = useState('');
+  const [infoContact, setInfoContact] = useState('');
+  const [infoWhatsapp, setInfoWhatsapp] = useState('');
+  const [infoAddress, setInfoAddress] = useState('');
+  const [infoCompanyName, setInfoCompanyName] = useState('Autoshine BN');
+  const [infoDesc, setInfoDesc] = useState('');
+  const [infoSaving, setInfoSaving] = useState(false);
+
+  useEffect(() => {
+    if (platformInfo) {
+      setInfoEmail(platformInfo.email || '');
+      setInfoContact(platformInfo.contact || '');
+      setInfoWhatsapp(platformInfo.whatsapp || '');
+      setInfoAddress(platformInfo.address || '');
+      setInfoCompanyName(platformInfo.companyName || 'Autoshine BN');
+      setInfoDesc(platformInfo.description || '');
+    }
+  }, [platformInfo]);
+
+  const handleSavePlatformInfo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setInfoSaving(true);
+    await updatePlatformInfo({
+      email: infoEmail.trim(),
+      contact: infoContact.trim(),
+      whatsapp: infoWhatsapp.trim(),
+      address: infoAddress.trim(),
+      companyName: infoCompanyName.trim(),
+      description: infoDesc.trim(),
+    });
+    setInfoSaving(false);
+  };
 
   // Email Sandbox & Log State
   interface EmailLogEntry {
@@ -596,7 +632,7 @@ export const AdminDashboard: React.FC = () => {
         </button>
         <button
           onClick={() => setActiveSubTab('presets')}
-          className={`pb-3.5 px-1 border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
+          className={`pb-3.5 px-1 border-b-2 transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
             activeSubTab === 'presets'
               ? 'border-red-600 text-red-600 font-bold'
               : 'border-transparent text-slate-500 hover:text-slate-700'
@@ -606,8 +642,19 @@ export const AdminDashboard: React.FC = () => {
           <Navigation className="h-4 w-4" /> Map Presets
         </button>
         <button
+          onClick={() => setActiveSubTab('info')}
+          className={`pb-3.5 px-1 border-b-2 transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+            activeSubTab === 'info'
+              ? 'border-red-600 text-red-600 font-bold'
+              : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}
+          id="admin-subtab-info"
+        >
+          <Building className="h-4 w-4" /> Autoshine Information
+        </button>
+        <button
           onClick={() => setActiveSubTab('system')}
-          className={`pb-3.5 px-1 border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
+          className={`pb-3.5 px-1 border-b-2 transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
             activeSubTab === 'system'
               ? 'border-red-600 text-red-600 font-bold'
               : 'border-transparent text-slate-500 hover:text-slate-700'
@@ -1108,16 +1155,30 @@ export const AdminDashboard: React.FC = () => {
                 </div>
 
                 <div className="border-t border-slate-100 pt-3 mt-4 flex items-center justify-between">
-                  <div className="flex gap-4 text-[11px] text-slate-400 font-medium">
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-[11px] text-slate-400 font-medium">
                     <span>Slot: {loc.slotDuration} min</span>
                     <span>Capacity: {loc.capacityPerSlot} cap</span>
-                    <span className={`px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider ${
-                      loc.isActive ? 'bg-green-50 text-green-700 border border-green-100' : 'bg-amber-50 text-amber-700 border border-amber-100'
+                    <span className={`px-2 py-0.5 rounded-md text-[9px] font-extrabold uppercase tracking-wider ${
+                      loc.isActive ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-800 border border-amber-300'
                     }`}>
-                      {loc.isActive ? 'Active' : 'Inactive'}
+                      {loc.isActive ? 'Active (Live)' : 'Suspended (Hidden)'}
                     </span>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex items-center gap-1.5 sm:gap-2">
+                    <button
+                      onClick={async () => {
+                        await updateLocationConfig(loc.id, { isActive: !loc.isActive });
+                      }}
+                      className={`text-[10px] font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer transition-colors ${
+                        loc.isActive
+                          ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200'
+                          : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200'
+                      }`}
+                      title={loc.isActive ? "Suspend operator (hides location from customer search)" : "Activate operator (makes location visible to customers)"}
+                    >
+                      {loc.isActive ? <Ban className="h-3 w-3" /> : <CheckCircle className="h-3 w-3" />}
+                      {loc.isActive ? 'Suspend' : 'Activate'}
+                    </button>
                     <button
                       onClick={() => handleOpenEditLocation(loc)}
                       className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
@@ -1327,6 +1388,202 @@ export const AdminDashboard: React.FC = () => {
                     </div>
                   ))
                 )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sub Tab: Autoshine Global Information & Enquiry Management */}
+      {activeSubTab === 'info' && (
+        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+            <div>
+              <h2 className="text-base sm:text-lg font-bold text-slate-800 flex items-center gap-2">
+                <Building className="h-5 w-5 text-red-600" />
+                Autoshine BN Global Information &amp; Enquiry Management
+              </h2>
+              <p className="text-xs text-slate-400 mt-1">
+                Configure platform contact details, support channels, and onboarding inquiry card info displayed to prospective carwash owners on the login screen.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold uppercase bg-sky-50 text-sky-700 border border-sky-200 px-2.5 py-1 rounded-xl flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse"></span>
+                Live Sync Enabled
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            {/* Left Column: Form to Edit Platform Information */}
+            <div className="lg:col-span-7 space-y-5">
+              <form onSubmit={handleSavePlatformInfo} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
+                      Official Enquiry Email
+                    </label>
+                    <div className="relative">
+                      <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                      <input
+                        type="email"
+                        value={infoEmail}
+                        onChange={(e) => setInfoEmail(e.target.value)}
+                        placeholder="enquiry@autoshinebn.com"
+                        className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium focus:ring-2 focus:ring-red-100 focus:border-red-500 outline-none"
+                        required
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">Used for owner partnership enquiries and customer support.</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
+                      WhatsApp Direct Number
+                    </label>
+                    <div className="relative">
+                      <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                      <input
+                        type="text"
+                        value={infoWhatsapp}
+                        onChange={(e) => setInfoWhatsapp(e.target.value)}
+                        placeholder="+673 812 3456"
+                        className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium focus:ring-2 focus:ring-red-100 focus:border-red-500 outline-none"
+                        required
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">Auto-generates direct WhatsApp chat links for owners.</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
+                      General Phone / Hotline
+                    </label>
+                    <div className="relative">
+                      <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                      <input
+                        type="text"
+                        value={infoContact}
+                        onChange={(e) => setInfoContact(e.target.value)}
+                        placeholder="+673 222 3456"
+                        className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium focus:ring-2 focus:ring-red-100 focus:border-red-500 outline-none"
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">Office hotline / secondary telephone number.</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
+                      Platform / Brand Name
+                    </label>
+                    <div className="relative">
+                      <Building className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                      <input
+                        type="text"
+                        value={infoCompanyName}
+                        onChange={(e) => setInfoCompanyName(e.target.value)}
+                        placeholder="Autoshine BN"
+                        className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium focus:ring-2 focus:ring-red-100 focus:border-red-500 outline-none"
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">Platform brand display name.</p>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
+                    Operating / Headquarters Address
+                  </label>
+                  <div className="relative">
+                    <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                    <textarea
+                      rows={2}
+                      value={infoAddress}
+                      onChange={(e) => setInfoAddress(e.target.value)}
+                      placeholder="Unit 12, Spg 45, Jalan Gadong, Bandar Seri Begawan, Brunei Darussalam"
+                      className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium focus:ring-2 focus:ring-red-100 focus:border-red-500 outline-none"
+                    />
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1">Official physical or business postal address.</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
+                    Platform Tagline &amp; Overview
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={infoDesc}
+                    onChange={(e) => setInfoDesc(e.target.value)}
+                    placeholder="Brunei's premier smart car wash & detailing booking platform."
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium focus:ring-2 focus:ring-red-100 focus:border-red-500 outline-none"
+                  />
+                </div>
+
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-3">
+                  <button
+                    type="submit"
+                    disabled={infoSaving}
+                    className="px-5 py-2.5 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+                    id="save-platform-info-btn"
+                  >
+                    {infoSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                    <span>{infoSaving ? 'Saving Changes...' : 'Save Autoshine Information'}</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* Right Column: Live Login Screen Card Preview */}
+            <div className="lg:col-span-5 space-y-4">
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-200/80 pb-3">
+                  <div className="flex items-center gap-2">
+                    <Eye className="w-4 h-4 text-slate-500" />
+                    <span className="font-bold text-xs text-slate-700 uppercase tracking-wider">Live Preview: Login Page Card</span>
+                  </div>
+                  <span className="text-[9px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded font-mono">Public View</span>
+                </div>
+
+                <p className="text-[11px] text-slate-500">
+                  This preview renders exactly how prospective carwash operators and business owners will see your enquiry card on the login and register screens:
+                </p>
+
+                {/* Actual Card Render */}
+                <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm text-center space-y-2">
+                  <div className="flex items-center justify-center gap-1.5 text-slate-800 font-extrabold text-xs sm:text-sm">
+                    <div className="p-1 bg-sky-100 text-sky-700 rounded-lg">
+                      <Building className="w-3.5 h-3.5" />
+                    </div>
+                    <span>Carwash Owner &amp; Business Enquiry</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    Interested in listing your carwash business on {infoCompanyName || 'Autoshine BN'}? Please contact our onboarding team:
+                  </p>
+                  <div className="flex flex-col gap-2 pt-1">
+                    {infoEmail && (
+                      <div className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-50 text-sky-700 font-bold text-xs border border-sky-200">
+                        <Mail className="w-3.5 h-3.5 shrink-0" />
+                        <span className="truncate">{infoEmail}</span>
+                      </div>
+                    )}
+                    {(infoWhatsapp || infoContact) && (
+                      <div className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 font-bold text-xs border border-emerald-200">
+                        <Phone className="w-3.5 h-3.5 shrink-0" />
+                        <span>WhatsApp: {infoWhatsapp || infoContact}</span>
+                      </div>
+                    )}
+                    {infoAddress && (
+                      <div className="flex items-center justify-center gap-1 text-[10px] text-slate-400 pt-1">
+                        <MapPin className="w-3 h-3 shrink-0" />
+                        <span className="truncate">{infoAddress}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           </div>

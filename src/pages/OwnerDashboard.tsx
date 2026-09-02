@@ -303,6 +303,117 @@ export const OwnerDashboard: React.FC = () => {
     bookingsByDate: {},
   });
 
+  // 🌴 Holiday & Closure Management States
+  const [showHolidayModal, setShowHolidayModal] = useState(false);
+  const [editingHolidayIndex, setEditingHolidayIndex] = useState<number | null>(null);
+  const [holidayDate, setHolidayDate] = useState<string>(getTodayDateString());
+  const [holidayType, setHolidayType] = useState<'FULL_DAY' | 'HALF_DAY_MORNING' | 'HALF_DAY_AFTERNOON' | 'CUSTOM_HOURS'>('FULL_DAY');
+  const [holidayReason, setHolidayReason] = useState<string>('');
+  const [holidayCustomStart, setHolidayCustomStart] = useState<string>('08:00');
+  const [holidayCustomEnd, setHolidayCustomEnd] = useState<string>('13:00');
+  const [isSavingHoliday, setIsSavingHoliday] = useState(false);
+
+  const getBusinessHolidays = (): any[] => {
+    if (!selectedBusiness) return [];
+    let overrides = selectedBusiness.scheduleOverrides;
+    if (!overrides && (selectedBusiness as any).scheduleOverridesJson) {
+      try {
+        overrides = typeof (selectedBusiness as any).scheduleOverridesJson === 'string'
+          ? JSON.parse((selectedBusiness as any).scheduleOverridesJson)
+          : (selectedBusiness as any).scheduleOverridesJson;
+      } catch {
+        overrides = [];
+      }
+    }
+    return Array.isArray(overrides) ? overrides : [];
+  };
+
+  const openAddHolidayModal = (prefillDate?: string) => {
+    setEditingHolidayIndex(null);
+    setHolidayDate(prefillDate || selectedCalendarDate || getTodayDateString());
+    setHolidayType('FULL_DAY');
+    setHolidayReason('');
+    setHolidayCustomStart('08:00');
+    setHolidayCustomEnd('13:00');
+    setShowHolidayModal(true);
+  };
+
+  const openEditHolidayModal = (override: any, index: number) => {
+    setEditingHolidayIndex(index);
+    setHolidayDate(override.date || getTodayDateString());
+    setHolidayType(override.type || 'FULL_DAY');
+    setHolidayReason(override.reason || '');
+    setHolidayCustomStart(override.customStartTime || '08:00');
+    setHolidayCustomEnd(override.customEndTime || '13:00');
+    setShowHolidayModal(true);
+  };
+
+  const handleSaveHoliday = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!selectedBusiness) return;
+    if (!holidayDate) {
+      showNotification('Please select a date for the holiday / closure.', 'error');
+      return;
+    }
+    setIsSavingHoliday(true);
+    try {
+      const current = [...getBusinessHolidays()];
+      const newOverride = {
+        date: holidayDate,
+        type: holidayType,
+        reason: holidayReason.trim() || (holidayType === 'FULL_DAY' ? 'Public Holiday Closure' : 'Half-Day Closure'),
+        customStartTime: holidayType === 'CUSTOM_HOURS' ? holidayCustomStart : holidayType === 'HALF_DAY_AFTERNOON' ? (holidayCustomStart || '13:00') : undefined,
+        customEndTime: holidayType === 'CUSTOM_HOURS' ? holidayCustomEnd : holidayType === 'HALF_DAY_MORNING' ? (holidayCustomEnd || '13:00') : undefined,
+      };
+
+      let updated: any[];
+      if (editingHolidayIndex !== null && editingHolidayIndex >= 0 && editingHolidayIndex < current.length) {
+        updated = [...current];
+        updated[editingHolidayIndex] = newOverride;
+      } else {
+        const existingIdx = current.findIndex(h => h.date === holidayDate);
+        if (existingIdx >= 0) {
+          updated = [...current];
+          updated[existingIdx] = newOverride;
+        } else {
+          updated = [...current, newOverride];
+        }
+      }
+
+      updated.sort((a, b) => a.date.localeCompare(b.date));
+
+      await updateLocationConfig(selectedBusiness.id, {
+        scheduleOverrides: updated,
+      });
+
+      showNotification(`Holiday / closure saved for ${holidayDate}!`, 'success');
+      setShowHolidayModal(false);
+      setEditingHolidayIndex(null);
+      setHolidayReason('');
+    } catch (err: any) {
+      showNotification(err.message || 'Failed to save holiday', 'error');
+    } finally {
+      setIsSavingHoliday(false);
+    }
+  };
+
+  const handleDeleteHoliday = async (dateToDelete: string) => {
+    if (!selectedBusiness) return;
+    if (!confirm(`Are you sure you want to remove the holiday/closure on ${dateToDelete}? Booking slots on this day will be restored.`)) {
+      return;
+    }
+    const current = getBusinessHolidays();
+    const updated = current.filter(h => h.date !== dateToDelete);
+    try {
+      await updateLocationConfig(selectedBusiness.id, {
+        scheduleOverrides: updated,
+      });
+      showNotification(`Holiday for ${dateToDelete} removed.`, 'success');
+    } catch (err: any) {
+      showNotification(err.message || 'Failed to remove holiday', 'error');
+    }
+  };
+
   // Business Edit Mode
   const [isEditingConfig, setIsEditingConfig] = useState(false);
   const [editName, setEditName] = useState('');
@@ -370,7 +481,7 @@ export const OwnerDashboard: React.FC = () => {
   const [logSearch, setLogSearch] = useState<string>('');
 
   // 📊 Accounting & Revenue Ledger States
-  const [accountingTimeframe, setAccountingTimeframe] = useState<'WEEKLY' | 'MONTHLY' | 'ALL'>('WEEKLY');
+  const [accountingTimeframe, setAccountingTimeframe] = useState<'WEEKLY' | 'MONTHLY'>('WEEKLY');
   const [accountingStatusFilter, setAccountingStatusFilter] = useState<'COMPLETED_ONLY' | 'ALL'>('COMPLETED_ONLY');
   const [accountingCategoryFilter, setAccountingCategoryFilter] = useState<'ALL' | 'SERVICES' | 'PRODUCTS'>('ALL');
   const [accountingSearch, setAccountingSearch] = useState<string>('');
@@ -604,9 +715,7 @@ export const OwnerDashboard: React.FC = () => {
     const periodLabel =
       accountingTimeframe === 'WEEKLY'
         ? `Weekly Report (${accWeekInfo.monFormatted} - ${accWeekInfo.sunFormatted})`
-        : accountingTimeframe === 'MONTHLY'
-        ? `Monthly Report (${accMonthInfo.monthName})`
-        : 'All-Time Sales Ledger';
+        : `Monthly Report (${accMonthInfo.monthName})`;
 
     const filterLabel = accountingStatusFilter === 'COMPLETED_ONLY' ? 'Completed Washes Only' : 'All Recorded Bookings';
     const generatedDate = new Date().toLocaleString();
@@ -1864,15 +1973,6 @@ export const OwnerDashboard: React.FC = () => {
                     }`}
                   >
                     Monthly
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAccountingTimeframe('ALL')}
-                    className={`px-2.5 sm:px-3 py-2 sm:py-1.5 rounded-lg transition-all cursor-pointer text-center text-[11px] sm:text-xs ${
-                      accountingTimeframe === 'ALL' ? 'bg-indigo-600 text-white shadow-2xs font-extrabold' : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    All-Time
                   </button>
                 </div>
 
@@ -4277,7 +4377,7 @@ export const OwnerDashboard: React.FC = () => {
               </p>
             </div>
 
-            <div className="flex items-center gap-3 flex-wrap w-full md:w-auto">
+            <div className="flex items-center gap-2 flex-wrap w-full md:w-auto">
               {/* Filter pills for booking source */}
               <div className="grid grid-cols-2 sm:flex sm:items-center gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200 text-xs font-bold w-full sm:w-auto">
                 <button
@@ -4317,6 +4417,17 @@ export const OwnerDashboard: React.FC = () => {
                   🚗 Walk-In
                 </button>
               </div>
+
+              {/* + Add Holiday / Closure Button */}
+              <button
+                type="button"
+                onClick={() => openAddHolidayModal(selectedCalendarDate)}
+                className="px-3.5 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-extrabold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer w-full sm:w-auto justify-center shadow-2xs"
+                title="Mark a holiday or closure date"
+              >
+                <span>🌴</span>
+                <span>+ Add Holiday / Closure</span>
+              </button>
 
               {/* + Record Manual Booking Button */}
               <button
@@ -4401,6 +4512,7 @@ export const OwnerDashboard: React.FC = () => {
 
                 const todayStr = getTodayDateString();
                 const bizBookings = bookings.filter((b) => !selectedBusiness || b.carWashId === selectedBusiness.id);
+                const allHolidays = getBusinessHolidays();
 
                 const cells = [];
                 // Empty padding cells for start of month
@@ -4416,6 +4528,7 @@ export const OwnerDashboard: React.FC = () => {
 
                   const isToday = dateKey === todayStr;
                   const isSelected = dateKey === selectedCalendarDate;
+                  const dayHoliday = allHolidays.find((h: any) => h.date === dateKey);
 
                   // Bookings for this date
                   let dateBookings = bizBookings.filter((b) => b.date === dateKey);
@@ -4436,6 +4549,8 @@ export const OwnerDashboard: React.FC = () => {
                       className={`h-14 sm:h-20 p-1 sm:p-1.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between select-none relative ${
                         isSelected
                           ? 'border-indigo-600 bg-indigo-50/70 shadow-xs ring-2 ring-indigo-500/20'
+                          : dayHoliday
+                          ? 'border-rose-300 bg-rose-50/40 hover:bg-rose-50/70'
                           : isToday
                           ? 'border-sky-300 bg-sky-50/40'
                           : 'border-slate-200/80 bg-white hover:border-indigo-300 hover:bg-slate-50/80'
@@ -4443,20 +4558,33 @@ export const OwnerDashboard: React.FC = () => {
                     >
                       <div className="flex items-center justify-between">
                         <span className={`text-[11px] sm:text-xs font-black ${
-                          isSelected ? 'text-indigo-900' : isToday ? 'text-sky-700' : 'text-slate-700'
+                          isSelected ? 'text-indigo-900' : dayHoliday ? 'text-rose-900' : isToday ? 'text-sky-700' : 'text-slate-700'
                         }`}>
                           {d}
                         </span>
-                        {isToday && (
+                        {dayHoliday ? (
+                          <span className="text-[9px] font-extrabold text-rose-700 bg-rose-100/90 border border-rose-200 px-1 rounded flex items-center gap-0.5">
+                            <span>🌴</span>
+                            <span className="hidden sm:inline truncate max-w-[45px]">
+                              {dayHoliday.type === 'FULL_DAY' ? 'Holiday' : 'Half'}
+                            </span>
+                          </span>
+                        ) : isToday ? (
                           <>
                             <span className="hidden sm:inline text-[9px] font-extrabold text-sky-700 bg-sky-100 px-1 rounded uppercase">Today</span>
                             <span className="sm:hidden w-1.5 h-1.5 rounded-full bg-sky-500 inline-block"></span>
                           </>
-                        )}
+                        ) : null}
                       </div>
 
-                      {/* Booking Count Indicators */}
-                      {totalCount > 0 ? (
+                      {/* Booking Count Indicators / Holiday notice */}
+                      {dayHoliday && totalCount === 0 ? (
+                        <div className="text-center">
+                          <span className="text-[8px] sm:text-[9px] font-black text-rose-600 bg-rose-100/80 px-1 py-0.5 rounded truncate block">
+                            {dayHoliday.type === 'FULL_DAY' ? 'Closed' : 'Half-day'}
+                          </span>
+                        </div>
+                      ) : totalCount > 0 ? (
                         <div className="space-y-0.5">
                           <span className={`block text-[9px] sm:text-[10px] font-extrabold px-0.5 sm:px-1 py-0.2 sm:py-0.5 rounded text-center truncate ${
                             isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-white'
@@ -4505,18 +4633,87 @@ export const OwnerDashboard: React.FC = () => {
                   </h3>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMbDate(selectedCalendarDate);
-                    setShowManualBookingModal(true);
-                  }}
-                  className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-xl border border-indigo-100 transition-all cursor-pointer flex items-center gap-1"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>+ Quick Book</span>
-                </button>
+                <div className="flex items-center gap-1.5">
+                  {(() => {
+                    const selectedDateHoliday = getBusinessHolidays().find((h: any) => h.date === selectedCalendarDate);
+                    return selectedDateHoliday ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const idx = getBusinessHolidays().findIndex((h: any) => h.date === selectedCalendarDate);
+                          openEditHolidayModal(selectedDateHoliday, idx);
+                        }}
+                        className="px-2.5 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-800 text-xs font-extrabold rounded-xl border border-rose-200 transition-all cursor-pointer flex items-center gap-1"
+                        title="Edit holiday settings for this date"
+                      >
+                        <span>🌴 Edit Holiday</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => openAddHolidayModal(selectedCalendarDate)}
+                        className="px-2 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold rounded-xl border border-rose-200 transition-all cursor-pointer flex items-center gap-1"
+                        title="Set this date as a holiday or closure"
+                      >
+                        <span>🌴 Set Holiday</span>
+                      </button>
+                    );
+                  })()}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMbDate(selectedCalendarDate);
+                      setShowManualBookingModal(true);
+                    }}
+                    className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-xl border border-indigo-100 transition-all cursor-pointer flex items-center gap-1"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ Book</span>
+                  </button>
+                </div>
               </div>
+
+              {/* Holiday Callout if selected date is a holiday */}
+              {(() => {
+                const dayHoliday = getBusinessHolidays().find((h: any) => h.date === selectedCalendarDate);
+                if (!dayHoliday) return null;
+
+                return (
+                  <div className="bg-rose-50 border border-rose-200 rounded-2xl p-3.5 text-xs text-rose-950 space-y-1.5 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-black text-rose-900 flex items-center gap-1.5 text-xs uppercase tracking-wider">
+                        <span>🌴</span>
+                        <span>
+                          {dayHoliday.type === 'FULL_DAY'
+                            ? 'Full-Day Holiday Closure'
+                            : dayHoliday.type === 'HALF_DAY_MORNING'
+                            ? 'Half-Day Morning Closure'
+                            : dayHoliday.type === 'HALF_DAY_AFTERNOON'
+                            ? 'Half-Day Afternoon Closure'
+                            : 'Custom Timed Closure'}
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteHoliday(selectedCalendarDate)}
+                        className="text-[11px] text-rose-700 hover:text-rose-900 underline font-bold cursor-pointer"
+                      >
+                        Remove Closure
+                      </button>
+                    </div>
+                    <p className="font-bold text-slate-800">
+                      Reason: <span className="font-normal text-slate-700">{dayHoliday.reason || 'Public Holiday / Closure'}</span>
+                    </p>
+                    <p className="text-[11px] text-slate-600">
+                      {dayHoliday.type === 'FULL_DAY' && 'Customer app slots are completely blocked for this entire day.'}
+                      {dayHoliday.type === 'HALF_DAY_MORNING' && `Morning slots before ${dayHoliday.customEndTime || '13:00'} are closed for customers.`}
+                      {dayHoliday.type === 'HALF_DAY_AFTERNOON' && `Afternoon slots after ${dayHoliday.customStartTime || '13:00'} are closed for customers.`}
+                      {dayHoliday.type === 'CUSTOM_HOURS' && `Slots between ${dayHoliday.customStartTime} – ${dayHoliday.customEndTime} are closed for customers.`}
+                    </p>
+                  </div>
+                );
+              })()}
 
               {/* Bookings List for selected date */}
               <div className="space-y-3 flex-1 overflow-y-auto max-h-[500px] pr-1">
@@ -4666,6 +4863,124 @@ export const OwnerDashboard: React.FC = () => {
                 })()}
               </div>
             </div>
+          </div>
+
+          {/* 🌴 Scheduled Holidays & Closures Management Section */}
+          <div className="bg-white border border-slate-200/80 rounded-3xl p-5 sm:p-6 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🌴</span>
+                <div>
+                  <h3 className="font-extrabold text-slate-800 text-base">
+                    Business Holidays & Schedule Overrides
+                  </h3>
+                  <p className="text-slate-500 text-xs mt-0.5">
+                    Configure full-day or half-day closures. Customer app slots will be automatically blocked for these dates.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => openAddHolidayModal()}
+                className="px-3.5 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-extrabold text-xs shadow-xs transition-all flex items-center gap-1.5 cursor-pointer shrink-0 self-start sm:self-auto"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ Add New Holiday / Closure</span>
+              </button>
+            </div>
+
+            {(() => {
+              const holidays = getBusinessHolidays();
+              if (holidays.length === 0) {
+                return (
+                  <div className="text-center py-8 bg-slate-50/70 rounded-2xl border border-dashed border-slate-200 p-4 space-y-2">
+                    <span className="text-2xl block">🗓️</span>
+                    <p className="text-xs font-bold text-slate-600">No upcoming holidays or custom closures configured.</p>
+                    <p className="text-[11px] text-slate-400">
+                      If you have public holidays, staff retreats, or half-day closures, add them here so customers cannot book during closed periods.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => openAddHolidayModal()}
+                      className="mt-2 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold rounded-xl border border-rose-200 cursor-pointer inline-flex items-center gap-1"
+                    >
+                      <span>+ Mark First Holiday</span>
+                    </button>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {holidays.map((h: any, idx: number) => {
+                    const parts = h.date.split('-');
+                    let formattedDate = h.date;
+                    if (parts.length === 3) {
+                      const dObj = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+                      formattedDate = dObj.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+                    }
+
+                    return (
+                      <div
+                        key={`${h.date}-${idx}`}
+                        className="bg-slate-50/80 border border-slate-200 rounded-2xl p-3.5 flex flex-col justify-between space-y-3 hover:border-rose-300 transition-colors shadow-2xs"
+                      >
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-black text-slate-800 font-mono flex items-center gap-1">
+                              <Calendar className="w-3.5 h-3.5 text-indigo-600" />
+                              {formattedDate}
+                            </span>
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-md border ${
+                              h.type === 'FULL_DAY'
+                                ? 'bg-rose-100 text-rose-900 border-rose-200'
+                                : 'bg-amber-100 text-amber-900 border-amber-200'
+                            }`}>
+                              {h.type === 'FULL_DAY'
+                                ? 'Full Day'
+                                : h.type === 'HALF_DAY_MORNING'
+                                ? 'Half Day AM'
+                                : h.type === 'HALF_DAY_AFTERNOON'
+                                ? 'Half Day PM'
+                                : 'Custom Hours'}
+                            </span>
+                          </div>
+
+                          <p className="text-xs font-bold text-slate-700 truncate">
+                            {h.reason || 'Public Holiday / Closure'}
+                          </p>
+
+                          <p className="text-[11px] text-slate-500">
+                            {h.type === 'FULL_DAY' && '🛑 All appointment slots closed.'}
+                            {h.type === 'HALF_DAY_MORNING' && `🛑 Morning closed before ${h.customEndTime || '13:00'}. Afternoon slots open.`}
+                            {h.type === 'HALF_DAY_AFTERNOON' && `🛑 Afternoon closed after ${h.customStartTime || '13:00'}. Morning slots open.`}
+                            {h.type === 'CUSTOM_HOURS' && `🛑 Closed between ${h.customStartTime} – ${h.customEndTime}.`}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200/70">
+                          <button
+                            type="button"
+                            onClick={() => openEditHolidayModal(h, idx)}
+                            className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-lg border border-slate-200 transition-colors cursor-pointer"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteHoliday(h.date)}
+                            className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold rounded-lg border border-rose-200 transition-colors cursor-pointer"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}
@@ -5219,6 +5534,211 @@ export const OwnerDashboard: React.FC = () => {
           setMbPrice(total.toFixed(2));
         }}
       />
+
+      {/* 🌴 Holiday & Schedule Overrides Management Modal */}
+      {showHolidayModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-50 overflow-y-auto animate-fade-in">
+          <div className="relative my-auto bg-white rounded-3xl max-w-lg w-full border border-slate-200 shadow-2xl p-5 sm:p-7 text-left max-h-[90vh] overflow-y-auto overscroll-contain">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">🌴</span>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-base sm:text-lg">
+                    {editingHolidayIndex !== null ? 'Edit Holiday / Closure' : 'Set Business Holiday / Closure'}
+                  </h3>
+                  <p className="text-slate-500 text-xs mt-0.5">
+                    Block appointment slots for public holidays, half-days, or maintenance.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowHolidayModal(false)}
+                className="p-1.5 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveHoliday} className="mt-4 space-y-4">
+              {/* Date Picker */}
+              <div>
+                <label className="block text-xs font-black uppercase text-slate-700 tracking-wider mb-1">
+                  1. Closure Date
+                </label>
+                <div className="relative">
+                  <Calendar className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                  <input
+                    type="date"
+                    value={holidayDate}
+                    onChange={(e) => setHolidayDate(e.target.value)}
+                    required
+                    className="w-full pl-10 pr-4 py-2.5 border border-slate-200 focus:border-rose-500 focus:ring-2 focus:ring-rose-100 rounded-xl outline-none text-slate-800 text-xs sm:text-sm font-bold bg-white"
+                  />
+                </div>
+              </div>
+
+              {/* Holiday Closure Type */}
+              <div>
+                <label className="block text-xs font-black uppercase text-slate-700 tracking-wider mb-1">
+                  2. Closure Coverage Type
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setHolidayType('FULL_DAY')}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                      holidayType === 'FULL_DAY'
+                        ? 'bg-rose-50 border-rose-500 text-rose-900 ring-2 ring-rose-500/20'
+                        : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                    }`}
+                  >
+                    <span className="font-extrabold text-xs flex items-center gap-1">
+                      <span>🛑</span>
+                      <span>Full Day Closed</span>
+                    </span>
+                    <span className="text-[10px] text-slate-500 mt-1">Entire day completely closed (No bookings)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setHolidayType('HALF_DAY_MORNING')}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                      holidayType === 'HALF_DAY_MORNING'
+                        ? 'bg-amber-50 border-amber-500 text-amber-900 ring-2 ring-amber-500/20'
+                        : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                    }`}
+                  >
+                    <span className="font-extrabold text-xs flex items-center gap-1">
+                      <span>🌅</span>
+                      <span>Half Day Morning</span>
+                    </span>
+                    <span className="text-[10px] text-slate-500 mt-1">Closed AM (Before 1:00 PM), Open PM</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setHolidayType('HALF_DAY_AFTERNOON')}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                      holidayType === 'HALF_DAY_AFTERNOON'
+                        ? 'bg-amber-50 border-amber-500 text-amber-900 ring-2 ring-amber-500/20'
+                        : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                    }`}
+                  >
+                    <span className="font-extrabold text-xs flex items-center gap-1">
+                      <span>🌇</span>
+                      <span>Half Day Afternoon</span>
+                    </span>
+                    <span className="text-[10px] text-slate-500 mt-1">Open AM, Closed PM (After 1:00 PM)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setHolidayType('CUSTOM_HOURS')}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                      holidayType === 'CUSTOM_HOURS'
+                        ? 'bg-indigo-50 border-indigo-500 text-indigo-900 ring-2 ring-indigo-500/20'
+                        : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                    }`}
+                  >
+                    <span className="font-extrabold text-xs flex items-center gap-1">
+                      <span>⏱️</span>
+                      <span>Custom Closed Hours</span>
+                    </span>
+                    <span className="text-[10px] text-slate-500 mt-1">Specific closed time window</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Custom Hours Fields */}
+              {holidayType === 'CUSTOM_HOURS' && (
+                <div className="bg-indigo-50/60 p-3.5 rounded-2xl border border-indigo-100 space-y-2">
+                  <span className="text-[10px] font-black uppercase text-indigo-700 tracking-wider block">
+                    Define Closed Hours Range (Customers blocked during this time)
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Closed From</label>
+                      <input
+                        type="time"
+                        value={holidayCustomStart}
+                        onChange={(e) => setHolidayCustomStart(e.target.value)}
+                        className="w-full px-2.5 py-1.5 border border-indigo-200 bg-white rounded-lg text-xs font-mono font-bold text-slate-800"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Closed Until</label>
+                      <input
+                        type="time"
+                        value={holidayCustomEnd}
+                        onChange={(e) => setHolidayCustomEnd(e.target.value)}
+                        className="w-full px-2.5 py-1.5 border border-indigo-200 bg-white rounded-lg text-xs font-mono font-bold text-slate-800"
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Reason / Title */}
+              <div>
+                <label className="block text-xs font-black uppercase text-slate-700 tracking-wider mb-1">
+                  3. Holiday Reason / Description
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Brunei National Day, Hari Raya Aidilfitri, Staff Retreat, Half-day Friday"
+                  value={holidayReason}
+                  onChange={(e) => setHolidayReason(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-slate-200 focus:border-rose-500 focus:ring-2 focus:ring-rose-100 rounded-xl outline-none text-slate-800 text-xs sm:text-sm"
+                  required
+                />
+              </div>
+
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-[11px] text-slate-600 flex items-start gap-2">
+                <Info className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+                <p>
+                  Once saved, customer app users will see this notice and will not be able to book during the closed hours.
+                </p>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-2 flex items-center justify-between gap-2 border-t border-slate-100">
+                {editingHolidayIndex !== null ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleDeleteHoliday(holidayDate);
+                      setShowHolidayModal(false);
+                    }}
+                    className="px-3 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl font-bold text-xs transition-colors cursor-pointer"
+                  >
+                    Delete Closure
+                  </button>
+                ) : <div />}
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowHolidayModal(false)}
+                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold text-xs transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingHoliday}
+                    className="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-extrabold text-xs shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    {isSavingHoliday ? 'Saving...' : 'Save Holiday Closure'}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

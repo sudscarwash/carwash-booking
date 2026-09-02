@@ -13,11 +13,11 @@ import { AdminDashboard } from './pages/AdminDashboard.js';
 import { SpecialUserDashboard } from './pages/SpecialUserDashboard.js';
 import { Role } from './types.js';
 import { isValidEmail } from './lib/validation.js';
-import { Lock, Mail, UserPlus, LogIn, Sparkles, Compass, Sliders, Briefcase, Shield, Check, Info, X, AlertTriangle, LogOut, Eye, EyeOff } from 'lucide-react';
+import { Lock, Mail, UserPlus, LogIn, Sparkles, Compass, Sliders, Briefcase, Shield, Check, Info, X, AlertTriangle, LogOut, Eye, EyeOff, Building, Phone, MapPin } from 'lucide-react';
 import autoshineLogo from './assets/images/autoshine_logo.jpg';
 
 const MainAppContent: React.FC = () => {
-  const { user, loading, login, register, verifyRegistrationOtp, resendRegistrationOtp, notification, clearNotification, forgotPassword, resetPassword, showNotification } = useApp();
+  const { user, loading, login, register, verifyRegistrationOtp, resendRegistrationOtp, notification, clearNotification, forgotPassword, resetPassword, showNotification, platformInfo } = useApp();
 
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isRegisterMode, setIsRegisterMode] = useState(() => window.location.pathname === '/register');
@@ -860,6 +860,54 @@ const MainAppContent: React.FC = () => {
                     <Info className="h-3 w-3 text-slate-400 shrink-0 mt-0.5" />
                     <span>Click any button above to instantly log in as that role and explore distinct dashboards!</span>
                   </div>
+                </div>
+              )}
+            </div>
+
+            {/* Carwash Owner Partnership Enquiry Card */}
+            <div className="mt-4 bg-white/95 backdrop-blur-xs border border-slate-200/90 rounded-3xl p-4 sm:p-5 shadow-lg text-center" id="owner-enquiry-card">
+              <div className="flex items-center justify-center gap-2 mb-1.5 text-slate-800 font-extrabold text-xs sm:text-sm">
+                <div className="p-1 bg-sky-100 text-sky-700 rounded-lg">
+                  <Building className="w-4 h-4" />
+                </div>
+                <span>Carwash Owner &amp; Business Enquiry</span>
+              </div>
+              <p className="text-[11px] sm:text-xs text-slate-500 mb-3 leading-relaxed">
+                Interested in listing your carwash business on {platformInfo?.companyName || 'Autoshine BN'}? Please contact our onboarding team:
+              </p>
+              
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-2 pt-1">
+                {platformInfo?.email && (
+                  <a
+                    href={`mailto:${platformInfo.email}?subject=Carwash%20Owner%20Partnership%20Enquiry`}
+                    className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold text-xs border border-sky-200/80 transition-colors shadow-2xs cursor-pointer"
+                    id="enquiry-email-link"
+                  >
+                    <Mail className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">{platformInfo.email}</span>
+                  </a>
+                )}
+
+                {(platformInfo?.whatsapp || platformInfo?.contact) && (
+                  <a
+                    href={`https://wa.me/${(platformInfo.whatsapp || platformInfo.contact).replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
+                      'Hello Autoshine BN, I would like to enquire about registering my carwash business on your platform.'
+                    )}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs border border-emerald-200/80 transition-colors shadow-2xs cursor-pointer"
+                    id="enquiry-whatsapp-link"
+                  >
+                    <Phone className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
+                    <span>WhatsApp: {platformInfo.whatsapp || platformInfo.contact}</span>
+                  </a>
+                )}
+              </div>
+
+              {platformInfo?.address && (
+                <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-center gap-1 text-[10px] text-slate-400">
+                  <MapPin className="w-3 h-3 shrink-0 text-slate-400" />
+                  <span className="truncate">{platformInfo.address}</span>
                 </div>
               )}
             </div>

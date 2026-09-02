@@ -2,8 +2,9 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 generator client {
@@ -27,14 +28,19 @@ enum BookingStatus {
 }
 
 model User {
-  id           String        @id @default(uuid())
-  email        String        @unique
-  name         String
-  passwordHash String
-  role         Role          @default(CUSTOMER)
-  isActive     Boolean       @default(true)
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  id              String        @id @default(uuid())
+  email           String        @unique
+  name            String
+  passwordHash    String
+  role            Role          @default(CUSTOMER)
+  isActive        Boolean       @default(true)
+  phone           String?
+  dateOfBirth     String?
+  gender          String?
+  profileImageUrl String?
+  address         String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
   // For Employees assigned to a business
   businessId   String?
@@ -59,18 +65,21 @@ model User {
 }
 
 model CarWash {
-  id              String        @id @default(uuid())
-  name            String
-  description     String        @db.Text
-  locationLat     Float
-  locationLng     Float
-  address         String
-  openingHours    Json          // Store WeeklySchedule JSON structured state
-  slotDuration    Int           @default(30) // in minutes
-  capacityPerSlot Int           @default(1)  // max bookings per slot
-  isActive        Boolean       @default(true)
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  id                    String        @id @default(uuid())
+  name                  String
+  description           String        @db.Text
+  locationLat           Float
+  locationLng           Float
+  address               String
+  phone                 String?
+  instagram             String?
+  logoUrl               String?
+  openingHours          Json          // Store WeeklySchedule JSON structured state
+  slotDuration          Int           @default(30) // in minutes
+  capacityPerSlot       Int           @default(1)  // max bookings per slot
+  isActive              Boolean       @default(true)
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
 
   // Ownership
   ownerId         String
@@ -81,40 +90,52 @@ model CarWash {
   bookings        Booking[]
   images          Image[]
 
-  // 🔒 Dynamic local Brunei bank configs
-  bibdAccountName     String?
-  bibdAccountNo       String?
-  bibdEnabled         Boolean       @default(false)
-  bibdQrImageUrl      String?
-  baiduriAccountName  String?
-  baiduriAccountNo    String?
-  baiduriEnabled      Boolean       @default(false)
-  baiduriQrImageUrl   String?
-  customPaymentsJson  String?       // Stored JSON array of CustomPaymentMethod
-  paymentPolicy       String        @default("PRE_PAYMENT")
+  // 🔒 Dynamic local Brunei bank configs & Services/Holidays
+  bibdAccountName       String?
+  bibdAccountNo         String?
+  bibdEnabled           Boolean       @default(false)
+  bibdQrImageUrl        String?
+  baiduriAccountName    String?
+  baiduriAccountNo      String?
+  baiduriEnabled        Boolean       @default(false)
+  baiduriQrImageUrl     String?
+  customPaymentsJson    String?       // Stored JSON array of CustomPaymentMethod
+  paymentPolicy         String        @default("PRE_PAYMENT")
+  servicesJson          String?       // Stored JSON array of CarWashService
+  scheduleOverridesJson String?       // Stored JSON array of ScheduleOverride (holidays/closures)
 
   @@index([ownerId])
   @@index([locationLat, locationLng])
 }
 
 model Booking {
-  id            String        @id @default(uuid())
-  carWashId     String
-  carWash       CarWash       @relation(fields: [carWashId], references: [id], onDelete: Cascade)
+  id              String        @id @default(uuid())
+  carWashId       String
+  carWash         CarWash       @relation(fields: [carWashId], references: [id], onDelete: Cascade)
   
-  customerId    String
-  customer      User          @relation("CustomerBookings", fields: [customerId], references: [id], onDelete: Cascade)
+  customerId      String
+  customer        User          @relation("CustomerBookings", fields: [customerId], references: [id], onDelete: Cascade)
   
-  customerName  String
-  customerEmail String
-  date          String        // YYYY-MM-DD
-  timeSlot      String        // e.g. "09:00 - 09:30"
-  status        BookingStatus @default(PENDING)
-  notes         String?       @db.Text
+  customerName    String
+  customerEmail   String
+  customerPhone   String?
+  vehicleInfo     String?
+  bookingSource   String        @default("ONLINE") // "ONLINE" or "MANUAL"
+  createdByRole   String?
+  createdByEmail  String?
+  date            String        // YYYY-MM-DD
+  timeSlot        String        // e.g. "09:00 - 09:30"
+  status          BookingStatus @default(PENDING)
+  notes           String?       @db.Text
+
+  // Service Details
+  serviceId       String?
+  serviceName     String?
+  price           Float         @default(0)
 
   // 🔒 Local Bank Payment Additions
   paymentBank     String?      // "BIBD" or "Baiduri"
-  txnReference    String?      @unique // Unique constraint prevents duplicate submission fraud
+  txnReference    String?      // Unique reference code
   receiptFilename String?      // Stores uploaded screenshot filename to minimize DB bloat
 
   // Handled by Employee
@@ -124,7 +145,6 @@ model Booking {
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
-  @@unique([carWashId, date, timeSlot, customerId]) // Prevent double booking on same slot for same customer
   @@index([carWashId, date])
   @@index([customerId])
   @@index([employeeId])
@@ -167,4 +187,36 @@ model AuditLog {
 
   @@index([userId])
   @@index([timestamp])
+}
+
+model PlatformInfo {
+  id             String   @id @default("singleton_platform_info")
+  companyName    String   @default("SUDS")
+  description    String   @default("Brunei Premier Auto Care Platform")
+  contactEmail   String   @default("support@suds.bn")
+  contactPhone   String   @default("+673 888 1234")
+  instagram      String   @default("@suds.carwash")
+  whatsappNumber String   @default("+6738881234")
+  updatedAt      DateTime @default(now())
+}
+
+model MapPreset {
+  id          String   @id @default(uuid())
+  title       String
+  description String
+  lat         Float
+  lng         Float
+  zoom        Float    @default(13)
+  createdAt   DateTime @default(now())
+}
+
+model AppNotification {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }

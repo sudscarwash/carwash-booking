@@ -133,6 +133,15 @@ CREATE TABLE car_washes (
 
 -- Add Index for geographical/search optimizations
 CREATE INDEX idx_car_washes_owner ON car_washes(owner_id);
+
+-- 4. 🔒 Enable Row-Level Security (RLS) on all public tables (Required for Supabase Security Compliance)
+ALTER TABLE IF EXISTS password_resets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS car_washes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS bookings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS audit_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS map_presets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS notifications ENABLE ROW LEVEL SECURITY;
 ```
 
 #### 2. PostgreSQL Connection Query Example (Node pg SDK / Supabase API):

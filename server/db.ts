@@ -14,15 +14,40 @@ import pg from 'pg';
 import path from 'path';
 import fs from 'fs';
 import bcrypt from 'bcryptjs';
-import { Role, BookingStatus, UserWithPassword, CarWash, Booking, AuditLog, WeeklySchedule, MapPreset, AppNotification } from '../src/types.js';
+import { Role, BookingStatus, UserWithPassword, CarWash, Booking, AuditLog, WeeklySchedule, MapPreset, AppNotification, PlatformInfo } from '../src/types.js';
 
-let usePostgres = !!process.env.DATABASE_URL;
+let primaryDbUrl = process.env.DATABASE_URL || process.env.DIRECT_URL || '';
+let directDbUrl = process.env.DIRECT_URL || '';
+let usePostgres = !!primaryDbUrl;
 let postgresConnectionError: string | null = null;
+let postgresConnected = false;
+let activeConnectionUrl: string | null = primaryDbUrl || null;
 
 let pgPool: pg.Pool | null = null;
 let sqliteDb: Database.Database | null = null;
 
-// Always initialize SQLite database safely as the core of our local fallback architecture
+// Helper to mask credentials in connection URLs for logs and diagnostics
+function maskDbUrl(url?: string | null): string {
+  if (!url) return 'None';
+  try {
+    return url.replace(/:\/\/([^:]+):([^@]+)@/, '://$1:********@');
+  } catch (e) {
+    return 'Configured (Masked)';
+  }
+}
+
+function parseHostAndPort(url?: string | null): { host: string | null; port: string | null } {
+  if (!url) return { host: null, port: null };
+  try {
+    const match = url.match(/@([^:/]+)(?::(\d+))?/);
+    if (match) {
+      return { host: match[1], port: match[2] || '5432' };
+    }
+  } catch (e) {}
+  return { host: null, port: null };
+}
+
+// Always initialize SQLite database safely as an emergency local fallback
 const dataDir = path.resolve(process.cwd(), 'data');
 const dbPath = path.resolve(dataDir, 'carwash.db');
 
@@ -40,28 +65,33 @@ try {
   console.warn('[SQLite Init Fallback Notice]:', sqliteInitErr);
 }
 
+// Initialize PostgreSQL Pool with robust Supabase PgBouncer / Direct parameters
+function createPgPool(connectionString: string): pg.Pool {
+  return new pg.Pool({
+    connectionString,
+    ssl: { rejectUnauthorized: false }, // Bypass SSL certificate verification for hosted Supabase / Render / Neon
+    max: 10,
+    min: 0,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 15000,
+    keepAlive: true,
+  });
+}
+
 if (usePostgres) {
-  console.log('Using PostgreSQL database connection for Supabase...');
-  const dbUrl = process.env.DATABASE_URL || '';
-  if (dbUrl.includes('.supabase.co') && (dbUrl.includes(':5432') || !dbUrl.includes(':6543'))) {
-    console.warn('\n⚠️  WARNING: DETECTED SUPABASE DIRECT CONNECTION ON PORT 5432 (or non-pooler port)!');
-    console.warn('Many hosting providers (like Render, AWS, or Google Cloud) do NOT support outbound IPv6 connections.');
-    console.warn('Your direct connection (port 5432) uses IPv6-only on newer Supabase projects, which will fail with "connect ENETUNREACH".');
-    console.warn('👉 ACTION REQUIRED: Change your DATABASE_URL in Render to use the CONNECTION POOLER (port 6543) instead.');
-    console.warn('Example format: postgres://postgres.[your-project-id]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres?pgbouncer=true\n');
+  console.log('Initializing PostgreSQL database connection pool for Supabase...');
+  console.log(`Primary URL: ${maskDbUrl(primaryDbUrl)}`);
+  if (directDbUrl) {
+    console.log(`Direct URL: ${maskDbUrl(directDbUrl)}`);
   }
 
-  pgPool = new pg.Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }, // Always bypass strict SSL checks for local development with hosted Postgres (Supabase, Render, neon)
-    connectionTimeoutMillis: 5000, // 5 seconds connection timeout
-  });
+  pgPool = createPgPool(primaryDbUrl);
 
   pgPool.on('error', (err) => {
-    console.error('[pgPool Idle Client Warning]:', err.message || err);
+    console.warn('[pgPool Idle Client Warning]:', err.message || err);
   });
 } else {
-  console.log('Using SQLite database at:', dbPath);
+  console.log('No DATABASE_URL or DIRECT_URL detected. Using local SQLite database at:', dbPath);
 }
 
 // Convert SQLite parameter and ignore queries into PostgreSQL-friendly SQL
@@ -142,6 +172,8 @@ function convertQueryToPg(sql: string): string {
     paymentpolicy: 'payment_policy',
     servicesJson: 'services_json',
     servicesjson: 'services_json',
+    scheduleOverridesJson: 'schedule_overrides_json',
+    scheduleoverridesjson: 'schedule_overrides_json',
     userId: 'user_id',
     userid: 'user_id',
     userEmail: 'user_email',
@@ -180,31 +212,70 @@ function convertQueryToPg(sql: string): string {
   return result;
 }
 
-// Low-level query execution helpers
+// Low-level query execution helpers with automatic retry for hosted PostgreSQL (Supabase/PgBouncer)
 async function runQueryAll(sql: string, params: any[] = []): Promise<any[]> {
-  if (usePostgres) {
-    const pgSql = convertQueryToPg(sql);
-    const res = await pgPool!.query(pgSql, params);
-    return res.rows;
+  if (usePostgres && pgPool) {
+    try {
+      const pgSql = convertQueryToPg(sql);
+      const res = await pgPool.query(pgSql, params);
+      return res.rows;
+    } catch (pgErr: any) {
+      console.warn('[Postgres Query Warning - runQueryAll]:', pgErr.message || pgErr);
+      // If postgres pool had a connection drop, try one query retry
+      try {
+        const pgSql = convertQueryToPg(sql);
+        const res = await pgPool.query(pgSql, params);
+        return res.rows;
+      } catch (retryErr) {
+        if (!sqliteDb) throw retryErr;
+        console.warn('[Postgres Fallback to SQLite]: Serving from local SQLite engine.');
+        return sqliteDb.prepare(sql).all(...params);
+      }
+    }
   } else {
     return sqliteDb!.prepare(sql).all(...params);
   }
 }
 
 async function runQueryOne(sql: string, params: any[] = []): Promise<any | null> {
-  if (usePostgres) {
-    const pgSql = convertQueryToPg(sql);
-    const res = await pgPool!.query(pgSql, params);
-    return res.rows[0] || null;
+  if (usePostgres && pgPool) {
+    try {
+      const pgSql = convertQueryToPg(sql);
+      const res = await pgPool.query(pgSql, params);
+      return res.rows[0] || null;
+    } catch (pgErr: any) {
+      console.warn('[Postgres Query Warning - runQueryOne]:', pgErr.message || pgErr);
+      try {
+        const pgSql = convertQueryToPg(sql);
+        const res = await pgPool.query(pgSql, params);
+        return res.rows[0] || null;
+      } catch (retryErr) {
+        if (!sqliteDb) throw retryErr;
+        console.warn('[Postgres Fallback to SQLite]: Serving from local SQLite engine.');
+        return sqliteDb.prepare(sql).get(...params) || null;
+      }
+    }
   } else {
     return sqliteDb!.prepare(sql).get(...params) || null;
   }
 }
 
 async function runQueryRun(sql: string, params: any[] = []): Promise<void> {
-  if (usePostgres) {
-    const pgSql = convertQueryToPg(sql);
-    await pgPool!.query(pgSql, params);
+  if (usePostgres && pgPool) {
+    try {
+      const pgSql = convertQueryToPg(sql);
+      await pgPool.query(pgSql, params);
+    } catch (pgErr: any) {
+      console.warn('[Postgres Query Warning - runQueryRun]:', pgErr.message || pgErr);
+      try {
+        const pgSql = convertQueryToPg(sql);
+        await pgPool.query(pgSql, params);
+      } catch (retryErr) {
+        if (!sqliteDb) throw retryErr;
+        console.warn('[Postgres Fallback to SQLite]: Executing against local SQLite engine.');
+        sqliteDb.prepare(sql).run(...params);
+      }
+    }
   } else {
     sqliteDb!.prepare(sql).run(...params);
   }
@@ -275,6 +346,15 @@ const mapCarWash = (row: any): CarWash => {
   } catch (e) {
     console.error("Error parsing servicesJson:", e);
   }
+  const scheduleOverridesJson = row.scheduleOverridesJson ?? row.schedule_overrides_json ?? row.scheduleoverridesjson;
+  let parsedOverrides = [];
+  try {
+    if (scheduleOverridesJson) {
+      parsedOverrides = typeof scheduleOverridesJson === 'string' ? JSON.parse(scheduleOverridesJson) : scheduleOverridesJson;
+    }
+  } catch (e) {
+    console.error("Error parsing scheduleOverridesJson:", e);
+  }
   const isActiveVal = row.isActive !== undefined ? row.isActive : (row.is_active !== undefined ? row.is_active : row.isactive);
   const bibdEnabledVal = row.bibdEnabled !== undefined ? row.bibdEnabled : (row.bibd_enabled !== undefined ? row.bibd_enabled : row.bibdenabled);
   const baiduriEnabledVal = row.baiduriEnabled !== undefined ? row.baiduriEnabled : (row.baiduri_enabled !== undefined ? row.baiduri_enabled : row.baidurienabled);
@@ -309,6 +389,8 @@ const mapCarWash = (row: any): CarWash => {
     paymentPolicy: 'PAY_ON_SITE', // Always use Pay at Counter on site
     servicesJson: servicesJson ?? undefined,
     services: parsedServices,
+    scheduleOverridesJson: scheduleOverridesJson ?? undefined,
+    scheduleOverrides: parsedOverrides,
   };
 };
 
@@ -358,21 +440,58 @@ const DEFAULT_SCHEDULE: WeeklySchedule = {
 
 // Seeding engine
 export async function seedFirestoreIfEmpty() {
-  if (usePostgres && pgPool) {
-    try {
-      console.log('Testing PostgreSQL/Supabase database connection...');
-      const client = await pgPool.connect();
-      client.release();
-      console.log('✅ PostgreSQL/Supabase connection successful!');
-    } catch (err: any) {
-      postgresConnectionError = err.message || String(err);
-      console.warn('ℹ️ PostgreSQL/Supabase connection not active:', postgresConnectionError);
-      console.log('👉 Utilizing local SQLite database engine (carwash.db).');
-      usePostgres = false;
+  if (usePostgres) {
+    let connected = false;
+    // Attempt connecting to primary PostgreSQL pool (with up to 3 retries)
+    for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        await pgPool.end();
-      } catch (e) {}
-      pgPool = null;
+        console.log(`[Supabase Connection] Testing connection (Attempt ${attempt}/3)...`);
+        if (!pgPool && activeConnectionUrl) {
+          pgPool = createPgPool(activeConnectionUrl);
+        }
+        if (pgPool) {
+          const client = await pgPool.connect();
+          client.release();
+          connected = true;
+          postgresConnected = true;
+          postgresConnectionError = null;
+          console.log(`✅ [Supabase PostgreSQL] Connection verified successfully to ${maskDbUrl(activeConnectionUrl)}!`);
+          break;
+        }
+      } catch (err: any) {
+        postgresConnectionError = err.message || String(err);
+        console.warn(`[Supabase Connection Warning - Attempt ${attempt}/3]:`, postgresConnectionError);
+        if (attempt < 3) {
+          await new Promise((resolve) => setTimeout(resolve, 800 * attempt));
+        }
+      }
+    }
+
+    // If primary failed and DIRECT_URL is configured, attempt connecting via DIRECT_URL
+    if (!connected && directDbUrl && directDbUrl !== activeConnectionUrl) {
+      try {
+        console.log(`[Supabase Connection] Attempting failover to DIRECT_URL (${maskDbUrl(directDbUrl)})...`);
+        if (pgPool) {
+          try { await pgPool.end(); } catch (e) {}
+        }
+        activeConnectionUrl = directDbUrl;
+        pgPool = createPgPool(directDbUrl);
+        const client = await pgPool.connect();
+        client.release();
+        connected = true;
+        postgresConnected = true;
+        postgresConnectionError = null;
+        console.log('✅ [Supabase PostgreSQL] Failover to DIRECT_URL succeeded!');
+      } catch (directErr: any) {
+        postgresConnectionError = directErr.message || String(directErr);
+        console.warn('[Supabase Direct Connection Error]:', postgresConnectionError);
+      }
+    }
+
+    if (!connected) {
+      console.warn('⚠️ PostgreSQL connection could not be established immediately on boot.');
+      console.warn('⚠️ Error details:', postgresConnectionError);
+      console.log('ℹ️ Queries will automatically attempt live Postgres reconnection on demand, with local emergency SQLite caching.');
     }
   }
 
@@ -457,6 +576,17 @@ export async function seedFirestoreIfEmpty() {
       isRead INTEGER NOT NULL DEFAULT 0,
       createdAt TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS platform_info (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      contact TEXT NOT NULL,
+      whatsapp TEXT NOT NULL,
+      address TEXT NOT NULL,
+      companyName TEXT,
+      description TEXT,
+      updatedAt TEXT NOT NULL
+    );
   `);
 
   // Dynamically add rich user profile columns and ensure all required core columns exist
@@ -494,10 +624,17 @@ export async function seedFirestoreIfEmpty() {
     'ALTER TABLE car_washes ADD COLUMN customPaymentsJson TEXT',
     'ALTER TABLE car_washes ADD COLUMN paymentPolicy TEXT DEFAULT \'PRE_PAYMENT\'',
     'ALTER TABLE car_washes ADD COLUMN servicesJson TEXT',
+    'ALTER TABLE car_washes ADD COLUMN scheduleOverridesJson TEXT',
     'ALTER TABLE bookings ADD COLUMN carWashId TEXT',
     'ALTER TABLE bookings ADD COLUMN customerId TEXT',
     'ALTER TABLE bookings ADD COLUMN customerName TEXT',
     'ALTER TABLE bookings ADD COLUMN customerEmail TEXT',
+    'ALTER TABLE bookings ADD COLUMN customerPhone TEXT',
+    'ALTER TABLE bookings ADD COLUMN vehicleInfo TEXT',
+    'ALTER TABLE bookings ADD COLUMN bookingSource TEXT DEFAULT \'ONLINE\'',
+    'ALTER TABLE bookings ADD COLUMN createdByRole TEXT',
+    'ALTER TABLE bookings ADD COLUMN createdByEmail TEXT',
+    'ALTER TABLE bookings ADD COLUMN date TEXT',
     'ALTER TABLE bookings ADD COLUMN timeSlot TEXT',
     'ALTER TABLE bookings ADD COLUMN status TEXT',
     'ALTER TABLE bookings ADD COLUMN notes TEXT',
@@ -509,12 +646,9 @@ export async function seedFirestoreIfEmpty() {
     'ALTER TABLE bookings ADD COLUMN receiptFilename TEXT',
     'ALTER TABLE bookings ADD COLUMN serviceId TEXT',
     'ALTER TABLE bookings ADD COLUMN serviceName TEXT',
-    'ALTER TABLE bookings ADD COLUMN price REAL',
-    'ALTER TABLE bookings ADD COLUMN customerPhone TEXT',
-    'ALTER TABLE bookings ADD COLUMN vehicleInfo TEXT',
-    'ALTER TABLE bookings ADD COLUMN bookingSource TEXT DEFAULT \'ONLINE\'',
-    'ALTER TABLE bookings ADD COLUMN createdByRole TEXT',
-    'ALTER TABLE bookings ADD COLUMN createdByEmail TEXT',
+    'ALTER TABLE bookings ADD COLUMN price REAL DEFAULT 0',
+    'ALTER TABLE platform_info ADD COLUMN companyName TEXT',
+    'ALTER TABLE platform_info ADD COLUMN description TEXT',
   ];
 
   // Try renaming un-underscored Postgres columns if present from legacy schemas
@@ -535,8 +669,11 @@ export async function seedFirestoreIfEmpty() {
       'ALTER TABLE car_washes RENAME COLUMN openinghours TO opening_hours',
       'ALTER TABLE car_washes RENAME COLUMN servicesjson TO services_json',
       'ALTER TABLE car_washes RENAME COLUMN custompaymentsjson TO custom_payments_json',
+      'ALTER TABLE car_washes RENAME COLUMN scheduleoverridesjson TO schedule_overrides_json',
       'ALTER TABLE car_washes RENAME COLUMN logourl TO logo_url',
       'ALTER TABLE car_washes RENAME COLUMN isactive TO is_active',
+      'ALTER TABLE platform_info RENAME COLUMN companyname TO company_name',
+      'ALTER TABLE platform_info RENAME COLUMN updatedat TO updated_at',
     ];
     for (const renameSql of renameQueries) {
       try {
@@ -577,7 +714,52 @@ export async function seedFirestoreIfEmpty() {
     // ignore
   }
 
+  // 🔒 Enable Row-Level Security (RLS) on all public PostgreSQL tables for Supabase Security compliance
+  if (usePostgres && pgPool) {
+    const rlsTables = [
+      'password_resets',
+      'users',
+      'car_washes',
+      'bookings',
+      'audit_logs',
+      'map_presets',
+      'notifications',
+      'platform_info',
+    ];
+    for (const table of rlsTables) {
+      try {
+        await pgPool.query(`ALTER TABLE IF EXISTS "${table}" ENABLE ROW LEVEL SECURITY;`);
+      } catch (rlsErr) {
+        // Ignore if table does not exist yet or already enabled
+      }
+    }
+  }
+
   console.log('Database schema structures and dynamic tables verified.');
+
+  // Seed Default Autoshine Platform Info
+  try {
+    const hasInfo = await runQueryOne("SELECT COUNT(*) AS count FROM platform_info WHERE id = 'autoshine_info'") as { count: any };
+    const countVal = hasInfo ? parseInt(hasInfo.count, 10) : 0;
+    if (countVal === 0) {
+      console.log('Seeding default Autoshine Platform Info...');
+      await runQueryRun(`
+        INSERT INTO platform_info (id, email, contact, whatsapp, address, companyName, description, updatedAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        'autoshine_info',
+        'support@autoshine.bn',
+        '+673 888 1234',
+        '+673 888 1234',
+        'Bandar Seri Begawan, Brunei Darussalam',
+        'Autoshine BN',
+        "Brunei's premier car wash & auto detailing digital booking platform.",
+        new Date().toISOString()
+      ]);
+    }
+  } catch (err) {
+    console.error('Error seeding default platform info:', err);
+  }
 
   // Seed default Brunei location
   try {
@@ -1106,6 +1288,14 @@ export async function updateCarWash(id: string, data: Partial<CarWash>): Promise
       }
       if (key === 'openingHours') {
         columnMap.set('openingHours', typeof val === 'string' ? val : JSON.stringify(val));
+        return;
+      }
+      if (key === 'scheduleOverrides') {
+        columnMap.set('scheduleOverridesJson', typeof val === 'string' ? val : JSON.stringify(val));
+        return;
+      }
+      if (key === 'scheduleOverridesJson') {
+        columnMap.set('scheduleOverridesJson', typeof val === 'string' ? val : JSON.stringify(val));
         return;
       }
       if (key === 'isActive' || key === 'bibdEnabled' || key === 'baiduriEnabled') {
@@ -1811,4 +2001,172 @@ export async function markAllNotificationsAsRead(userId: string): Promise<void> 
     console.warn('Could not mark all notifications as read:', err);
   }
 }
+
+// 🏢 Platform Global Information Operations
+export async function getPlatformInfo(): Promise<PlatformInfo> {
+  try {
+    const row = await runQueryOne('SELECT * FROM platform_info WHERE id = ?', ['autoshine_info']);
+    if (row) {
+      return {
+        email: row.email ?? 'support@autoshine.bn',
+        contact: row.contact ?? '+673 888 1234',
+        whatsapp: row.whatsapp ?? '+673 888 1234',
+        address: row.address ?? 'Bandar Seri Begawan, Brunei Darussalam',
+        companyName: row.companyName ?? row.company_name ?? 'Autoshine BN',
+        description: row.description ?? "Brunei's premier car wash & auto detailing digital booking platform.",
+        updatedAt: row.updatedAt ?? row.updated_at ?? new Date().toISOString(),
+      };
+    }
+  } catch (error) {
+    console.error('Database getPlatformInfo Error:', error);
+  }
+
+  return {
+    email: 'support@autoshine.bn',
+    contact: '+673 888 1234',
+    whatsapp: '+673 888 1234',
+    address: 'Bandar Seri Begawan, Brunei Darussalam',
+    companyName: 'Autoshine BN',
+    description: "Brunei's premier car wash & auto detailing digital booking platform.",
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export async function updatePlatformInfo(data: Partial<PlatformInfo>): Promise<PlatformInfo> {
+  try {
+    const current = await getPlatformInfo();
+    const updated: PlatformInfo = {
+      email: data.email !== undefined ? data.email.trim() : current.email,
+      contact: data.contact !== undefined ? data.contact.trim() : current.contact,
+      whatsapp: data.whatsapp !== undefined ? data.whatsapp.trim() : current.whatsapp,
+      address: data.address !== undefined ? data.address.trim() : current.address,
+      companyName: data.companyName !== undefined ? data.companyName.trim() : current.companyName,
+      description: data.description !== undefined ? data.description.trim() : current.description,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (usePostgres) {
+      await runQueryRun(`
+        INSERT INTO platform_info (id, email, contact, whatsapp, address, company_name, description, updated_at)
+        VALUES ('autoshine_info', ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (id) DO UPDATE SET
+          email = EXCLUDED.email,
+          contact = EXCLUDED.contact,
+          whatsapp = EXCLUDED.whatsapp,
+          address = EXCLUDED.address,
+          company_name = EXCLUDED.company_name,
+          description = EXCLUDED.description,
+          updated_at = EXCLUDED.updated_at
+      `, [
+        updated.email,
+        updated.contact,
+        updated.whatsapp,
+        updated.address,
+        updated.companyName || 'Autoshine BN',
+        updated.description || '',
+        updated.updatedAt
+      ]);
+    } else {
+      await runQueryRun(`
+        INSERT INTO platform_info (id, email, contact, whatsapp, address, companyName, description, updatedAt)
+        VALUES ('autoshine_info', ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          email = excluded.email,
+          contact = excluded.contact,
+          whatsapp = excluded.whatsapp,
+          address = excluded.address,
+          companyName = excluded.companyName,
+          description = excluded.description,
+          updatedAt = excluded.updatedAt
+      `, [
+        updated.email,
+        updated.contact,
+        updated.whatsapp,
+        updated.address,
+        updated.companyName || 'Autoshine BN',
+        updated.description || '',
+        updated.updatedAt
+      ]);
+    }
+
+    return updated;
+  } catch (error) {
+    console.error('Database updatePlatformInfo Error:', error);
+    throw error;
+  }
+}
+
+export interface DatabaseDiagnostics {
+  isPostgres: boolean;
+  databaseType: 'supabase_postgresql' | 'sqlite';
+  postgresConnected: boolean;
+  postgresConnectionError: string | null;
+  databaseUrlConfigured: boolean;
+  directUrlConfigured: boolean;
+  activeHost: string | null;
+  activePort: string | null;
+  storagePersistence: 'PERMANENT_CLOUD_SUPABASE' | 'EPHEMERAL_LOCAL_CONTAINER';
+  poolStats: {
+    totalCount: number;
+    idleCount: number;
+    waitingCount: number;
+  } | null;
+  lastCheckedAt: string;
+  explanation: string;
+}
+
+export async function getDatabaseDiagnostics(): Promise<DatabaseDiagnostics> {
+  let isConnected = postgresConnected;
+  let errorMsg = postgresConnectionError;
+
+  if (usePostgres && pgPool) {
+    try {
+      const client = await pgPool.connect();
+      client.release();
+      isConnected = true;
+      errorMsg = null;
+      postgresConnected = true;
+      postgresConnectionError = null;
+    } catch (e: any) {
+      isConnected = false;
+      errorMsg = e.message || String(e);
+      postgresConnected = false;
+      postgresConnectionError = errorMsg;
+    }
+  }
+
+  const { host, port } = parseHostAndPort(activeConnectionUrl);
+
+  const persistence: 'PERMANENT_CLOUD_SUPABASE' | 'EPHEMERAL_LOCAL_CONTAINER' = 
+    (usePostgres && isConnected) ? 'PERMANENT_CLOUD_SUPABASE' : 'EPHEMERAL_LOCAL_CONTAINER';
+
+  let explanation = '';
+  if (usePostgres && isConnected) {
+    explanation = `Connected to permanent Supabase PostgreSQL database (${host}:${port}). All user accounts, car wash locations, services, and bookings are permanently retained across container restarts.`;
+  } else if (usePostgres && !isConnected) {
+    explanation = `DATABASE_URL is set but live connection test failed (${errorMsg || 'unknown'}). App is temporarily falling back to local SQLite, which is ephemeral on Google Cloud Run.`;
+  } else {
+    explanation = `DATABASE_URL is not set in environment. Running on local SQLite file. On Google Cloud Run serverless instances, local disk is ephemeral and resets on restart. Configure DATABASE_URL (Supabase port 6543) for permanent cloud persistence.`;
+  }
+
+  return {
+    isPostgres: usePostgres,
+    databaseType: (usePostgres && isConnected) ? 'supabase_postgresql' : 'sqlite',
+    postgresConnected: isConnected,
+    postgresConnectionError: errorMsg,
+    databaseUrlConfigured: !!process.env.DATABASE_URL,
+    directUrlConfigured: !!process.env.DIRECT_URL,
+    activeHost: host,
+    activePort: port,
+    storagePersistence: persistence,
+    poolStats: pgPool ? {
+      totalCount: pgPool.totalCount,
+      idleCount: pgPool.idleCount,
+      waitingCount: pgPool.waitingCount,
+    } : null,
+    lastCheckedAt: new Date().toISOString(),
+    explanation,
+  };
+}
+
 

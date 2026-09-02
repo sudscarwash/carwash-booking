@@ -298,6 +298,24 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
 
   if (!isOpen) return null;
 
+  // Determine holiday / schedule override info for selected date
+  const getHolidayInfo = () => {
+    let overrides = location.scheduleOverrides;
+    if (!overrides && (location as any).scheduleOverridesJson) {
+      try {
+        overrides = typeof (location as any).scheduleOverridesJson === 'string'
+          ? JSON.parse((location as any).scheduleOverridesJson)
+          : (location as any).scheduleOverridesJson;
+      } catch {
+        overrides = [];
+      }
+    }
+    if (!overrides || !Array.isArray(overrides)) return null;
+    return overrides.find((o) => o.date === bookingDate) || null;
+  };
+
+  const holidayInfo = getHolidayInfo();
+
   // Determine break closure info for selected date
   const getBreakInfo = () => {
     const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -867,7 +885,47 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                       />
                     </div>
 
-                    {breakInfo && (
+                    {holidayInfo && (
+                      <div className={`text-xs p-3.5 rounded-xl border flex items-start gap-2.5 mt-2 shadow-2xs ${
+                        holidayInfo.type === 'FULL_DAY'
+                          ? 'bg-rose-50 border-rose-200 text-rose-900'
+                          : 'bg-amber-50 border-amber-200 text-amber-900'
+                      }`}>
+                        <span className="text-base shrink-0">🌴</span>
+                        <div className="space-y-0.5">
+                          <div className="font-black text-xs flex items-center gap-1.5">
+                            <span>
+                              {holidayInfo.type === 'FULL_DAY' 
+                                ? 'Full-Day Holiday Closure' 
+                                : holidayInfo.type === 'HALF_DAY_MORNING'
+                                ? 'Half-Day Morning Closure'
+                                : holidayInfo.type === 'HALF_DAY_AFTERNOON'
+                                ? 'Half-Day Afternoon Closure'
+                                : 'Special Timed Closure'}
+                            </span>
+                            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-white/80 border border-current">
+                              {holidayInfo.reason || 'Holiday'}
+                            </span>
+                          </div>
+                          <p className="text-[11px] leading-relaxed">
+                            {holidayInfo.type === 'FULL_DAY' && (
+                              <span>This car wash business is <strong>closed for the entire day</strong>. No appointment slots are available. Please select another date.</span>
+                            )}
+                            {holidayInfo.type === 'HALF_DAY_MORNING' && (
+                              <span>Morning slots before <strong>{holidayInfo.customEndTime || '13:00'}</strong> are closed. Afternoon slots remain available for booking.</span>
+                            )}
+                            {holidayInfo.type === 'HALF_DAY_AFTERNOON' && (
+                              <span>Afternoon slots after <strong>{holidayInfo.customStartTime || '13:00'}</strong> are closed. Morning slots remain available for booking.</span>
+                            )}
+                            {holidayInfo.type === 'CUSTOM_HOURS' && (
+                              <span>Slots between <strong>{holidayInfo.customStartTime} – {holidayInfo.customEndTime}</strong> are closed for special operation hours.</span>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {breakInfo && !holidayInfo && (
                       <div className="text-xs bg-amber-50 border border-amber-100 text-amber-800 p-3 rounded-xl flex items-start gap-2.5 mt-2">
                         <Clock className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
                         <span>

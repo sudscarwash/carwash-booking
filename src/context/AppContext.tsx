@@ -4,7 +4,7 @@
  */
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { User, CarWash, Booking, AuditLog, Role, BookingStatus, AppNotification } from '../types.js';
+import { User, CarWash, Booking, AuditLog, Role, BookingStatus, AppNotification, PlatformInfo } from '../types.js';
 
 interface AppContextType {
   user: User | null;
@@ -15,10 +15,13 @@ interface AppContextType {
   logs: AuditLog[];
   appNotifications: AppNotification[];
   unreadNotificationCount: number;
+  platformInfo: PlatformInfo | null;
   loading: boolean;
   notification: { message: string; type: 'success' | 'error' } | null;
   showNotification: (message: string, type: 'success' | 'error') => void;
   clearNotification: () => void;
+  fetchPlatformInfo: () => Promise<PlatformInfo | null>;
+  updatePlatformInfo: (data: Partial<PlatformInfo>) => Promise<boolean>;
   fetchAppNotifications: () => Promise<void>;
   markNotificationAsRead: (id: string) => Promise<void>;
   markAllNotificationsAsRead: () => Promise<void>;
@@ -106,6 +109,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [adminUsersList, setAdminUsersList] = useState<User[]>([]);
   const [appNotifications, setAppNotifications] = useState<AppNotification[]>([]);
+  const [platformInfo, setPlatformInfo] = useState<PlatformInfo | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
@@ -155,6 +159,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Fetch initial data once logged in
   useEffect(() => {
+    fetchPlatformInfo();
     if (token) {
       fetchLocations();
       fetchBookings();
@@ -427,7 +432,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const fetchLocations = async (search?: string, lat?: number, lng?: number, radius?: number) => {
+  const fetchPlatformInfo = async (): Promise<PlatformInfo | null> => {
+    try {
+      const res = await fetch('/api/platform-info');
+      if (res.ok) {
+        const data = await res.json();
+        setPlatformInfo(data);
+        return data;
+      }
+    } catch (err: any) {
+      console.warn('Failed to fetch platform info:', err?.message || err);
+    }
+    return null;
+  };
+
+  const updatePlatformInfo = async (data: Partial<PlatformInfo>): Promise<boolean> => {
+    try {
+      setLoading(true);
+      const updated = await apiFetch('/api/admin/platform-info', {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      });
+      setPlatformInfo(updated);
+      showNotification('Autoshine platform information updated successfully!', 'success');
+      return true;
+    } catch (err: any) {
+      showNotification(err.message || 'Failed to update platform info', 'error');
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchLocations = async (search?: string, lat?: number, lng?: number, radius?: number, includeInactive?: boolean) => {
     try {
       let query = '';
       const params: string[] = [];
@@ -435,6 +472,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (lat !== undefined) params.push(`lat=${lat}`);
       if (lng !== undefined) params.push(`lng=${lng}`);
       if (radius !== undefined) params.push(`radius=${radius}`);
+      
+      // If user is Admin/Special or explicitly requested, include inactive locations
+      const shouldIncludeInactive = includeInactive !== undefined ? includeInactive : (user?.role === Role.ADMIN || user?.role === Role.SPECIAL);
+      if (shouldIncludeInactive) {
+        params.push('includeInactive=true');
+      }
 
       if (params.length > 0) {
         query = '?' + params.join('&');
@@ -813,10 +856,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         logs,
         appNotifications,
         unreadNotificationCount,
+        platformInfo,
         loading,
         notification,
         showNotification,
         clearNotification,
+        fetchPlatformInfo,
+        updatePlatformInfo,
         fetchAppNotifications,
         markNotificationAsRead,
         markAllNotificationsAsRead,

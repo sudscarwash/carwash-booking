@@ -62,6 +62,25 @@ export interface WashService {
   slotsRequired?: number; // 0 = no slot capacity needed, 1 = 1 slot (30 min), 2 = 2 slots (1 hr)
 }
 
+export interface ScheduleOverride {
+  id: string;
+  date: string; // YYYY-MM-DD
+  type: 'FULL_DAY' | 'HALF_DAY_MORNING' | 'HALF_DAY_AFTERNOON' | 'CUSTOM_HOURS';
+  reason: string; // e.g. "Public Holiday", "Hari Raya", "Renovation"
+  customStartTime?: string; // "08:00"
+  customEndTime?: string; // "14:00"
+}
+
+export interface PlatformInfo {
+  email: string;
+  contact: string;
+  whatsapp: string;
+  address: string;
+  companyName?: string;
+  description?: string;
+  updatedAt?: string;
+}
+
 export interface CarWash {
   id: string;
   name: string;
@@ -95,6 +114,10 @@ export interface CarWash {
   // Dynamic services created by owner
   servicesJson?: string;
   services?: WashService[];
+
+  // 🌴 Dynamic Holiday and Ad-Hoc Schedule Closures
+  scheduleOverridesJson?: string;
+  scheduleOverrides?: ScheduleOverride[];
 }
 
 export interface CustomPaymentMethod {

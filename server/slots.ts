@@ -96,6 +96,24 @@ export function isBookingOverlapping(
 }
 
 /**
+ * Retrieves any custom schedule override/holiday for a specific date on a car wash.
+ */
+export function getScheduleOverrideForDate(carWash: CarWash, dateString: string) {
+  let overrides = carWash.scheduleOverrides;
+  if (!overrides && carWash.scheduleOverridesJson) {
+    try {
+      overrides = typeof carWash.scheduleOverridesJson === 'string' 
+        ? JSON.parse(carWash.scheduleOverridesJson) 
+        : carWash.scheduleOverridesJson;
+    } catch {
+      overrides = [];
+    }
+  }
+  if (!overrides || !Array.isArray(overrides)) return null;
+  return overrides.find((o) => o.date === dateString) || null;
+}
+
+/**
  * Validates whether a requested booking slot range has sufficient bay capacity on all 30-minute slices.
  */
 export function validateSlotCapacity(
@@ -112,6 +130,42 @@ export function validateSlotCapacity(
   const range = parseTimeSlotRange(timeSlotStr);
   if (!range) {
     return { isValid: false, error: 'Invalid time slot format.' };
+  }
+
+  // 🌴 Check holiday / ad-hoc schedule overrides
+  const override = getScheduleOverrideForDate(carWash, dateString);
+  if (override) {
+    if (override.type === 'FULL_DAY') {
+      return { isValid: false, error: `Car wash is closed for holiday (${override.reason || 'Holiday Closure'}).` };
+    }
+    if (override.type === 'HALF_DAY_MORNING') {
+      const morningCutoff = override.customEndTime ? timeStringToMinutes(override.customEndTime) : 780; // 13:00 default
+      if (range.startMin < morningCutoff) {
+        return {
+          isValid: false,
+          error: `Morning slots are closed today for half-day holiday (${override.reason || 'Holiday'}). Available from ${minutesToTimeString(morningCutoff)} onwards.`,
+        };
+      }
+    }
+    if (override.type === 'HALF_DAY_AFTERNOON') {
+      const afternoonCutoff = override.customStartTime ? timeStringToMinutes(override.customStartTime) : 780; // 13:00 default
+      if (range.endMin > afternoonCutoff) {
+        return {
+          isValid: false,
+          error: `Afternoon slots are closed today for half-day holiday (${override.reason || 'Holiday'}). Available before ${minutesToTimeString(afternoonCutoff)}.`,
+        };
+      }
+    }
+    if (override.type === 'CUSTOM_HOURS' && override.customStartTime && override.customEndTime) {
+      const blockStart = timeStringToMinutes(override.customStartTime);
+      const blockEnd = timeStringToMinutes(override.customEndTime);
+      if (range.startMin < blockEnd && range.endMin > blockStart) {
+        return {
+          isValid: false,
+          error: `Selected slot falls within temporary schedule closure (${override.customStartTime} - ${override.customEndTime}: ${override.reason || 'Special Closure'}).`,
+        };
+      }
+    }
   }
 
   // Check business schedule
@@ -180,6 +234,12 @@ export function generateSlotsForDate(
   bookings: Booking[],
   requestedDurationMinutes: number = 30
 ): TimeSlotResponse[] {
+  // 🌴 Check full-day holiday override
+  const override = getScheduleOverrideForDate(carWash, dateString);
+  if (override && override.type === 'FULL_DAY') {
+    return [];
+  }
+
   // 1. Determine day of week
   const dateObj = new Date(dateString + 'T00:00:00');
   const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -225,6 +285,30 @@ export function generateSlotsForDate(
   // 3. Generate slots iteratively in 30-minute starting steps
   while (currentStart + duration <= endMinutes) {
     const candidateEnd = currentStart + duration;
+
+    // Check holiday / ad-hoc half-day or custom closure
+    if (override) {
+      if (override.type === 'HALF_DAY_MORNING') {
+        const morningCutoff = override.customEndTime ? timeStringToMinutes(override.customEndTime) : 780; // 13:00
+        if (currentStart < morningCutoff) {
+          currentStart += slotInterval;
+          continue;
+        }
+      } else if (override.type === 'HALF_DAY_AFTERNOON') {
+        const afternoonCutoff = override.customStartTime ? timeStringToMinutes(override.customStartTime) : 780; // 13:00
+        if (candidateEnd > afternoonCutoff) {
+          currentStart += slotInterval;
+          continue;
+        }
+      } else if (override.type === 'CUSTOM_HOURS' && override.customStartTime && override.customEndTime) {
+        const blockStart = timeStringToMinutes(override.customStartTime);
+        const blockEnd = timeStringToMinutes(override.customEndTime);
+        if (currentStart < blockEnd && candidateEnd > blockStart) {
+          currentStart += slotInterval;
+          continue;
+        }
+      }
+    }
 
     // Check if slot overlaps with break
     let overlapsWithBreak = false;
