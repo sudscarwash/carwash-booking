@@ -26,6 +26,7 @@ import { uploadReceipt } from './server/upload.js';
 import { Role, BookingStatus, User, UserWithPassword, CarWash, Booking, MapPreset, AppNotification } from './src/types.js';
 import { 
   seedFirestoreIfEmpty,
+  waitForDbReady,
   getUsers,
   getUserByEmail,
   getUserById,
@@ -239,6 +240,23 @@ async function startServer() {
 
   // Apply general API rate limiter to protect the server
   app.use('/api', apiRateLimiter);
+
+  // Ensure database initialization & Supabase connection are established before serving data queries
+  app.use('/api', async (req, res, next) => {
+    // Health and diagnostic probes respond immediately without waiting
+    if (req.path === '/health' || req.path === '/database/diagnostics') {
+      return next();
+    }
+    try {
+      await Promise.race([
+        waitForDbReady(),
+        new Promise((resolve) => setTimeout(resolve, 8000)),
+      ]);
+    } catch (e) {
+      // Continue and let individual route handler manage errors gracefully
+    }
+    next();
+  });
 
   // Run database automatic seeding in background without blocking server listen
   seedFirestoreIfEmpty().catch((err) => {

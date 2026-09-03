@@ -1,1 +1,37 @@
 @import "tailwindcss";
+
+/* Leaflet custom marker overrides */
+.leaflet-div-icon {
+  background: transparent !important;
+  border: none !important;
+}
+
+.carwash-marker-pill {
+  transition: transform 0.15s ease-out, filter 0.15s ease-out;
+}
+
+.carwash-marker-pill:hover {
+  transform: scale(1.06);
+  z-index: 9999 !important;
+}
+
+.carwash-marker-selected {
+  z-index: 10000 !important;
+}
+
+/* Custom Leaflet popup refinement */
+.leaflet-popup-content-wrapper {
+  border-radius: 14px !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.25), 0 8px 10px -6px rgba(0, 0, 0, 0.2) !important;
+  border: 1px solid #e2e8f0 !important;
+  padding: 2px !important;
+}
+
+.leaflet-popup-content {
+  margin: 10px 12px !important;
+  line-height: 1.4 !important;
+}
+
+.leaflet-popup-tip {
+  box-shadow: none !important;
+}

@@ -72,6 +72,7 @@ export const CustomerDashboard: React.FC = () => {
     setCurrentPage(1);
   }, [search, itemsPerPage, locationAlphabetFilter]);
   const [selectedLocation, setSelectedLocation] = useState<CarWash | null>(null);
+  const [mapPreviewLocation, setMapPreviewLocation] = useState<CarWash | null>(null);
   const [bookingDate, setBookingDate] = useState(() => {
     return getTodayDateString();
   });
@@ -184,7 +185,7 @@ export const CustomerDashboard: React.FC = () => {
   // Filter settings
   const [userLat, setUserLat] = useState(4.8917); // BSB center
   const [userLng, setUserLng] = useState(114.9401);
-  const [radiusKm, setRadiusKm] = useState(2);
+  const [radiusKm, setRadiusKm] = useState(1);
   const [viewAllLocations, setViewAllLocations] = useState(true);
 
   // Bottom Mobile Navigation and Product Selection states
@@ -864,7 +865,7 @@ export const CustomerDashboard: React.FC = () => {
                     </span>
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5 truncate">
-                    {isMapExpanded ? 'Tap pins on map to select car wash' : 'Expand map to view location markers on GPS map'}
+                    {isMapExpanded ? 'Tap car wash name pins to preview distance & book' : 'Expand map to view operator locations, names & live distances'}
                   </p>
                 </div>
               </div>
@@ -899,8 +900,15 @@ export const CustomerDashboard: React.FC = () => {
                 <div className="h-[460px] sm:h-[580px] lg:h-[640px] relative bg-slate-950">
                   <MapSimulation
                     locations={locations}
-                    selectedLocationId={selectedLocation?.id}
+                    selectedLocationId={mapPreviewLocation?.id || selectedLocation?.id}
                     onLocationSelect={(loc) => {
+                      // Smart display preview first: centers on location & shows details card
+                      setMapPreviewLocation(loc);
+                      setUserLat(loc.locationLat);
+                      setUserLng(loc.locationLng);
+                    }}
+                    onBookLocation={(loc) => {
+                      // User explicitly clicked Book Appointment on the smart display
                       setSelectedLocation(loc);
                       setUserLat(loc.locationLat);
                       setUserLng(loc.locationLng);
@@ -916,7 +924,7 @@ export const CustomerDashboard: React.FC = () => {
                   />
                 </div>
                 <div className="bg-slate-900/90 px-4 py-3 text-xs text-slate-300 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2">
-                  <span>💡 <strong>Map Navigation:</strong> Tap any pin on the map to select that location and open booking.</span>
+                  <span>💡 <strong>Map Navigation:</strong> Tap any car wash name pin on the map to preview details, see distance, or book immediately.</span>
                   <button
                     type="button"
                     onClick={() => setShowFullScreenMap(true)}
@@ -1945,8 +1953,16 @@ export const CustomerDashboard: React.FC = () => {
           <div className="flex-1 relative bg-slate-900">
             <MapSimulation
               locations={locations}
-              selectedLocationId={selectedLocation?.id}
+              selectedLocationId={mapPreviewLocation?.id || selectedLocation?.id}
               onLocationSelect={(loc) => {
+                // Smart display preview first: centers on location & shows details card
+                setMapPreviewLocation(loc);
+                setUserLat(loc.locationLat);
+                setUserLng(loc.locationLng);
+              }}
+              onBookLocation={(loc) => {
+                // User explicitly clicked Book Appointment on the smart display
+                setShowFullScreenMap(false);
                 setSelectedLocation(loc);
                 setUserLat(loc.locationLat);
                 setUserLng(loc.locationLng);
@@ -1965,19 +1981,32 @@ export const CustomerDashboard: React.FC = () => {
           {/* Footer Action */}
           <div className="bg-slate-900 p-3.5 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
             <div className="text-xs text-slate-300">
-              {selectedLocation ? (
-                <span>Selected: <strong className="text-sky-400 font-black">{selectedLocation.name}</strong> ({selectedLocation.address})</span>
+              {mapPreviewLocation ? (
+                <span>Selected on map: <strong className="text-sky-400 font-black">{mapPreviewLocation.name}</strong> ({mapPreviewLocation.address})</span>
               ) : (
-                <span>Tap any pin on the map to select a car wash location.</span>
+                <span>Tap any pin or name on the map to preview its smart details card.</span>
               )}
             </div>
             <div className="flex items-center gap-2 w-full sm:w-auto">
+              {mapPreviewLocation && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowFullScreenMap(false);
+                    setSelectedLocation(mapPreviewLocation);
+                  }}
+                  className="flex-1 sm:flex-initial px-5 py-2.5 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white font-extrabold text-xs rounded-xl transition-all shadow-md cursor-pointer text-center flex items-center justify-center gap-1.5"
+                >
+                  <Calendar className="w-4 h-4" />
+                  <span>Book Appointment</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setShowFullScreenMap(false)}
-                className="flex-1 sm:flex-initial px-5 py-2.5 bg-sky-600 hover:bg-sky-500 text-white font-extrabold text-xs rounded-xl transition-all shadow-md cursor-pointer text-center"
+                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition-all cursor-pointer text-center"
               >
-                {selectedLocation ? 'Confirm Location & Proceed' : 'Done Exploring'}
+                Close Map
               </button>
             </div>
           </div>

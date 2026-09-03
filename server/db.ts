@@ -212,73 +212,120 @@ function convertQueryToPg(sql: string): string {
   return result;
 }
 
+let dbInitPromise: Promise<void> | null = null;
+
+export function waitForDbReady(): Promise<void> {
+  if (!dbInitPromise) {
+    dbInitPromise = executeSeedFirestore();
+  }
+  return dbInitPromise;
+}
+
+async function ensureDbInitialized(): Promise<void> {
+  if (usePostgres && !postgresConnected) {
+    try {
+      const p = waitForDbReady();
+      await Promise.race([
+        p,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('DB init wait timeout')), 8000)),
+      ]);
+    } catch (e) {
+      // Proceed to direct query attempt
+    }
+  }
+}
+
 // Low-level query execution helpers with automatic retry for hosted PostgreSQL (Supabase/PgBouncer)
 async function runQueryAll(sql: string, params: any[] = []): Promise<any[]> {
-  if (usePostgres && pgPool) {
-    try {
-      const pgSql = convertQueryToPg(sql);
-      const res = await pgPool.query(pgSql, params);
-      return res.rows;
-    } catch (pgErr: any) {
-      console.warn('[Postgres Query Warning - runQueryAll]:', pgErr.message || pgErr);
-      // If postgres pool had a connection drop, try one query retry
+  if (usePostgres) {
+    await ensureDbInitialized();
+    if (pgPool) {
       try {
         const pgSql = convertQueryToPg(sql);
         const res = await pgPool.query(pgSql, params);
         return res.rows;
-      } catch (retryErr) {
-        if (!sqliteDb) throw retryErr;
-        console.warn('[Postgres Fallback to SQLite]: Serving from local SQLite engine.');
-        return sqliteDb.prepare(sql).all(...params);
+      } catch (pgErr: any) {
+        console.warn('[Postgres Query Warning - runQueryAll]:', pgErr.message || pgErr);
+        // Wait 400ms and retry against Postgres once
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        try {
+          const pgSql = convertQueryToPg(sql);
+          const res = await pgPool.query(pgSql, params);
+          return res.rows;
+        } catch (retryErr: any) {
+          console.error('[Postgres Query Final Error - runQueryAll]:', retryErr.message || retryErr);
+          if (process.env.DATABASE_URL || process.env.DIRECT_URL) {
+            throw retryErr;
+          }
+          if (!sqliteDb) throw retryErr;
+          console.warn('[Postgres Fallback to SQLite]: Serving from local SQLite engine.');
+          return sqliteDb.prepare(sql).all(...params);
+        }
       }
     }
-  } else {
-    return sqliteDb!.prepare(sql).all(...params);
   }
+  return sqliteDb!.prepare(sql).all(...params);
 }
 
 async function runQueryOne(sql: string, params: any[] = []): Promise<any | null> {
-  if (usePostgres && pgPool) {
-    try {
-      const pgSql = convertQueryToPg(sql);
-      const res = await pgPool.query(pgSql, params);
-      return res.rows[0] || null;
-    } catch (pgErr: any) {
-      console.warn('[Postgres Query Warning - runQueryOne]:', pgErr.message || pgErr);
+  if (usePostgres) {
+    await ensureDbInitialized();
+    if (pgPool) {
       try {
         const pgSql = convertQueryToPg(sql);
         const res = await pgPool.query(pgSql, params);
         return res.rows[0] || null;
-      } catch (retryErr) {
-        if (!sqliteDb) throw retryErr;
-        console.warn('[Postgres Fallback to SQLite]: Serving from local SQLite engine.');
-        return sqliteDb.prepare(sql).get(...params) || null;
+      } catch (pgErr: any) {
+        console.warn('[Postgres Query Warning - runQueryOne]:', pgErr.message || pgErr);
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        try {
+          const pgSql = convertQueryToPg(sql);
+          const res = await pgPool.query(pgSql, params);
+          return res.rows[0] || null;
+        } catch (retryErr: any) {
+          console.error('[Postgres Query Final Error - runQueryOne]:', retryErr.message || retryErr);
+          if (process.env.DATABASE_URL || process.env.DIRECT_URL) {
+            throw retryErr;
+          }
+          if (!sqliteDb) throw retryErr;
+          console.warn('[Postgres Fallback to SQLite]: Serving from local SQLite engine.');
+          return sqliteDb.prepare(sql).get(...params) || null;
+        }
       }
     }
-  } else {
-    return sqliteDb!.prepare(sql).get(...params) || null;
   }
+  return sqliteDb!.prepare(sql).get(...params) || null;
 }
 
 async function runQueryRun(sql: string, params: any[] = []): Promise<void> {
-  if (usePostgres && pgPool) {
-    try {
-      const pgSql = convertQueryToPg(sql);
-      await pgPool.query(pgSql, params);
-    } catch (pgErr: any) {
-      console.warn('[Postgres Query Warning - runQueryRun]:', pgErr.message || pgErr);
+  if (usePostgres) {
+    await ensureDbInitialized();
+    if (pgPool) {
       try {
         const pgSql = convertQueryToPg(sql);
         await pgPool.query(pgSql, params);
-      } catch (retryErr) {
-        if (!sqliteDb) throw retryErr;
-        console.warn('[Postgres Fallback to SQLite]: Executing against local SQLite engine.');
-        sqliteDb.prepare(sql).run(...params);
+        return;
+      } catch (pgErr: any) {
+        console.warn('[Postgres Query Warning - runQueryRun]:', pgErr.message || pgErr);
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        try {
+          const pgSql = convertQueryToPg(sql);
+          await pgPool.query(pgSql, params);
+          return;
+        } catch (retryErr: any) {
+          console.error('[Postgres Query Final Error - runQueryRun]:', retryErr.message || retryErr);
+          if (process.env.DATABASE_URL || process.env.DIRECT_URL) {
+            throw retryErr;
+          }
+          if (!sqliteDb) throw retryErr;
+          console.warn('[Postgres Fallback to SQLite]: Executing against local SQLite engine.');
+          sqliteDb.prepare(sql).run(...params);
+          return;
+        }
       }
     }
-  } else {
-    sqliteDb!.prepare(sql).run(...params);
   }
+  sqliteDb!.prepare(sql).run(...params);
 }
 
 async function runExec(sql: string): Promise<void> {
@@ -439,7 +486,7 @@ const DEFAULT_SCHEDULE: WeeklySchedule = {
 };
 
 // Seeding engine
-export async function seedFirestoreIfEmpty() {
+async function executeSeedFirestore() {
   if (usePostgres) {
     let connected = false;
     // Attempt connecting to primary PostgreSQL pool (with up to 3 retries)
@@ -1078,6 +1125,10 @@ export async function seedFirestoreIfEmpty() {
   } catch (err) {
     console.error('Error auto-seeding sample ledger dataset:', err);
   }
+}
+
+export async function seedFirestoreIfEmpty(): Promise<void> {
+  return waitForDbReady();
 }
 
 // User Operations
