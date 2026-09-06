@@ -14,7 +14,7 @@ import pg from 'pg';
 import path from 'path';
 import fs from 'fs';
 import bcrypt from 'bcryptjs';
-import { Role, BookingStatus, UserWithPassword, CarWash, Booking, AuditLog, WeeklySchedule, MapPreset, AppNotification, PlatformInfo } from '../src/types.js';
+import { Role, BookingStatus, UserWithPassword, CarWash, Booking, AuditLog, WeeklySchedule, MapPreset, AppNotification, PlatformInfo, Review, ReviewSummary } from '../src/types.js';
 
 let primaryDbUrl = process.env.DATABASE_URL || process.env.DIRECT_URL || '';
 let directDbUrl = process.env.DIRECT_URL || '';
@@ -190,6 +190,12 @@ function convertQueryToPg(sql: string): string {
     bookingid: 'booking_id',
     isRead: 'is_read',
     isread: 'is_read',
+    ownerReply: 'owner_reply',
+    ownerreply: 'owner_reply',
+    ownerReplyAt: 'owner_reply_at',
+    ownerreplyat: 'owner_reply_at',
+    ownerReplyBy: 'owner_reply_by',
+    ownerreplyby: 'owner_reply_by',
   };
 
   // Perform whole-word replacements to avoid matching partial strings
@@ -204,7 +210,7 @@ function convertQueryToPg(sql: string): string {
     result = result.replace(/INSERT\s+OR\s+IGNORE\s+INTO/gi, 'INSERT INTO');
     
     // Add primary key conflict targets
-    if (tableName === 'users' || tableName === 'car_washes' || tableName === 'bookings' || tableName === 'audit_logs' || tableName === 'map_presets' || tableName === 'notifications') {
+    if (tableName === 'users' || tableName === 'car_washes' || tableName === 'bookings' || tableName === 'audit_logs' || tableName === 'map_presets' || tableName === 'notifications' || tableName === 'reviews') {
       result += ' ON CONFLICT (id) DO NOTHING';
     }
   }
@@ -634,10 +640,30 @@ async function executeSeedFirestore() {
       description TEXT,
       updatedAt TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS reviews (
+      id TEXT PRIMARY KEY,
+      carWashId TEXT NOT NULL,
+      customerId TEXT NOT NULL,
+      customerName TEXT NOT NULL,
+      customerEmail TEXT,
+      rating INTEGER NOT NULL,
+      comment TEXT NOT NULL,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      ownerReply TEXT,
+      ownerReplyAt TEXT,
+      ownerReplyBy TEXT,
+      bookingId TEXT
+    );
   `);
 
   // Dynamically add rich user profile columns and ensure all required core columns exist
   const alterColumns = [
+    'ALTER TABLE reviews ADD COLUMN ownerReply TEXT',
+    'ALTER TABLE reviews ADD COLUMN ownerReplyAt TEXT',
+    'ALTER TABLE reviews ADD COLUMN ownerReplyBy TEXT',
+    'ALTER TABLE reviews ADD COLUMN bookingId TEXT',
     'ALTER TABLE users ADD COLUMN isActive INTEGER DEFAULT 1',
     'ALTER TABLE users ADD COLUMN isEmailVerified INTEGER DEFAULT 1',
     'ALTER TABLE users ADD COLUMN businessId TEXT',
@@ -721,6 +747,16 @@ async function executeSeedFirestore() {
       'ALTER TABLE car_washes RENAME COLUMN isactive TO is_active',
       'ALTER TABLE platform_info RENAME COLUMN companyname TO company_name',
       'ALTER TABLE platform_info RENAME COLUMN updatedat TO updated_at',
+      'ALTER TABLE reviews RENAME COLUMN carwashid TO car_wash_id',
+      'ALTER TABLE reviews RENAME COLUMN customerid TO customer_id',
+      'ALTER TABLE reviews RENAME COLUMN customername TO customer_name',
+      'ALTER TABLE reviews RENAME COLUMN customeremail TO customer_email',
+      'ALTER TABLE reviews RENAME COLUMN createdat TO created_at',
+      'ALTER TABLE reviews RENAME COLUMN updatedat TO updated_at',
+      'ALTER TABLE reviews RENAME COLUMN ownerreply TO owner_reply',
+      'ALTER TABLE reviews RENAME COLUMN ownerreplyat TO owner_reply_at',
+      'ALTER TABLE reviews RENAME COLUMN ownerreplyby TO owner_reply_by',
+      'ALTER TABLE reviews RENAME COLUMN bookingid TO booking_id',
     ];
     for (const renameSql of renameQueries) {
       try {
@@ -772,6 +808,7 @@ async function executeSeedFirestore() {
       'map_presets',
       'notifications',
       'platform_info',
+      'reviews',
     ];
     for (const table of rlsTables) {
       try {
@@ -943,6 +980,80 @@ async function executeSeedFirestore() {
     if (recVal < 20) {
       console.log('Seeding dynamic historical sales ledger dataset (Dec 2025 to present)...');
       await seedDecToPresentSampleData('ALL');
+    }
+
+    // Seed sample customer reviews if table is currently empty
+    const revRow = await runQueryOne('SELECT COUNT(*) AS count FROM reviews') as { count: any };
+    const revCount = revRow ? parseInt(revRow.count, 10) : 0;
+    if (revCount === 0) {
+      console.log('Seeding initial customer reviews and ratings...');
+      const sampleReviews: Review[] = [
+        {
+          id: 'rev_sample_1',
+          carWashId: 'cw_brunei_1',
+          customerId: 'usr_cust_1',
+          customerName: 'Haji Rahman',
+          customerEmail: 'rahman@example.bn',
+          rating: 5,
+          comment: 'Exceptional ceramic shine service! My SUV looks brand new and the waiting lounge was very comfortable with complimentary tea. Highly recommended!',
+          createdAt: new Date(Date.now() - 3 * 86400000).toISOString(),
+          updatedAt: new Date(Date.now() - 3 * 86400000).toISOString(),
+          ownerReply: 'Terima kasih banyak Haji Rahman! We take great pride in our nano-ceramic finish and look forward to welcoming you back.',
+          ownerReplyAt: new Date(Date.now() - 2 * 86400000).toISOString(),
+          ownerReplyBy: 'Autoshine Brunei (Owner)',
+        },
+        {
+          id: 'rev_sample_2',
+          carWashId: 'cw_brunei_1',
+          customerId: 'usr_cust_2',
+          customerName: 'Nurul Azira',
+          customerEmail: 'nurul@example.bn',
+          rating: 5,
+          comment: 'Booking through the platform was super smooth. Arrived at my 11:30 AM slot, no waiting in line at all. Interior vacuuming was spotless!',
+          createdAt: new Date(Date.now() - 6 * 86400000).toISOString(),
+          updatedAt: new Date(Date.now() - 6 * 86400000).toISOString(),
+        },
+        {
+          id: 'rev_sample_3',
+          carWashId: 'cw_brunei_1',
+          customerId: 'usr_cust_3',
+          customerName: 'Mohd Faiz',
+          customerEmail: 'faiz@example.bn',
+          rating: 4,
+          comment: 'Very good foam wash and tire gloss. Staff was attentive and friendly. Great value for money in Gadong.',
+          createdAt: new Date(Date.now() - 10 * 86400000).toISOString(),
+          updatedAt: new Date(Date.now() - 10 * 86400000).toISOString(),
+          ownerReply: 'Thank you for your review Mohd Faiz! We appreciate your support and hope to see you again soon.',
+          ownerReplyAt: new Date(Date.now() - 9 * 86400000).toISOString(),
+          ownerReplyBy: 'Autoshine Brunei (Owner)',
+        },
+        {
+          id: 'rev_sample_4',
+          carWashId: 'cw_downtown',
+          customerId: 'usr_cust_4',
+          customerName: 'Marcus Vance',
+          customerEmail: 'marcus@example.com',
+          rating: 5,
+          comment: 'Best hand wash in the city. Water-saving system is impressive and the hand wax finish lasted for weeks.',
+          createdAt: new Date(Date.now() - 4 * 86400000).toISOString(),
+          updatedAt: new Date(Date.now() - 4 * 86400000).toISOString(),
+        },
+        {
+          id: 'rev_sample_5',
+          carWashId: 'cw_bayside',
+          customerId: 'usr_cust_5',
+          customerName: 'Sarah Jenkins',
+          customerEmail: 'sarah@example.com',
+          rating: 4,
+          comment: 'Express wash is super fast! Can get busy on weekends so definitely book ahead of time.',
+          createdAt: new Date(Date.now() - 7 * 86400000).toISOString(),
+          updatedAt: new Date(Date.now() - 7 * 86400000).toISOString(),
+        }
+      ];
+
+      for (const r of sampleReviews) {
+        await saveReview(r);
+      }
     }
 
     if (dtVal > 0) {
@@ -2217,6 +2328,211 @@ export async function getDatabaseDiagnostics(): Promise<DatabaseDiagnostics> {
     } : null,
     lastCheckedAt: new Date().toISOString(),
     explanation,
+  };
+}
+
+// ⭐ Customer Ratings & Reviews Database Methods
+export const mapReview = (row: any): Review => {
+  if (!row) return row;
+  return {
+    id: row.id,
+    carWashId: row.carWashId ?? row.car_wash_id ?? row.carwashid,
+    customerId: row.customerId ?? row.customer_id ?? row.customerid,
+    customerName: row.customerName ?? row.customer_name ?? row.customername ?? 'Customer',
+    customerEmail: row.customerEmail ?? row.customer_email ?? row.customeremail ?? undefined,
+    rating: Number(row.rating || 5),
+    comment: row.comment || '',
+    createdAt: row.createdAt ?? row.created_at ?? row.createdat,
+    updatedAt: row.updatedAt ?? row.updated_at ?? row.updatedat,
+    bookingId: row.bookingId ?? row.booking_id ?? row.bookingid ?? undefined,
+    ownerReply: row.ownerReply ?? row.owner_reply ?? row.ownerreply ?? undefined,
+    ownerReplyAt: row.ownerReplyAt ?? row.owner_reply_at ?? row.ownerreplyat ?? undefined,
+    ownerReplyBy: row.ownerReplyBy ?? row.owner_reply_by ?? row.ownerreplyby ?? undefined,
+  };
+};
+
+export async function getReviewsByCarWash(carWashId: string): Promise<Review[]> {
+  try {
+    const rows = await runQueryAll(
+      `SELECT * FROM reviews WHERE carWashId = ? ORDER BY createdAt DESC`,
+      [carWashId]
+    );
+    if (!Array.isArray(rows)) return [];
+    return rows.map(mapReview);
+  } catch (err) {
+    console.warn('Could not fetch reviews for car wash:', carWashId, err);
+    return [];
+  }
+}
+
+export async function getAllReviews(): Promise<Review[]> {
+  try {
+    const rows = await runQueryAll(`SELECT * FROM reviews ORDER BY createdAt DESC`);
+    if (!Array.isArray(rows)) return [];
+    return rows.map(mapReview);
+  } catch (err) {
+    console.warn('Could not fetch all reviews:', err);
+    return [];
+  }
+}
+
+export async function getReviewById(id: string): Promise<Review | null> {
+  try {
+    const row = await runQueryOne(`SELECT * FROM reviews WHERE id = ?`, [id]);
+    return row ? mapReview(row) : null;
+  } catch (err) {
+    console.warn('Could not fetch review by id:', id, err);
+    return null;
+  }
+}
+
+export async function getCustomerReviewForCarWash(carWashId: string, customerId: string): Promise<Review | null> {
+  try {
+    const row = await runQueryOne(
+      `SELECT * FROM reviews WHERE carWashId = ? AND customerId = ?`,
+      [carWashId, customerId]
+    );
+    return row ? mapReview(row) : null;
+  } catch (err) {
+    console.warn('Could not fetch customer review:', carWashId, customerId, err);
+    return null;
+  }
+}
+
+export async function saveReview(review: Review): Promise<Review> {
+  // Ensure 1 review per customer per car wash: check if existing
+  const existing = await getCustomerReviewForCarWash(review.carWashId, review.customerId);
+  const now = new Date().toISOString();
+
+  if (existing) {
+    // Update existing review while retaining any previous owner reply unless specified
+    const updatedReview: Review = {
+      ...existing,
+      rating: review.rating,
+      comment: review.comment,
+      updatedAt: now,
+      customerName: review.customerName || existing.customerName,
+      customerEmail: review.customerEmail || existing.customerEmail,
+      bookingId: review.bookingId || existing.bookingId,
+    };
+
+    await runQueryRun(
+      `UPDATE reviews SET rating = ?, comment = ?, customerName = ?, customerEmail = ?, bookingId = ?, updatedAt = ? WHERE id = ?`,
+      [
+        updatedReview.rating,
+        updatedReview.comment,
+        updatedReview.customerName,
+        updatedReview.customerEmail || null,
+        updatedReview.bookingId || null,
+        updatedReview.updatedAt,
+        existing.id
+      ]
+    );
+    return updatedReview;
+  }
+
+  // Create new review
+  const newReview: Review = {
+    ...review,
+    id: review.id || `rev_${Math.random().toString(36).substring(2, 9)}`,
+    createdAt: review.createdAt || now,
+    updatedAt: now,
+  };
+
+  await runQueryRun(
+    `INSERT INTO reviews (id, carWashId, customerId, customerName, customerEmail, rating, comment, createdAt, updatedAt, ownerReply, ownerReplyAt, ownerReplyBy, bookingId)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      newReview.id,
+      newReview.carWashId,
+      newReview.customerId,
+      newReview.customerName,
+      newReview.customerEmail || null,
+      newReview.rating,
+      newReview.comment,
+      newReview.createdAt,
+      newReview.updatedAt,
+      newReview.ownerReply || null,
+      newReview.ownerReplyAt || null,
+      newReview.ownerReplyBy || null,
+      newReview.bookingId || null,
+    ]
+  );
+
+  return newReview;
+}
+
+export async function deleteReview(id: string): Promise<boolean> {
+  try {
+    await runQueryRun(`DELETE FROM reviews WHERE id = ?`, [id]);
+    return true;
+  } catch (err) {
+    console.warn('Could not delete review:', id, err);
+    return false;
+  }
+}
+
+export async function saveOwnerReply(id: string, reply: string, ownerName: string): Promise<Review | null> {
+  const existing = await getReviewById(id);
+  if (!existing) return null;
+
+  const replyTimestamp = new Date().toISOString();
+  await runQueryRun(
+    `UPDATE reviews SET ownerReply = ?, ownerReplyAt = ?, ownerReplyBy = ? WHERE id = ?`,
+    [reply.trim(), replyTimestamp, ownerName.trim(), id]
+  );
+
+  return {
+    ...existing,
+    ownerReply: reply.trim(),
+    ownerReplyAt: replyTimestamp,
+    ownerReplyBy: ownerName.trim(),
+  };
+}
+
+export async function deleteOwnerReply(id: string): Promise<Review | null> {
+  const existing = await getReviewById(id);
+  if (!existing) return null;
+
+  await runQueryRun(
+    `UPDATE reviews SET ownerReply = NULL, ownerReplyAt = NULL, ownerReplyBy = NULL WHERE id = ?`,
+    [id]
+  );
+
+  return {
+    ...existing,
+    ownerReply: undefined,
+    ownerReplyAt: undefined,
+    ownerReplyBy: undefined,
+  };
+}
+
+export async function getReviewsSummaryForCarWash(carWashId: string): Promise<ReviewSummary> {
+  const reviews = await getReviewsByCarWash(carWashId);
+  const totalReviews = reviews.length;
+  const ratingCounts: { [stars: number]: number } = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+
+  if (totalReviews === 0) {
+    return {
+      averageRating: 0,
+      totalReviews: 0,
+      ratingCounts,
+    };
+  }
+
+  let totalScore = 0;
+  reviews.forEach((r) => {
+    const star = Math.max(1, Math.min(5, Math.round(r.rating)));
+    ratingCounts[star] = (ratingCounts[star] || 0) + 1;
+    totalScore += r.rating;
+  });
+
+  const averageRating = Number((totalScore / totalReviews).toFixed(1));
+
+  return {
+    averageRating,
+    totalReviews,
+    ratingCounts,
   };
 }
 

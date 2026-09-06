@@ -8,7 +8,9 @@ import { useApp } from '../context/AppContext.js';
 import { MapSimulation } from '../components/MapSimulation.js';
 import { LocalPaymentForm } from '../components/LocalPaymentForm.js';
 import { BookingFlowModal } from '../components/BookingFlowModal.js';
-import { Search, Calendar, Clock, MapPin, History, CheckCircle, AlertTriangle, X, ChevronRight, ChevronLeft, ChevronDown, Sliders, Info, Sparkles, Navigation, User, Edit3, Check, Instagram, Landmark, Lock, Key, FileText, Maximize2, Filter } from 'lucide-react';
+import { ReviewsModal } from '../components/ReviewsModal.js';
+import { FEATURES } from '../config/features.js';
+import { Search, Calendar, Clock, MapPin, History, CheckCircle, AlertTriangle, X, ChevronRight, ChevronLeft, ChevronDown, Sliders, Info, Sparkles, Navigation, User, Edit3, Check, Instagram, Landmark, Lock, Key, FileText, Maximize2, Filter, Star, DoorClosed } from 'lucide-react';
 import { CarWash, Booking, BookingStatus } from '../types.js';
 import autoshineLogo from '../assets/images/autoshine_logo.jpg';
 
@@ -107,6 +109,35 @@ export const CustomerDashboard: React.FC = () => {
   const [agreeToDelete, setAgreeToDelete] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
+
+  // Ratings and Reviews states
+  const [reviewModalCarWash, setReviewModalCarWash] = useState<CarWash | null>(null);
+  const [targetBookingIdForReview, setTargetBookingIdForReview] = useState<string | undefined>(undefined);
+  const [carWashRatings, setCarWashRatings] = useState<{ [carWashId: string]: { averageRating: number; totalReviews: number } }>({});
+
+  const refreshRatings = () => {
+    if (!FEATURES.ENABLE_REVIEWS) return;
+    if (locations && locations.length > 0) {
+      locations.forEach(async (loc) => {
+        try {
+          const res = await fetch(`/api/reviews/summary?carWashId=${loc.id}`);
+          if (res.ok) {
+            const data = await res.json();
+            setCarWashRatings((prev) => ({
+              ...prev,
+              [loc.id]: { averageRating: data.averageRating, totalReviews: data.totalReviews },
+            }));
+          }
+        } catch (e) {
+          // ignore
+        }
+      });
+    }
+  };
+
+  useEffect(() => {
+    refreshRatings();
+  }, [locations]);
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -266,6 +297,123 @@ export const CustomerDashboard: React.FC = () => {
 
   const breakInfo = getSelectedDayBreakInfo();
   const rescheduleBreakInfo = getRescheduleDayBreakInfo();
+
+  // Computes the current real-time status of a location today
+  const getLocationOpenStatus = (loc: CarWash) => {
+    if (!loc.openingHours) {
+      return { label: 'Open', colorClass: 'bg-emerald-50 text-emerald-700 border-emerald-200/80', isClosed: false };
+    }
+    // Current time in Brunei (UTC+8)
+    const now = new Date(Date.now() + 8 * 60 * 60 * 1000);
+    const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dayName = daysOfWeek[now.getUTCDay()] as keyof typeof loc.openingHours;
+    const daySched = loc.openingHours[dayName] as any;
+    const todayStr = now.toISOString().split('T')[0];
+
+    // Check holiday overrides
+    let overrides = loc.scheduleOverrides;
+    if (!overrides && (loc as any).scheduleOverridesJson) {
+      try {
+        overrides = typeof (loc as any).scheduleOverridesJson === 'string'
+          ? JSON.parse((loc as any).scheduleOverridesJson)
+          : (loc as any).scheduleOverridesJson;
+      } catch {
+        overrides = [];
+      }
+    }
+    const holiday = Array.isArray(overrides) ? overrides.find((o) => o.date === todayStr) : null;
+    if (holiday && holiday.type === 'FULL_DAY') {
+      return {
+        label: `Closed Today (${holiday.reason || 'Holiday'})`,
+        colorClass: 'bg-rose-50 text-rose-700 border-rose-200',
+        isClosed: true,
+      };
+    }
+
+    const formattedDay = dayName.charAt(0).toUpperCase() + dayName.slice(1);
+    if (!daySched || daySched.isOpen === false || !daySched.open || !daySched.close) {
+      return {
+        label: `Closed Today (${formattedDay})`,
+        colorClass: 'bg-rose-50 text-rose-700 border-rose-200',
+        isClosed: true,
+      };
+    }
+
+    const parseMin = (s: string) => {
+      const [h, m] = s.split(':').map(Number);
+      return (h || 0) * 60 + (m || 0);
+    };
+    const curMin = now.getUTCHours() * 60 + now.getUTCMinutes();
+    const openMin = parseMin(daySched.open);
+    const closeMin = parseMin(daySched.close);
+
+    if (daySched.hasBreak && daySched.breakStart && daySched.breakEnd) {
+      const breakStart = parseMin(daySched.breakStart);
+      const breakEnd = parseMin(daySched.breakEnd);
+      if (curMin >= breakStart && curMin < breakEnd) {
+        return {
+          label: `On Break (Resumes ${daySched.breakEnd})`,
+          colorClass: 'bg-amber-50 text-amber-800 border-amber-200',
+          isClosed: false,
+        };
+      }
+    }
+
+    if (curMin < openMin) {
+      return {
+        label: `Closed (Opens ${daySched.open})`,
+        colorClass: 'bg-slate-100 text-slate-700 border-slate-200',
+        isClosed: true,
+      };
+    }
+    if (curMin >= closeMin) {
+      return {
+        label: `Closed (Closed at ${daySched.close})`,
+        colorClass: 'bg-slate-100 text-slate-700 border-slate-200',
+        isClosed: true,
+      };
+    }
+
+    return {
+      label: `Open Now (${daySched.open} - ${daySched.close})`,
+      colorClass: 'bg-emerald-50 text-emerald-700 border-emerald-200/80',
+      isClosed: false,
+    };
+  };
+
+  const getRescheduleDayClosedInfo = () => {
+    if (!reschedulingBooking || !rescheduleDate) return null;
+    const selectedLoc = locations.find((l) => l.id === reschedulingBooking.carWashId);
+    if (!selectedLoc || !selectedLoc.openingHours) return null;
+    const dateObj = new Date(rescheduleDate + 'T00:00:00');
+    const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dayName = daysOfWeek[dateObj.getDay()] as keyof typeof selectedLoc.openingHours;
+    const daySched = selectedLoc.openingHours[dayName];
+    const dayStr = String(dayName);
+    const formattedDay = dayStr.charAt(0).toUpperCase() + dayStr.slice(1);
+
+    // Check holiday override
+    let overrides = selectedLoc.scheduleOverrides;
+    if (!overrides && (selectedLoc as any).scheduleOverridesJson) {
+      try {
+        overrides = typeof (selectedLoc as any).scheduleOverridesJson === 'string'
+          ? JSON.parse((selectedLoc as any).scheduleOverridesJson)
+          : (selectedLoc as any).scheduleOverridesJson;
+      } catch {
+        overrides = [];
+      }
+    }
+    const holiday = Array.isArray(overrides) ? overrides.find((o) => o.date === rescheduleDate) : null;
+    if (holiday && holiday.type === 'FULL_DAY') {
+      return { isClosed: true, reason: `Closed for holiday (${holiday.reason || 'Holiday'})`, dayName: formattedDay };
+    }
+
+    if (!daySched || daySched.isOpen === false || !daySched.open || !daySched.close) {
+      return { isClosed: true, reason: `Closed on ${formattedDay}s`, dayName: formattedDay };
+    }
+
+    return { isClosed: false, dayName: formattedDay };
+  };
 
   // Automatically center user on the first business location or default to Brunei
   useEffect(() => {
@@ -767,9 +915,35 @@ export const CustomerDashboard: React.FC = () => {
                               {loc.address}
                             </p>
                             <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                              <span className="bg-emerald-50 text-emerald-700 text-[10px] font-extrabold px-2 py-0.5 rounded-md border border-emerald-200/80">
-                                Open Now
-                              </span>
+                              {(() => {
+                                const status = getLocationOpenStatus(loc);
+                                return (
+                                  <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md border ${status.colorClass}`}>
+                                    {status.label}
+                                  </span>
+                                );
+                              })()}
+                              {/* Reviews trigger badge (Available in structure, conditionally rendered) */}
+                              {FEATURES.ENABLE_REVIEWS && (
+                                <button
+                                  type="button"
+                                  id={`btn-card-reviews-${loc.id}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setReviewModalCarWash(loc);
+                                    setTargetBookingIdForReview(undefined);
+                                  }}
+                                  className="bg-amber-50 hover:bg-amber-100 text-amber-900 text-[10px] font-extrabold px-2.5 py-0.5 rounded-md border border-amber-200/80 flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                                  title="View Customer Reviews & Ratings"
+                                >
+                                  <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                                  <span>
+                                    {carWashRatings[loc.id]?.totalReviews > 0
+                                      ? `${carWashRatings[loc.id].averageRating.toFixed(1)} (${carWashRatings[loc.id].totalReviews})`
+                                      : 'Reviews'}
+                                  </span>
+                                </button>
+                              )}
                               {loc.services && loc.services.length > 0 && (
                                 <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded-md border border-slate-200">
                                   {loc.services.length} wash options
@@ -779,22 +953,41 @@ export const CustomerDashboard: React.FC = () => {
                           </div>
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedLocation(loc);
-                            setUserLat(loc.locationLat);
-                            setUserLng(loc.locationLng);
-                          }}
-                          className={`w-full py-3 px-4 text-white font-black text-xs rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer shrink-0 ${
-                            selectedLocation?.id === loc.id
-                              ? 'bg-emerald-600 hover:bg-emerald-500'
-                              : 'bg-sky-600 hover:bg-sky-500'
-                          }`}
-                        >
-                          <span>{selectedLocation?.id === loc.id ? 'Selected (Tap to Book)' : 'Select Location & Book'}</span>
-                          <ChevronRight className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center gap-2">
+                          {FEATURES.ENABLE_REVIEWS && (
+                            <button
+                              type="button"
+                              id={`btn-reviews-outline-${loc.id}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setReviewModalCarWash(loc);
+                                setTargetBookingIdForReview(undefined);
+                              }}
+                              className="py-3 px-3.5 bg-white hover:bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold rounded-xl transition-all flex items-center gap-1 shrink-0 shadow-2xs"
+                              title="View Customer Reviews"
+                            >
+                              <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                              <span className="hidden sm:inline">Reviews</span>
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedLocation(loc);
+                              setUserLat(loc.locationLat);
+                              setUserLng(loc.locationLng);
+                            }}
+                            className={`flex-1 py-3 px-4 text-white font-black text-xs rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer shrink-0 ${
+                              selectedLocation?.id === loc.id
+                                ? 'bg-emerald-600 hover:bg-emerald-500'
+                                : 'bg-sky-600 hover:bg-sky-500'
+                            }`}
+                          >
+                            <span>{selectedLocation?.id === loc.id ? 'Selected (Tap to Book)' : 'Select Location & Book'}</span>
+                            <ChevronRight className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -897,21 +1090,17 @@ export const CustomerDashboard: React.FC = () => {
 
             {isMapExpanded && (
               <div className="border-t border-slate-800 animate-fade-in">
-                <div className="h-[460px] sm:h-[580px] lg:h-[640px] relative bg-slate-950">
+                <div className="h-[520px] sm:h-[580px] lg:h-[640px] relative bg-slate-950 w-full overflow-hidden">
                   <MapSimulation
                     locations={locations}
-                    selectedLocationId={mapPreviewLocation?.id || selectedLocation?.id}
+                    selectedLocationId={mapPreviewLocation?.id ?? null}
                     onLocationSelect={(loc) => {
-                      // Smart display preview first: centers on location & shows details card
+                      // Smart display preview: shows details card without moving the user's location
                       setMapPreviewLocation(loc);
-                      setUserLat(loc.locationLat);
-                      setUserLng(loc.locationLng);
                     }}
                     onBookLocation={(loc) => {
                       // User explicitly clicked Book Appointment on the smart display
                       setSelectedLocation(loc);
-                      setUserLat(loc.locationLat);
-                      setUserLng(loc.locationLng);
                     }}
                     radiusKm={radiusKm}
                     onRadiusChange={(r) => setRadiusKm(r)}
@@ -1278,9 +1467,40 @@ export const CustomerDashboard: React.FC = () => {
                                       </>
                                     )
                                   ) : (
-                                    <span className="text-[11px] text-slate-400 font-semibold italic px-1">
-                                      {bk.status === BookingStatus.COMPLETED ? 'Order Completed' : 'Record Locked'}
-                                    </span>
+                                    bk.status === BookingStatus.COMPLETED ? (
+                                      FEATURES.ENABLE_REVIEWS ? (
+                                        <div className="flex items-center gap-1.5">
+                                          <button
+                                            type="button"
+                                            id={`btn-review-completed-${bk.id}`}
+                                            onClick={(e) => {
+                                              e.preventDefault();
+                                              e.stopPropagation();
+                                              const matched = locations.find(l => l.id === bk.carWashId);
+                                              if (matched) {
+                                                setReviewModalCarWash(matched);
+                                                setTargetBookingIdForReview(bk.id);
+                                              }
+                                            }}
+                                            className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-bold rounded-xl text-xs transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                                          >
+                                            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                                            <span>Rate & Review</span>
+                                          </button>
+                                          <span className="text-[11px] text-emerald-600 font-semibold italic px-1">
+                                            Order Completed
+                                          </span>
+                                        </div>
+                                      ) : (
+                                        <span className="text-[11px] text-emerald-600 font-semibold italic px-1">
+                                          Order Completed
+                                        </span>
+                                      )
+                                    ) : (
+                                      <span className="text-[11px] text-slate-400 font-semibold italic px-1">
+                                        Record Locked
+                                      </span>
+                                    )
                                   )}
                                 </div>
                               </div>
@@ -1953,19 +2173,15 @@ export const CustomerDashboard: React.FC = () => {
           <div className="flex-1 relative bg-slate-900">
             <MapSimulation
               locations={locations}
-              selectedLocationId={mapPreviewLocation?.id || selectedLocation?.id}
+              selectedLocationId={mapPreviewLocation?.id ?? null}
               onLocationSelect={(loc) => {
-                // Smart display preview first: centers on location & shows details card
+                // Smart display preview: shows details card without moving user's location
                 setMapPreviewLocation(loc);
-                setUserLat(loc.locationLat);
-                setUserLng(loc.locationLng);
               }}
               onBookLocation={(loc) => {
                 // User explicitly clicked Book Appointment on the smart display
                 setShowFullScreenMap(false);
                 setSelectedLocation(loc);
-                setUserLat(loc.locationLat);
-                setUserLng(loc.locationLng);
               }}
               radiusKm={radiusKm}
               onRadiusChange={(r) => setRadiusKm(r)}
@@ -2176,6 +2392,20 @@ export const CustomerDashboard: React.FC = () => {
                   required
                   id="reschedule-date-input"
                 />
+                {(() => {
+                  const closedInfo = getRescheduleDayClosedInfo();
+                  if (closedInfo && closedInfo.isClosed) {
+                    return (
+                      <div className="mt-2 text-xs bg-rose-50 border border-rose-200 text-rose-800 p-2.5 rounded-xl flex items-start gap-2 animate-fade-in">
+                        <DoorClosed className="h-4 w-4 shrink-0 text-rose-600 mt-0.5" />
+                        <span>
+                          <strong>Location Closed:</strong> {closedInfo.reason}. Please select another date.
+                        </span>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
                 {rescheduleBreakInfo && (
                   <div className="mt-2 text-xs bg-amber-50 border border-amber-100 text-amber-800 p-2.5 rounded-xl flex items-start gap-2 animate-fade-in">
                     <Clock className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
@@ -2190,7 +2420,17 @@ export const CustomerDashboard: React.FC = () => {
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase mb-2">New Slot</label>
                 {rescheduleSlots.length === 0 ? (
-                  <p className="text-xs text-slate-400 italic">No slots available on this day.</p>
+                  (() => {
+                    const closedInfo = getRescheduleDayClosedInfo();
+                    if (closedInfo && closedInfo.isClosed) {
+                      return (
+                        <p className="text-xs text-rose-600 font-bold bg-rose-50 p-2.5 rounded-xl border border-rose-200">
+                          {closedInfo.reason} — No slots available for booking.
+                        </p>
+                      );
+                    }
+                    return <p className="text-xs text-slate-400 italic">No slots available on this day.</p>;
+                  })()
                 ) : (
                   <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto pr-1">
                     {rescheduleSlots.map((slot) => {
@@ -2438,6 +2678,23 @@ export const CustomerDashboard: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Reviews & Ratings Modal (Structured and ready when reviews are activated) */}
+      {FEATURES.ENABLE_REVIEWS && reviewModalCarWash && (
+        <ReviewsModal
+          isOpen={!!reviewModalCarWash}
+          onClose={() => {
+            setReviewModalCarWash(null);
+            setTargetBookingIdForReview(undefined);
+          }}
+          carWash={reviewModalCarWash}
+          currentUser={user}
+          targetBookingId={targetBookingIdForReview}
+          onReviewSubmitted={() => {
+            refreshRatings();
+          }}
+        />
       )}
     </div>
   );

@@ -22,7 +22,9 @@ import {
   FileText,
   MessageCircle,
   AlertTriangle,
-  RefreshCw
+  RefreshCw,
+  DoorClosed,
+  CalendarX
 } from 'lucide-react';
 import { CarWash, User, WashService } from '../types.js';
 import { useApp } from '../context/AppContext.js';
@@ -334,6 +336,100 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
 
   const breakInfo = getBreakInfo();
 
+  // Determine if selected date is an operating day in weekly schedule
+  const getWeeklyScheduleInfo = (dateStr: string) => {
+    if (!location.openingHours) {
+      return { isOpen: true, dayName: '', openTime: '', closeTime: '' };
+    }
+    const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dObj = new Date(dateStr + 'T00:00:00');
+    const dayIndex = dObj.getDay();
+    const dayName = daysOfWeek[dayIndex] as keyof typeof location.openingHours;
+    const sched = location.openingHours[dayName] as any;
+    const dayStr = String(dayName);
+    const formattedDay = dayStr.charAt(0).toUpperCase() + dayStr.slice(1);
+
+    if (!sched || sched.isOpen === false || !sched.open || !sched.close) {
+      return {
+        isOpen: false,
+        dayName: formattedDay,
+        openTime: '',
+        closeTime: '',
+      };
+    }
+    return {
+      isOpen: true,
+      dayName: formattedDay,
+      openTime: sched.open,
+      closeTime: sched.close,
+    };
+  };
+
+  const weeklyScheduleInfo = getWeeklyScheduleInfo(bookingDate);
+
+  // Helper to find next open business day starting from a given date
+  const getNextOpenDate = (fromStr: string): { dateStr: string; dayName: string; formattedDisplay: string } | null => {
+    if (!location.openingHours) return null;
+    const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const curr = new Date(fromStr + 'T00:00:00');
+
+    for (let i = 1; i <= 7; i++) {
+      curr.setDate(curr.getDate() + 1);
+      const year = curr.getFullYear();
+      const month = String(curr.getMonth() + 1).padStart(2, '0');
+      const day = String(curr.getDate()).padStart(2, '0');
+      const candidateDateStr = `${year}-${month}-${day}`;
+      const dayIndex = curr.getDay();
+      const dayKey = daysOfWeek[dayIndex] as keyof typeof location.openingHours;
+      const sched = location.openingHours[dayKey] as any;
+
+      // Check holiday overrides
+      let overrides = location.scheduleOverrides;
+      if (!overrides && (location as any).scheduleOverridesJson) {
+        try {
+          overrides = typeof (location as any).scheduleOverridesJson === 'string'
+            ? JSON.parse((location as any).scheduleOverridesJson)
+            : (location as any).scheduleOverridesJson;
+        } catch {
+          overrides = [];
+        }
+      }
+      const isHoliday = Array.isArray(overrides) && overrides.some((o: any) => o.date === candidateDateStr && o.type === 'FULL_DAY');
+
+      if (sched && sched.isOpen !== false && sched.open && sched.close && !isHoliday) {
+        const dayStr = String(dayKey);
+        const formattedDay = dayStr.charAt(0).toUpperCase() + dayStr.slice(1);
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const display = `${formattedDay}, ${months[curr.getMonth()]} ${curr.getDate()}`;
+        return {
+          dateStr: candidateDateStr,
+          dayName: formattedDay,
+          formattedDisplay: display
+        };
+      }
+    }
+    return null;
+  };
+
+  const nextOpenDate = !weeklyScheduleInfo.isOpen ? getNextOpenDate(bookingDate) : null;
+
+  // List of weekly regular closed days (e.g. ["Sunday", "Friday"])
+  const getWeeklyClosedDays = (): string[] => {
+    if (!location.openingHours) return [];
+    const days: (keyof typeof location.openingHours)[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    const closed: string[] = [];
+    for (const d of days) {
+      const s = location.openingHours[d];
+      if (!s || s.isOpen === false || !s.open) {
+        const dStr = String(d);
+        closed.push(dStr.charAt(0).toUpperCase() + dStr.slice(1));
+      }
+    }
+    return closed;
+  };
+
+  const weeklyClosedDays = getWeeklyClosedDays();
+
   // Handle final booking submission
   const handleSubmitBooking = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -436,10 +532,10 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
               }}
             />
             <div>
-              <h3 className="font-extrabold text-sm sm:text-base text-white line-clamp-1">{location.name}</h3>
-              <p className="text-[11px] text-sky-400 font-medium flex items-center gap-1">
-                <MapPin className="w-3 h-3 text-sky-400 shrink-0" />
-                <span className="truncate max-w-[180px] sm:max-w-md">{location.address}</span>
+              <h3 className="font-extrabold text-sm sm:text-base text-white leading-snug break-words">{location.name}</h3>
+              <p className="text-[11px] text-sky-300 font-medium flex items-start gap-1 mt-0.5">
+                <MapPin className="w-3.5 h-3.5 text-sky-400 shrink-0 mt-0.5" />
+                <span className="break-words leading-tight">{location.address}</span>
               </p>
             </div>
           </div>
@@ -881,9 +977,53 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                           setSelectedSlot(null);
                           setErrorMessage(null);
                         }}
-                        className="w-full pl-10 pr-4 py-3 border border-slate-200 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 rounded-xl outline-none text-slate-800 text-sm font-bold bg-white transition-all"
+                        className={`w-full pl-10 pr-4 py-3 border rounded-xl outline-none text-sm font-bold bg-white transition-all ${
+                          !weeklyScheduleInfo.isOpen
+                            ? 'border-rose-300 focus:border-rose-500 focus:ring-2 focus:ring-rose-100 text-rose-900'
+                            : 'border-slate-200 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 text-slate-800'
+                        }`}
                       />
                     </div>
+
+                    {/* Prominent Business Closed on This Day Banner */}
+                    {!weeklyScheduleInfo.isOpen && (
+                      <div className="text-xs p-3.5 rounded-2xl border bg-rose-50 border-rose-200 text-rose-950 flex items-start gap-3 shadow-2xs mt-2 animate-fade-in">
+                        <div className="p-2 rounded-xl bg-rose-100 text-rose-700 shrink-0 mt-0.5">
+                          <DoorClosed className="w-5 h-5" />
+                        </div>
+                        <div className="space-y-1.5 flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <span className="font-black text-xs text-rose-900 flex items-center gap-1.5">
+                              <span>Closed on {weeklyScheduleInfo.dayName}s</span>
+                              <span className="bg-rose-200/80 text-rose-800 text-[10px] font-black px-2 py-0.5 rounded-md uppercase">
+                                Non-Operating Day
+                              </span>
+                            </span>
+                            {nextOpenDate && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setBookingDate(nextOpenDate.dateStr);
+                                  setSelectedSlot(null);
+                                  setErrorMessage(null);
+                                }}
+                                className="text-[11px] font-extrabold text-rose-700 hover:text-rose-900 underline flex items-center gap-1 cursor-pointer"
+                              >
+                                Switch to {nextOpenDate.formattedDisplay} →
+                              </button>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-rose-800 leading-relaxed">
+                            <strong>{location.name}</strong> is closed every <strong>{weeklyScheduleInfo.dayName}</strong>. Appointments cannot be scheduled for this date.
+                          </p>
+                          {weeklyClosedDays.length > 0 && (
+                            <p className="text-[10px] text-rose-600 font-medium">
+                              Weekly closed days: {weeklyClosedDays.join(', ')}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
 
                     {holidayInfo && (
                       <div className={`text-xs p-3.5 rounded-xl border flex items-start gap-2.5 mt-2 shadow-2xs ${
@@ -989,11 +1129,82 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                         <RefreshCw className="w-4 h-4 animate-spin text-sky-500" />
                         <span>Fetching real-time available time slots...</span>
                       </div>
+                    ) : !weeklyScheduleInfo.isOpen ? (
+                      <div className="bg-rose-50/80 border border-rose-200 rounded-2xl p-6 sm:p-8 text-center text-xs text-rose-900 space-y-3 shadow-2xs animate-fade-in">
+                        <div className="w-14 h-14 bg-rose-100 text-rose-600 rounded-2xl flex items-center justify-center mx-auto ring-6 ring-rose-50/50">
+                          <DoorClosed className="w-7 h-7" />
+                        </div>
+                        <div className="space-y-1">
+                          <span className="bg-rose-100 text-rose-800 text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full border border-rose-200">
+                            Location Closed
+                          </span>
+                          <h4 className="font-black text-base text-rose-950 pt-1">
+                            {location.name} is Closed on {weeklyScheduleInfo.dayName}s
+                          </h4>
+                          <p className="text-xs text-rose-700 max-w-md mx-auto leading-relaxed">
+                            This car wash does not operate on <strong>{weeklyScheduleInfo.dayName}s</strong>. No appointment slots are open for booking.
+                          </p>
+                          {weeklyClosedDays.length > 0 && (
+                            <p className="text-[11px] text-rose-600 font-medium">
+                              Weekly closed days: {weeklyClosedDays.join(', ')}
+                            </p>
+                          )}
+                        </div>
+                        {nextOpenDate && (
+                          <div className="pt-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setBookingDate(nextOpenDate.dateStr);
+                                setSelectedSlot(null);
+                                setErrorMessage(null);
+                              }}
+                              className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs rounded-xl shadow-sm transition-all inline-flex items-center gap-2 cursor-pointer hover:shadow"
+                            >
+                              <Calendar className="w-4 h-4" />
+                              <span>Switch to Next Open Day ({nextOpenDate.formattedDisplay})</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ) : holidayInfo && holidayInfo.type === 'FULL_DAY' ? (
+                      <div className="bg-rose-50/80 border border-rose-200 rounded-2xl p-6 sm:p-8 text-center text-xs text-rose-900 space-y-3 shadow-2xs animate-fade-in">
+                        <div className="w-14 h-14 bg-rose-100 text-rose-600 rounded-2xl flex items-center justify-center mx-auto ring-6 ring-rose-50/50">
+                          <CalendarX className="w-7 h-7" />
+                        </div>
+                        <div className="space-y-1">
+                          <span className="bg-rose-100 text-rose-800 text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full border border-rose-200">
+                            Holiday Closure
+                          </span>
+                          <h4 className="font-black text-base text-rose-950 pt-1">
+                            Closed for {holidayInfo.reason || 'Public Holiday'}
+                          </h4>
+                          <p className="text-xs text-rose-700 max-w-md mx-auto leading-relaxed">
+                            This business is closed for the entire day. No appointment slots are available.
+                          </p>
+                        </div>
+                        {nextOpenDate && (
+                          <div className="pt-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setBookingDate(nextOpenDate.dateStr);
+                                setSelectedSlot(null);
+                                setErrorMessage(null);
+                              }}
+                              className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs rounded-xl shadow-sm transition-all inline-flex items-center gap-2 cursor-pointer hover:shadow"
+                            >
+                              <Calendar className="w-4 h-4" />
+                              <span>Select Next Available Day ({nextOpenDate.formattedDisplay})</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     ) : availableSlots.length === 0 ? (
                       <div className="bg-slate-50 border border-dashed border-slate-200 rounded-2xl p-8 text-center text-xs text-slate-500 space-y-1">
                         <Clock className="w-6 h-6 mx-auto mb-1 text-slate-400" />
-                        <p className="font-bold text-slate-700">No slots available for this date</p>
-                        <p className="text-slate-400">Please select another date on the calendar above.</p>
+                        <p className="font-bold text-slate-700">All Slots Fully Booked</p>
+                        <p className="text-slate-400">All bays are booked for this date. Please select another date on the calendar above.</p>
                       </div>
                     ) : (
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
@@ -1097,8 +1308,8 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                       <div>
                         <span className="text-slate-400 font-bold block uppercase tracking-wider text-[10px]">Location</span>
-                        <span className="text-slate-800 font-extrabold text-sm">{location.name}</span>
-                        <span className="text-slate-400 text-xs block truncate">{location.address}</span>
+                        <span className="text-slate-800 font-extrabold text-sm block leading-snug break-words">{location.name}</span>
+                        <span className="text-slate-500 text-xs block break-words mt-0.5 leading-normal">{location.address}</span>
                       </div>
 
                       <div>

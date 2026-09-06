@@ -10,11 +10,15 @@ import {
   DollarSign, Calendar, Users, Sliders, Check, X,
   Clock, MapPin, BarChart3, ChevronRight, Edit2, Plus, Info, Briefcase, Trash2, Edit, Lock, Key,
   Phone, Car, User as UserIcon, Search, ChevronLeft, Filter, ShieldCheck, CheckCircle2, AlertCircle, CalendarDays, ChevronDown,
-  FileText, Printer, Download, TrendingUp, PieChart, CreditCard, Package, FileSpreadsheet, Tag, Layers, RefreshCw, Bell, CheckCheck, MessageCircle, Mail, Save, Sparkles, Pencil, Upload
+  FileText, Printer, Download, TrendingUp, PieChart, CreditCard, Package, FileSpreadsheet, Tag, Layers, RefreshCw, Bell, CheckCheck, MessageCircle, Mail, Save, Sparkles, Pencil, Upload,
+  Star, CornerDownRight, MessageSquare
 } from 'lucide-react';
-import { BookingStatus, CarWash, Booking, WeeklySchedule, CustomPaymentMethod, WashService, Role } from '../types.js';
+import { BookingStatus, CarWash, Booking, WeeklySchedule, CustomPaymentMethod, WashService, Role, Review, ReviewSummary } from '../types.js';
 import { EditBookingModal } from '../components/EditBookingModal.js';
 import { ServicePickerModal } from '../components/ServicePickerModal.js';
+import { SettlementConfirmationModal } from '../components/SettlementConfirmationModal.js';
+import { TransferProviderSelector } from '../components/TransferProviderSelector.js';
+import { FEATURES } from '../config/features.js';
 
 const getTodayDateString = () => {
   const d = new Date();
@@ -173,12 +177,148 @@ export const OwnerDashboard: React.FC = () => {
 
   // Selected owned business
   const [selectedBusiness, setSelectedBusiness] = useState<CarWash | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'bookings' | 'customers' | 'calendar' | 'settings'>('overview');
+
+  const selectedBusinessPaymentMethods = React.useMemo(() => {
+    if (!selectedBusiness) return [];
+    const methods: string[] = [];
+    if (selectedBusiness.bibdEnabled) methods.push('BIBD');
+    if (selectedBusiness.baiduriEnabled) methods.push('Baiduri');
+    if (selectedBusiness.customPaymentMethods) {
+      selectedBusiness.customPaymentMethods
+        .filter((m) => m.isEnabled)
+        .forEach((m) => {
+          if (m.providerName && !methods.includes(m.providerName)) {
+            methods.push(m.providerName);
+          }
+        });
+    }
+    return methods;
+  }, [selectedBusiness]);
+
+  const [activeTab, setActiveTab] = useState<'overview' | 'bookings' | 'customers' | 'calendar' | 'reviews' | 'settings'>('overview');
   const [customerAlphabetFilter, setCustomerAlphabetFilter] = useState<string>('ALL');
   const [customerSearchQuery, setCustomerSearchQuery] = useState<string>('');
   const [isSeedingLedger, setIsSeedingLedger] = useState(false);
   const [serverCustomers, setServerCustomers] = useState<any[]>([]);
   const [isLoadingCustomers, setIsLoadingCustomers] = useState(false);
+
+  // Reviews tab states
+  const [ownerReviews, setOwnerReviews] = useState<Review[]>([]);
+  const [ownerReviewSummary, setOwnerReviewSummary] = useState<ReviewSummary>({
+    averageRating: 0,
+    totalReviews: 0,
+    ratingCounts: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+  });
+  const [isLoadingReviews, setIsLoadingReviews] = useState(false);
+  const [reviewStatusFilter, setReviewStatusFilter] = useState<'ALL' | 'UNREPLIED' | 'REPLIED'>('ALL');
+  const [reviewStarFilter, setReviewStarFilter] = useState<number | 'ALL'>('ALL');
+  const [reviewSearchQuery, setReviewSearchQuery] = useState('');
+  const [activeReplyingReviewId, setActiveReplyingReviewId] = useState<string | null>(null);
+  const [ownerReplyComment, setOwnerReplyComment] = useState('');
+  const [isPostingReply, setIsPostingReply] = useState(false);
+
+  const fetchOwnerReviews = async () => {
+    if (!selectedBusiness) return;
+    setIsLoadingReviews(true);
+    try {
+      const [rRes, sRes] = await Promise.all([
+        fetch(`/api/reviews?carWashId=${selectedBusiness.id}`),
+        fetch(`/api/reviews/summary?carWashId=${selectedBusiness.id}`)
+      ]);
+      if (rRes.ok) {
+        const data = await rRes.json();
+        setOwnerReviews(Array.isArray(data) ? data : []);
+      }
+      if (sRes.ok) {
+        const sData = await sRes.json();
+        setOwnerReviewSummary(sData);
+      }
+    } catch (err) {
+      console.warn('Failed to load reviews for business:', err);
+    } finally {
+      setIsLoadingReviews(false);
+    }
+  };
+
+  const handleOwnerSubmitReply = async (reviewId: string) => {
+    if (!ownerReplyComment.trim()) return;
+    const authToken = token || localStorage.getItem('cw_token');
+    if (!authToken) return;
+
+    setIsPostingReply(true);
+    try {
+      const res = await fetch(`/api/reviews/${reviewId}/reply`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({ reply: ownerReplyComment.trim() }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to submit response');
+      }
+
+      showNotification('Your response has been published to the customer!', 'success');
+      setActiveReplyingReviewId(null);
+      setOwnerReplyComment('');
+      fetchOwnerReviews();
+    } catch (err: any) {
+      showNotification(err.message || 'Failed to submit reply', 'error');
+    } finally {
+      setIsPostingReply(false);
+    }
+  };
+
+  const handleOwnerDeleteReply = async (reviewId: string) => {
+    if (!window.confirm('Are you sure you want to remove your response to this review?')) return;
+    const authToken = token || localStorage.getItem('cw_token');
+    if (!authToken) return;
+
+    try {
+      const res = await fetch(`/api/reviews/${reviewId}/reply`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to delete reply');
+      }
+      showNotification('Response removed.', 'info');
+      fetchOwnerReviews();
+    } catch (err: any) {
+      showNotification(err.message || 'Failed to remove response', 'error');
+    }
+  };
+
+  const handleModeratorDeleteReview = async (reviewId: string) => {
+    if (!window.confirm('Moderator Action: Are you sure you want to permanently delete this review? This is intended for spam and inappropriate content.')) return;
+    const authToken = token || localStorage.getItem('cw_token');
+    if (!authToken) return;
+
+    try {
+      const res = await fetch(`/api/reviews/${reviewId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to delete review');
+      }
+      showNotification('Review deleted by moderator.', 'info');
+      fetchOwnerReviews();
+    } catch (err: any) {
+      showNotification(err.message || 'Failed to delete review', 'error');
+    }
+  };
+
+  useEffect(() => {
+    if (FEATURES.ENABLE_REVIEWS && selectedBusiness && (activeTab === 'reviews' || activeTab === 'overview')) {
+      fetchOwnerReviews();
+    }
+  }, [selectedBusiness?.id, activeTab]);
 
   const fetchServerCustomers = async () => {
     if (!token) return;
@@ -259,11 +399,14 @@ export const OwnerDashboard: React.FC = () => {
   const [mbPrice, setMbPrice] = useState<string>('15.00');
   const [mbNotes, setMbNotes] = useState('');
   const [mbStatus, setMbStatus] = useState<BookingStatus>(BookingStatus.COMPLETED);
+  const [mbPaymentMode, setMbPaymentMode] = useState<'Cash' | 'Transfer'>('Cash');
+  const [mbTransferProvider, setMbTransferProvider] = useState<string>('Bank Transfer');
+  const [mbTxnReference, setMbTxnReference] = useState('');
   const [mbAvailableSlots, setMbAvailableSlots] = useState<any[]>([]);
   const [mbSelectedSlots, setMbSelectedSlots] = useState<string[]>([]);
-  const [mbIsCustomSlot, setMbIsCustomSlot] = useState(false);
-  const [mbCustomSlotText, setMbCustomSlotText] = useState('');
   const [mbIsSubmitting, setMbIsSubmitting] = useState(false);
+  const [settlementBooking, setSettlementBooking] = useState<Booking | null>(null);
+  const [showSettlementModal, setShowSettlementModal] = useState<boolean>(false);
 
   const getFormattedSlotSummary = (slots: string[]) => {
     if (!slots || slots.length === 0) {
@@ -302,6 +445,31 @@ export const OwnerDashboard: React.FC = () => {
     estimatedRevenue: 0,
     bookingsByDate: {},
   });
+
+  // Compute analytics dynamically from current state for zero-latency presentation
+  const computedAnalytics = React.useMemo(() => {
+    let relevantBookings = bookings;
+    if (selectedBusiness) {
+      relevantBookings = bookings.filter((b) => b.carWashId === selectedBusiness.id);
+    } else if (user) {
+      const ownedIds = ownerLocations.map((l) => l.id);
+      relevantBookings = bookings.filter((b) => ownedIds.includes(b.carWashId));
+    }
+
+    const completed = relevantBookings.filter((b) => b.status === BookingStatus.COMPLETED);
+    const pending = relevantBookings.filter((b) => b.status === BookingStatus.PENDING);
+    const inProgress = relevantBookings.filter((b) => b.status === BookingStatus.IN_PROGRESS);
+    const cancelled = relevantBookings.filter((b) => b.status === BookingStatus.CANCELLED);
+
+    return {
+      totalBookings: relevantBookings.length,
+      completedCount: completed.length,
+      pendingCount: pending.length,
+      inProgressCount: inProgress.length,
+      cancelledCount: cancelled.length,
+      estimatedRevenue: completed.length * 45,
+    };
+  }, [bookings, selectedBusiness, ownerLocations, user]);
 
   // 🌴 Holiday & Closure Management States
   const [showHolidayModal, setShowHolidayModal] = useState(false);
@@ -668,23 +836,41 @@ export const OwnerDashboard: React.FC = () => {
     }
   });
 
-  const accPaymentMap: Record<string, number> = {
-    Cash: 0,
-    BIBD: 0,
-    Baiduri: 0,
-    Other: 0,
+  const accPaymentMap: {
+    cash: { count: number; totalRevenue: number };
+    transfer: { count: number; totalRevenue: number };
+    transferBreakdown: Record<string, { count: number; totalRevenue: number }>;
+  } = {
+    cash: { count: 0, totalRevenue: 0 },
+    transfer: { count: 0, totalRevenue: 0 },
+    transferBreakdown: {},
   };
+
   accBookingsList.forEach((b) => {
     if (b.status === BookingStatus.CANCELLED || b.status === BookingStatus.REJECTED) return;
     const price = Number(b.price) || 15.0;
-    if (!b.paymentBank) {
-      accPaymentMap['Cash'] += price;
-    } else if (b.paymentBank.toUpperCase().includes('BIBD')) {
-      accPaymentMap['BIBD'] += price;
-    } else if (b.paymentBank.toUpperCase().includes('BAIDURI')) {
-      accPaymentMap['Baiduri'] += price;
+    const rawBank = (b.paymentBank || '').trim();
+    const bankUpper = rawBank.toUpperCase();
+    if (!rawBank || bankUpper === 'CASH') {
+      accPaymentMap.cash.count += 1;
+      accPaymentMap.cash.totalRevenue += price;
     } else {
-      accPaymentMap['Other'] += price;
+      accPaymentMap.transfer.count += 1;
+      accPaymentMap.transfer.totalRevenue += price;
+
+      let providerKey = rawBank;
+      if (bankUpper.includes('BIBD')) providerKey = 'BIBD';
+      else if (bankUpper.includes('BAIDURI')) providerKey = 'Baiduri';
+      else if (bankUpper.includes('TAIB')) providerKey = 'TAIB';
+      else if (bankUpper.includes('STANDARD') || bankUpper.includes('SCB')) providerKey = 'Standard Chartered';
+      else if (bankUpper.includes('POCKET')) providerKey = 'Pocket';
+      else if (bankUpper.includes('TRANSFER')) providerKey = 'Bank Transfer';
+
+      if (!accPaymentMap.transferBreakdown[providerKey]) {
+        accPaymentMap.transferBreakdown[providerKey] = { count: 0, totalRevenue: 0 };
+      }
+      accPaymentMap.transferBreakdown[providerKey].count += 1;
+      accPaymentMap.transferBreakdown[providerKey].totalRevenue += price;
     }
   });
 
@@ -916,11 +1102,34 @@ export const OwnerDashboard: React.FC = () => {
 
         <div class="summary-sections">
           <div class="summary-box">
-            <h4>Payment Method Breakdown</h4>
-            <div class="row-item"><span>💵 Cash on Site</span><strong>BND $${accPaymentMap['Cash'].toFixed(2)}</strong></div>
-            <div class="row-item"><span>🏦 BIBD Transfer</span><strong>BND $${accPaymentMap['BIBD'].toFixed(2)}</strong></div>
-            <div class="row-item"><span>🏦 Baiduri Transfer</span><strong>BND $${accPaymentMap['Baiduri'].toFixed(2)}</strong></div>
-            <div class="row-item"><span>💳 Custom / Other</span><strong>BND $${accPaymentMap['Other'].toFixed(2)}</strong></div>
+            <h4>Payment Settlement Breakdown</h4>
+            <div class="row-item">
+              <span>💵 Pay on Site (Cash) <small style="color:#64748b;">(${accPaymentMap.cash.count}x)</small></span>
+              <strong>BND $${accPaymentMap.cash.totalRevenue.toFixed(2)}</strong>
+            </div>
+            ${
+              accPaymentMap.transfer.count > 0
+                ? `
+            <div class="row-item">
+              <span>📱 Pay on Site (Bank/Digital Transfer) <small style="color:#64748b;">(${accPaymentMap.transfer.count}x)</small></span>
+              <strong>BND $${accPaymentMap.transfer.totalRevenue.toFixed(2)}</strong>
+            </div>
+            ${Object.entries(accPaymentMap.transferBreakdown)
+              .map(
+                ([provider, data]) => `
+              <div class="row-item" style="padding-left: 14px; font-size: 10px; color: #475569;">
+                <span>↳ ${provider} (${data.count}x)</span>
+                <strong>BND $${data.totalRevenue.toFixed(2)}</strong>
+              </div>
+            `
+              )
+              .join('')}
+            `
+                : ''
+            }
+            <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed #cbd5e1; font-size: 8.5px; color: #64748b; line-height: 1.35;">
+              ℹ️ <strong>Settlement Policy:</strong> 100% Pay on Site upon arrival (Cash or direct counter Bank/App Transfer). No remote bank transfer data is collected in-app.
+            </div>
           </div>
 
           <div class="summary-box">
@@ -976,7 +1185,17 @@ export const OwnerDashboard: React.FC = () => {
                 <td><span class="badge badge-${(bk.bookingSource || 'ONLINE').toLowerCase().replace('_', '')}">${
                         bk.bookingSource || 'ONLINE'
                       }</span></td>
-                <td>${bk.paymentBank ? `${bk.paymentBank} Transfer` : 'Cash on Site'}</td>
+                <td>${(() => {
+                  const bank = (bk.paymentBank || '').toUpperCase();
+                  if (bank.includes('BIBD')) {
+                    return `Pay on Site (BIBD QR)${bk.txnReference ? `<br/><span style="font-size:8.5px;color:#64748b;font-family:monospace;">Ref: #${bk.txnReference}</span>` : ''}`;
+                  } else if (bank.includes('BAIDURI')) {
+                    return `Pay on Site (Baiduri QR)${bk.txnReference ? `<br/><span style="font-size:8.5px;color:#64748b;font-family:monospace;">Ref: #${bk.txnReference}</span>` : ''}`;
+                  } else if (bk.paymentBank && bank !== 'CASH') {
+                    return `Pay on Site (${bk.paymentBank})${bk.txnReference ? `<br/><span style="font-size:8.5px;color:#64748b;font-family:monospace;">Ref: #${bk.txnReference}</span>` : ''}`;
+                  }
+                  return 'Pay on Site (Cash)';
+                })()}</td>
                 <td><strong style="color: ${bk.status === 'COMPLETED' ? '#166534' : '#854d0e'};">${bk.status}</strong></td>
                 <td style="text-align: right; font-family: monospace; font-weight: bold;">$${(
                   Number(bk.price) || 15.0
@@ -1165,7 +1384,7 @@ export const OwnerDashboard: React.FC = () => {
             }
           }
         })
-        .catch((err) => console.error('Error fetching slots for manual booking:', err));
+        .catch((err) => console.warn('Could not fetch slots for manual booking:', err));
     }
   }, [selectedBusiness, mbDate]);
 
@@ -1186,9 +1405,7 @@ export const OwnerDashboard: React.FC = () => {
       ? mbSelectedItems.reduce((sum, item) => sum + (Number(item.price) || 0), 0)
       : (parseFloat(mbPrice) || 15.00);
 
-    const finalSlot = mbIsCustomSlot
-      ? (mbCustomSlotText.trim() || 'Walk-in / Immediate (No Slot)')
-      : getFormattedSlotSummary(mbSelectedSlots);
+    const finalSlot = getFormattedSlotSummary(mbSelectedSlots);
 
     const success = await createManualBooking({
       carWashId: selectedBusiness.id,
@@ -1203,6 +1420,8 @@ export const OwnerDashboard: React.FC = () => {
       price: calculatedPrice,
       notes: mbNotes.trim() || undefined,
       status: mbStatus,
+      paymentBank: mbPaymentMode === 'Cash' ? 'Cash' : (mbTransferProvider.trim() || 'Bank Transfer'),
+      txnReference: mbPaymentMode === 'Transfer' ? mbTxnReference.trim() || undefined : undefined,
     });
 
     setMbIsSubmitting(false);
@@ -1213,40 +1432,50 @@ export const OwnerDashboard: React.FC = () => {
       setMbPhone('');
       setMbVehicle('');
       setMbNotes('');
+      setMbPaymentMode('Cash');
+      setMbTransferProvider('Bank Transfer');
+      setMbTxnReference('');
       setMbSelectedSlots([]);
       setMbSelectedItems([]);
     }
   };
 
-  // Load analytics and logs
+  // Load analytics and logs with resilient fallback
   useEffect(() => {
     fetchAnalytics();
     fetchOwnerLogs();
-  }, [bookings, locations]);
+  }, [bookings, locations, token, selectedBusiness]);
 
   const fetchOwnerLogs = async () => {
+    const authToken = token || localStorage.getItem('cw_token');
+    if (!authToken) return;
     try {
       const res = await fetch('/api/owner/logs', {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('cw_token')}`,
+          'Authorization': `Bearer ${authToken}`,
         },
       });
       if (res.ok) {
         const data = await res.json();
-        // Sort by timestamp descending
-        data.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-        setOwnerLogs(data);
+        if (Array.isArray(data)) {
+          // Sort by timestamp descending
+          data.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+          setOwnerLogs(data);
+        }
       }
     } catch (error) {
-      console.error('Error fetching owner logs:', error);
+      // Graceful fallback without raising unhandled console errors
+      console.warn('Owner logs unavailable:', error);
     }
   };
 
   const fetchAnalytics = async () => {
+    const authToken = token || localStorage.getItem('cw_token');
+    if (!authToken) return;
     try {
       const res = await fetch('/api/owner/analytics', {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('cw_token')}`,
+          'Authorization': `Bearer ${authToken}`,
         },
       });
       if (res.ok) {
@@ -1254,7 +1483,8 @@ export const OwnerDashboard: React.FC = () => {
         setAnalytics(data);
       }
     } catch (error) {
-      console.error('Error fetching owner analytics:', error);
+      // Graceful fallback to client-computed analytics without raising unhandled console errors
+      console.warn('Owner analytics endpoint unavailable, using live local analytics:', error);
     }
   };
 
@@ -1505,7 +1735,28 @@ export const OwnerDashboard: React.FC = () => {
 
 
   const handleStatusChange = async (bookingId: string, status: BookingStatus) => {
+    if (status === BookingStatus.COMPLETED) {
+      const targetBooking = bookings.find((b) => b.id === bookingId);
+      if (targetBooking) {
+        setSettlementBooking(targetBooking);
+        setShowSettlementModal(true);
+        return;
+      }
+    }
     await updateBookingStatus(bookingId, status);
+  };
+
+  const handleConfirmSettlement = async (bookingId: string, paymentMethod: string, txnReference?: string) => {
+    await updateBookingStatus(
+      bookingId,
+      BookingStatus.COMPLETED,
+      undefined,
+      undefined,
+      paymentMethod,
+      txnReference
+    );
+    setShowSettlementModal(false);
+    setSettlementBooking(null);
   };
 
   // Filter bookings for selected business
@@ -1757,6 +2008,22 @@ export const OwnerDashboard: React.FC = () => {
           <span className="text-[10px] md:text-xs font-semibold">Calendar & Slots</span>
         </button>
 
+        {FEATURES.ENABLE_REVIEWS && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('reviews')}
+            className={`flex flex-col md:flex-row items-center gap-1 md:gap-2 px-4 py-1.5 rounded-xl transition-all cursor-pointer ${
+              activeTab === 'reviews'
+                ? 'text-indigo-600 font-bold bg-indigo-50/85'
+                : 'text-slate-400 font-medium hover:text-slate-600 hover:bg-slate-50'
+            }`}
+            id="owner-tab-reviews"
+          >
+            <Star className="h-5 w-5 md:h-4 md:w-4" />
+            <span className="text-[10px] md:text-xs font-semibold">Reviews & Ratings</span>
+          </button>
+        )}
+
         <button
           type="button"
           onClick={() => setActiveTab('settings')}
@@ -1794,7 +2061,7 @@ export const OwnerDashboard: React.FC = () => {
               <div>
                 <span className="text-xs text-slate-400 font-medium block">Total Slots Booked</span>
                 <span className="text-2xl font-black text-slate-800 font-mono">
-                  {analytics.totalBookings}
+                  {analytics.totalBookings || computedAnalytics.totalBookings}
                 </span>
               </div>
             </div>
@@ -1806,7 +2073,7 @@ export const OwnerDashboard: React.FC = () => {
               <div>
                 <span className="text-xs text-slate-400 font-medium block">Completed Cleanings</span>
                 <span className="text-2xl font-black text-slate-800 font-mono">
-                  {analytics.completedCount}
+                  {analytics.completedCount ?? computedAnalytics.completedCount}
                 </span>
               </div>
             </div>
@@ -1818,7 +2085,7 @@ export const OwnerDashboard: React.FC = () => {
               <div>
                 <span className="text-xs text-slate-400 font-medium block">Pending Approvals</span>
                 <span className="text-2xl font-black text-slate-800 font-mono">
-                  {analytics.pendingCount}
+                  {analytics.pendingCount ?? computedAnalytics.pendingCount}
                 </span>
               </div>
             </div>
@@ -2215,20 +2482,22 @@ export const OwnerDashboard: React.FC = () => {
               <div className="lg:col-span-8 space-y-2">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mr-1 w-full sm:w-auto block sm:inline">Payment:</span>
-                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 border border-slate-200 rounded-xl text-[11px] font-bold text-slate-700">
-                    💵 Cash: <strong className="font-mono text-slate-900">${accPaymentMap['Cash'].toFixed(2)}</strong>
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 border border-emerald-200 rounded-xl text-[11px] font-bold text-emerald-800" title="Settled in cash at counter upon arrival">
+                    💵 Cash: <strong className="font-mono text-emerald-950">${accPaymentMap.cash.totalRevenue.toFixed(2)}</strong>
                   </span>
-                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-sky-50 border border-sky-200 rounded-xl text-[11px] font-bold text-sky-800">
-                    🏦 BIBD: <strong className="font-mono text-sky-950">${accPaymentMap['BIBD'].toFixed(2)}</strong>
-                  </span>
-                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-purple-50 border border-purple-200 rounded-xl text-[11px] font-bold text-purple-800">
-                    🏦 Baiduri: <strong className="font-mono text-purple-950">${accPaymentMap['Baiduri'].toFixed(2)}</strong>
-                  </span>
-                  {accPaymentMap['Other'] > 0 && (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 border border-amber-200 rounded-xl text-[11px] font-bold text-amber-800">
-                      💳 Other: <strong className="font-mono text-amber-950">${accPaymentMap['Other'].toFixed(2)}</strong>
+                  {accPaymentMap.transfer.count > 0 && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-sky-50 border border-sky-200 rounded-xl text-[11px] font-bold text-sky-800" title="Settled via Bank Transfer, Pocket, Taurus, or QR on site">
+                      📱 Bank / Digital Transfer: <strong className="font-mono text-sky-950">${accPaymentMap.transfer.totalRevenue.toFixed(2)}</strong>
                     </span>
                   )}
+                  {Object.entries(accPaymentMap.transferBreakdown).map(([provider, data]) => (
+                    <span key={provider} className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 border border-slate-200 rounded-lg text-[10px] font-semibold text-slate-700">
+                      {provider}: <strong className="font-mono text-slate-900">${data.totalRevenue.toFixed(2)}</strong>
+                    </span>
+                  ))}
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 text-slate-600 rounded-lg text-[10px] font-medium border border-slate-200">
+                    🛡️ 100% On-Site Settlement
+                  </span>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -2358,13 +2627,20 @@ export const OwnerDashboard: React.FC = () => {
                               )}
                             </td>
                             <td className="p-3">
-                              {bk.paymentBank ? (
-                                <span className="font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded text-[11px]">
-                                  {bk.paymentBank} Transfer
-                                </span>
+                              {bk.paymentBank && bk.paymentBank.trim().length > 0 && bk.paymentBank.toUpperCase() !== 'CASH' ? (
+                                <div className="flex flex-col items-start gap-0.5">
+                                  <span className="font-semibold text-sky-800 bg-sky-50 border border-sky-200/80 px-2 py-0.5 rounded text-[11px] flex items-center gap-1">
+                                    <span>📱</span> Pay on Site ({bk.paymentBank})
+                                  </span>
+                                  {bk.txnReference && (
+                                    <span className="text-[10px] font-mono text-slate-500 pl-0.5">
+                                      Ref: #{bk.txnReference}
+                                    </span>
+                                  )}
+                                </div>
                               ) : (
-                                <span className="font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded text-[11px]">
-                                  Cash on Site
+                                <span className="font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded text-[11px] flex items-center gap-1">
+                                  <span>💵</span> Pay on Site (Cash)
                                 </span>
                               )}
                             </td>
@@ -2523,13 +2799,13 @@ export const OwnerDashboard: React.FC = () => {
                           </div>
 
                           <div className="flex items-center gap-2">
-                            {bk.paymentBank ? (
-                              <span className="font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded text-[10px]">
-                                🏦 {bk.paymentBank} Transfer
+                            {bk.paymentBank && bk.paymentBank.trim().length > 0 && bk.paymentBank.toUpperCase() !== 'CASH' ? (
+                              <span className="font-bold text-sky-800 bg-sky-50 border border-sky-200/60 px-2 py-0.5 rounded text-[10px] flex items-center gap-1">
+                                <span>📱</span> Pay on Site ({bk.paymentBank}){bk.txnReference ? ` • #${bk.txnReference}` : ''}
                               </span>
                             ) : (
-                              <span className="font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded text-[10px]">
-                                💵 Cash on Site
+                              <span className="font-bold text-emerald-800 bg-emerald-50 border border-emerald-200/60 px-2 py-0.5 rounded text-[10px] flex items-center gap-1">
+                                <span>💵</span> Pay on Site (Cash)
                               </span>
                             )}
 
@@ -3261,15 +3537,15 @@ export const OwnerDashboard: React.FC = () => {
                                 className="w-full px-2 py-1.5 border border-slate-200 bg-white rounded-lg text-xs"
                               >
                                 <option value="">-- Select Provider --</option>
-                                <option value="TARUS Instant Transfer">TARUS Instant Transfer</option>
+                                <option value="BIBD QuickPay / Bank Transfer">BIBD QuickPay / Bank Transfer</option>
+                                <option value="Baiduri Qpay / Bank Transfer">Baiduri Qpay / Bank Transfer</option>
+                                <option value="TAIB (Perbadanan Tabung Amanah Islam Brunei)">TAIB (Perbadanan Tabung Amanah Islam Brunei)</option>
+                                <option value="Standard Chartered Brunei">Standard Chartered Brunei</option>
                                 <option value="DST Pocket e-Wallet">DST Pocket e-Wallet</option>
                                 <option value="Progresif Pay">Progresif Pay</option>
-                                <option value="Standard Chartered Brunei">Standard Chartered Brunei</option>
                                 <option value="Maybank Brunei">Maybank Brunei</option>
                                 <option value="RHB Bank Brunei">RHB Bank Brunei</option>
-                                <option value="Baiduri Qpay">Baiduri Qpay</option>
-                                <option value="BIBD QuickPay">BIBD QuickPay</option>
-                                <option value="Custom Method">Other / Custom Method</option>
+                                <option value="Custom Method">Other / Custom Bank or Transfer</option>
                               </select>
                             </div>
                             {newProviderName === 'Custom Method' && (
@@ -4257,13 +4533,17 @@ export const OwnerDashboard: React.FC = () => {
                       </div>
                     )}
 
-                     {bk.paymentBank ? (
+                     {bk.paymentBank && bk.paymentBank.trim().length > 0 && bk.paymentBank.toUpperCase() !== 'CASH' ? (
                       <div className="text-xs bg-sky-50/50 border border-sky-100 p-2.5 rounded-xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                         <div>
-                          <span className="font-bold text-[10px] text-sky-600 uppercase tracking-wider block mb-0.5">Brunei Local Bank Transfer:</span>
-                          <span className="font-semibold text-slate-700">{bk.paymentBank}</span>
-                          <span className="mx-1.5 text-slate-300">|</span>
-                          <span className="font-bold text-slate-800 font-mono tracking-wider">Ref: {bk.txnReference}</span>
+                          <span className="font-bold text-[10px] text-sky-600 uppercase tracking-wider block mb-0.5">Payment Settlement Method:</span>
+                          <span className="font-semibold text-slate-800">📱 Pay on Site ({bk.paymentBank})</span>
+                          {bk.txnReference && (
+                            <>
+                              <span className="mx-1.5 text-slate-300">|</span>
+                              <span className="font-bold text-slate-800 font-mono tracking-wider">Ref: #{bk.txnReference}</span>
+                            </>
+                          )}
                         </div>
                         {bk.receiptFilename && (
                           <a
@@ -4277,12 +4557,11 @@ export const OwnerDashboard: React.FC = () => {
                         )}
                       </div>
                     ) : (
-                      <div className="text-xs bg-slate-50 border border-slate-100 p-2.5 rounded-xl flex items-center justify-between gap-2">
+                      <div className="text-xs bg-emerald-50/50 border border-emerald-100 p-2.5 rounded-xl flex items-center justify-between gap-2">
                         <div>
-                          <span className="font-bold text-[10px] text-slate-500 uppercase tracking-wider block mb-0.5">Payment Method:</span>
-                          <span className="font-bold text-slate-700 flex items-center gap-1.5">
-                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                            Cash / Pay on Site
+                          <span className="font-bold text-[10px] text-emerald-600 uppercase tracking-wider block mb-0.5">Payment Settlement Method:</span>
+                          <span className="font-bold text-emerald-900 flex items-center gap-1.5">
+                            <span>💵</span> Pay on Site (Cash)
                           </span>
                         </div>
                       </div>
@@ -4985,9 +5264,445 @@ export const OwnerDashboard: React.FC = () => {
         </div>
       )}
 
+      {/* ⭐ Customer Reviews & Ratings Tab (Structured and ready when reviews are activated) */}
+      {FEATURES.ENABLE_REVIEWS && activeTab === 'reviews' && (
+        <div className="space-y-6 animate-fade-in" id="owner-reviews-management-section">
+          {/* Header & Overview */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-200">
+            <div>
+              <h2 className="text-xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+                <span>Customer Reviews & Ratings</span>
+                <span className="text-xs font-semibold bg-amber-50 text-amber-700 px-2.5 py-0.5 rounded-full border border-amber-200">
+                  {ownerReviews.length} {ownerReviews.length === 1 ? 'Review' : 'Reviews'}
+                </span>
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Monitor feedback for {selectedBusiness?.name || 'your car wash'}, engage by replying to customers, and track rating trends.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={fetchOwnerReviews}
+                disabled={isLoadingReviews}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isLoadingReviews ? 'animate-spin text-indigo-600' : 'text-slate-400'}`} />
+                <span>{isLoadingReviews ? 'Refreshing...' : 'Refresh'}</span>
+              </button>
+            </div>
+          </div>
 
+          {/* Rating Summary Card */}
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 shadow-xs">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
+              {/* Overall Score */}
+              <div className="md:col-span-4 flex flex-col items-center justify-center text-center p-4 bg-slate-50/70 rounded-2xl border border-slate-150">
+                <span className="text-5xl font-black text-slate-900 font-mono tracking-tight">
+                  {ownerReviewSummary.averageRating > 0 ? ownerReviewSummary.averageRating.toFixed(1) : '—'}
+                </span>
+                <div className="flex items-center gap-1 mt-2">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <Star
+                      key={star}
+                      className={`w-5 h-5 ${
+                        star <= Math.round(ownerReviewSummary.averageRating)
+                          ? 'fill-amber-400 text-amber-400'
+                          : 'fill-slate-200 text-slate-200'
+                      }`}
+                    />
+                  ))}
+                </div>
+                <span className="text-xs text-slate-500 mt-2 font-medium">
+                  Based on {ownerReviewSummary.totalReviews} customer {ownerReviewSummary.totalReviews === 1 ? 'rating' : 'ratings'}
+                </span>
+              </div>
 
-      {/* Add Employee modal */}
+              {/* Breakdown Bars */}
+              <div className="md:col-span-5 space-y-1.5">
+                {[5, 4, 3, 2, 1].map((star) => {
+                  const count = ownerReviewSummary.ratingCounts[star] || 0;
+                  const pct = ownerReviewSummary.totalReviews > 0 ? (count / ownerReviewSummary.totalReviews) * 100 : 0;
+                  return (
+                    <button
+                      key={star}
+                      type="button"
+                      onClick={() => setReviewStarFilter(reviewStarFilter === star ? 'ALL' : star)}
+                      className={`w-full flex items-center gap-2.5 text-xs px-2 py-1 rounded-lg transition-colors cursor-pointer ${
+                        reviewStarFilter === star ? 'bg-indigo-50 font-bold' : 'hover:bg-slate-50'
+                      }`}
+                    >
+                      <span className="w-7 text-right font-semibold text-slate-600 flex items-center justify-end gap-0.5">
+                        {star} <Star className="w-3 h-3 fill-amber-400 text-amber-400 inline" />
+                      </span>
+                      <div className="flex-1 h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-amber-400 rounded-full transition-all duration-500"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                      <span className="w-8 text-right font-mono text-slate-500 text-[11px]">{count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Attention Metrics */}
+              <div className="md:col-span-3 flex flex-col justify-center space-y-3 border-t md:border-t-0 md:border-l border-slate-150 pt-4 md:pt-0 md:pl-6">
+                <div>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">Needs Response</span>
+                  {(() => {
+                    const unrepliedCount = ownerReviews.filter((r) => !r.ownerReply).length;
+                    return (
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className={`text-2xl font-black font-mono ${unrepliedCount > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                          {unrepliedCount}
+                        </span>
+                        {unrepliedCount > 0 ? (
+                          <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-md">
+                            Pending
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md">
+                            All Caught Up
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                <div>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">5-Star Satisfaction</span>
+                  <div className="mt-0.5">
+                    <span className="text-2xl font-black font-mono text-slate-800">
+                      {ownerReviewSummary.totalReviews > 0
+                        ? `${Math.round(((ownerReviewSummary.ratingCounts[5] || 0) / ownerReviewSummary.totalReviews) * 100)}%`
+                        : '—'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Filtering and Search Toolbar */}
+          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200/80">
+            {/* Status Pills */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0">
+              <button
+                type="button"
+                onClick={() => setReviewStatusFilter('ALL')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
+                  reviewStatusFilter === 'ALL'
+                    ? 'bg-indigo-600 text-white shadow-2xs'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                }`}
+              >
+                All ({ownerReviews.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setReviewStatusFilter('UNREPLIED')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1 ${
+                  reviewStatusFilter === 'UNREPLIED'
+                    ? 'bg-amber-600 text-white shadow-2xs'
+                    : 'bg-amber-50 hover:bg-amber-100 text-amber-800'
+                }`}
+              >
+                <span>Needs Reply</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/30">
+                  {ownerReviews.filter((r) => !r.ownerReply).length}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setReviewStatusFilter('REPLIED')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
+                  reviewStatusFilter === 'REPLIED'
+                    ? 'bg-emerald-600 text-white shadow-2xs'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                }`}
+              >
+                Replied ({ownerReviews.filter((r) => !!r.ownerReply).length})
+              </button>
+            </div>
+
+            {/* Right: Star Filter & Search */}
+            <div className="flex items-center gap-2">
+              <select
+                value={reviewStarFilter}
+                onChange={(e) => setReviewStarFilter(e.target.value === 'ALL' ? 'ALL' : Number(e.target.value))}
+                className="bg-white border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl px-2.5 py-1.5 outline-none focus:border-indigo-500"
+              >
+                <option value="ALL">All Stars</option>
+                <option value="5">5 Stars only</option>
+                <option value="4">4 Stars only</option>
+                <option value="3">3 Stars only</option>
+                <option value="2">2 Stars only</option>
+                <option value="1">1 Star only</option>
+              </select>
+
+              <div className="relative flex-1 md:w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Search reviews or customer..."
+                  value={reviewSearchQuery}
+                  onChange={(e) => setReviewSearchQuery(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1.5 border border-slate-200 rounded-xl text-xs text-slate-800 outline-none focus:border-indigo-500"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Reviews List */}
+          {(() => {
+            const filtered = ownerReviews.filter((r) => {
+              if (reviewStatusFilter === 'UNREPLIED' && r.ownerReply) return false;
+              if (reviewStatusFilter === 'REPLIED' && !r.ownerReply) return false;
+              if (reviewStarFilter !== 'ALL' && r.rating !== reviewStarFilter) return false;
+              if (reviewSearchQuery.trim()) {
+                const q = reviewSearchQuery.toLowerCase();
+                const matchName = r.customerName?.toLowerCase().includes(q);
+                const matchComment = r.comment?.toLowerCase().includes(q);
+                const matchReply = r.ownerReply?.toLowerCase().includes(q);
+                if (!matchName && !matchComment && !matchReply) return false;
+              }
+              return true;
+            });
+
+            if (isLoadingReviews) {
+              return (
+                <div className="p-12 text-center bg-white rounded-2xl border border-slate-200">
+                  <RefreshCw className="w-8 h-8 text-indigo-600 animate-spin mx-auto mb-2" />
+                  <p className="text-xs text-slate-500 font-medium">Loading customer reviews...</p>
+                </div>
+              );
+            }
+
+            if (filtered.length === 0) {
+              return (
+                <div className="p-12 text-center bg-white rounded-2xl border border-slate-200/80 space-y-3">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-500 flex items-center justify-center mx-auto">
+                    <Star className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-slate-800 text-sm">No Reviews Found</h4>
+                    <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                      {ownerReviews.length === 0
+                        ? 'Your business does not have any customer reviews yet. Ratings will appear here once customers review completed washes.'
+                        : 'No reviews match your current filters. Try changing your search query or rating filter.'}
+                    </p>
+                  </div>
+                  {(reviewStatusFilter !== 'ALL' || reviewStarFilter !== 'ALL' || reviewSearchQuery.trim()) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReviewStatusFilter('ALL');
+                        setReviewStarFilter('ALL');
+                        setReviewSearchQuery('');
+                      }}
+                      className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                    >
+                      Reset Filters
+                    </button>
+                  )}
+                </div>
+              );
+            }
+
+            return (
+              <div className="space-y-4">
+                {filtered.map((r) => {
+                  const isReplying = activeReplyingReviewId === r.id;
+                  const isModerator = user?.role === Role.ADMIN || user?.role === Role.SPECIAL;
+
+                  return (
+                    <div
+                      key={r.id}
+                      className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs transition-shadow hover:shadow-sm"
+                    >
+                      {/* Top Review Metadata */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-indigo-500 to-indigo-700 text-white font-black text-xs flex items-center justify-center uppercase shadow-2xs">
+                            {r.customerName ? r.customerName.charAt(0) : 'C'}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-slate-900 text-sm">{r.customerName || 'Verified Customer'}</span>
+                              <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded-md">
+                                <Check className="w-3 h-3" /> Verified
+                              </span>
+                            </div>
+                            <span className="text-[11px] text-slate-400">
+                              {new Date(r.createdAt).toLocaleDateString(undefined, {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                              })}
+                              {r.updatedAt && r.updatedAt !== r.createdAt && ' (edited)'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Star Rating Badge */}
+                        <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-0.5 bg-amber-50 border border-amber-200/80 px-2 py-1 rounded-xl">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <Star
+                                key={star}
+                                className={`w-3.5 h-3.5 ${
+                                  star <= r.rating ? 'fill-amber-400 text-amber-400' : 'fill-slate-200 text-slate-200'
+                                }`}
+                              />
+                            ))}
+                            <span className="ml-1 text-xs font-black text-amber-900 font-mono">{r.rating}.0</span>
+                          </div>
+
+                          {/* Moderator Delete Option */}
+                          {isModerator && (
+                            <button
+                              type="button"
+                              onClick={() => handleModeratorDeleteReview(r.id)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              title="Delete Review (Spam / Inappropriate Content)"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Review Comment */}
+                      <div className="mt-3.5 text-xs sm:text-sm text-slate-700 leading-relaxed break-words whitespace-pre-line">
+                        {r.comment || <span className="italic text-slate-400">No written comment provided.</span>}
+                      </div>
+
+                      {/* Owner Response Section */}
+                      {r.ownerReply && !isReplying && (
+                        <div className="mt-4 pl-3 sm:pl-4 border-l-2 border-indigo-400 bg-indigo-50/50 p-3.5 rounded-r-xl border-y border-r border-indigo-100">
+                          <div className="flex items-center justify-between gap-2 mb-1.5">
+                            <span className="text-[11px] font-bold text-indigo-900 flex items-center gap-1.5">
+                              <CornerDownRight className="w-3.5 h-3.5 text-indigo-600" />
+                              Response from {selectedBusiness?.name || 'Business Owner'}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              {r.ownerReplyAt && (
+                                <span className="text-[10px] text-slate-400">
+                                  {new Date(r.ownerReplyAt).toLocaleDateString(undefined, {
+                                    year: 'numeric',
+                                    month: 'short',
+                                    day: 'numeric',
+                                  })}
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveReplyingReviewId(r.id);
+                                  setOwnerReplyComment(r.ownerReply || '');
+                                }}
+                                className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 underline cursor-pointer"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleOwnerDeleteReply(r.id)}
+                                className="text-[10px] font-bold text-rose-600 hover:text-rose-800 underline cursor-pointer"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </div>
+                          <p className="text-xs text-slate-800 whitespace-pre-line leading-relaxed">
+                            {r.ownerReply}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Unreplied Action Bar */}
+                      {!r.ownerReply && !isReplying && (
+                        <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                          <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                            <Info className="w-3.5 h-3.5 text-slate-400" />
+                            Replying shows customers you value their experience.
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveReplyingReviewId(r.id);
+                              setOwnerReplyComment('');
+                            }}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                          >
+                            <MessageSquare className="w-3.5 h-3.5" />
+                            <span>Reply to Customer</span>
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Active Reply Editor Form */}
+                      {isReplying && (
+                        <div className="mt-4 pt-3 border-t border-slate-150 space-y-2.5">
+                          <div className="flex items-center justify-between">
+                            <label className="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
+                              <MessageSquare className="w-3.5 h-3.5 text-indigo-600" />
+                              {r.ownerReply ? 'Edit Business Response' : `Reply to ${r.customerName || 'Customer'}`}
+                            </label>
+                            <span className="text-[10px] font-mono text-slate-400">
+                              {ownerReplyComment.length}/250 characters
+                            </span>
+                          </div>
+
+                          <textarea
+                            rows={2}
+                            maxLength={250}
+                            placeholder="Thank the customer for their visit or address any concerns..."
+                            value={ownerReplyComment}
+                            onChange={(e) => setOwnerReplyComment(e.target.value)}
+                            className="w-full p-3 border border-indigo-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 rounded-xl text-xs text-slate-800 outline-none leading-relaxed"
+                          />
+
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveReplyingReviewId(null);
+                                setOwnerReplyComment('');
+                              }}
+                              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleOwnerSubmitReply(r.id)}
+                              disabled={!ownerReplyComment.trim() || isPostingReply}
+                              className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl text-xs font-bold shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5"
+                            >
+                              {isPostingReply ? (
+                                <>
+                                  <RefreshCw className="w-3 h-3 animate-spin" />
+                                  <span>Publishing...</span>
+                                </>
+                              ) : (
+                                <span>Publish Response</span>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+        </div>
+      )}
       {showEmployeeModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-50 overflow-y-auto animate-fade-in">
           <div className="relative my-auto bg-white rounded-2xl max-w-sm w-full border border-slate-200 shadow-2xl p-5 sm:p-6 text-left max-h-[85vh] overflow-y-auto overscroll-contain">
@@ -5278,119 +5993,100 @@ export const OwnerDashboard: React.FC = () => {
                 />
               </div>
 
-              {/* Time Slot Selection (Interactive Chip Picker) */}
+              {/* Time Slot Selection */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider">
-                    Time Slot Selection (Click chips to choose 1 or multi-slots) *
+                    Time Slot Selection *
                   </label>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setMbSelectedSlots([])}
-                      className="text-[10px] font-bold text-amber-600 hover:underline cursor-pointer"
-                    >
-                      ⚡ Immediate / Unscheduled
-                    </button>
-                    <span className="text-slate-300">|</span>
-                    <button
-                      type="button"
-                      onClick={() => setMbIsCustomSlot(!mbIsCustomSlot)}
-                      className="text-[10px] font-bold text-indigo-600 hover:underline cursor-pointer"
-                    >
-                      {mbIsCustomSlot ? "Select Interactive Slots" : "✍️ Custom Text"}
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setMbSelectedSlots([])}
+                    className="text-[10px] font-bold text-amber-600 hover:underline cursor-pointer flex items-center gap-1"
+                    title="Mark booking as unscheduled / immediate walk-in"
+                  >
+                    <span>⚡ Immediate / Walk-In Now</span>
+                  </button>
                 </div>
 
-                {mbIsCustomSlot ? (
-                  <input
-                    type="text"
-                    placeholder="e.g. 09:00 - 10:30 (Walk-in Bay 2 / 1.5 Hrs)"
-                    value={mbCustomSlotText}
-                    onChange={(e) => setMbCustomSlotText(e.target.value)}
-                    className="w-full px-3 py-2.5 border border-indigo-300 bg-indigo-50/30 rounded-xl text-slate-800 text-xs sm:text-sm outline-none focus:border-indigo-500 font-mono font-bold"
-                  />
-                ) : (
-                  <div className="space-y-2">
-                    {/* Selection Summary Header */}
-                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 flex items-center justify-between text-xs">
-                      <div>
-                        <span className="text-[10px] text-slate-400 font-bold uppercase block">Selected Time Window</span>
-                        <strong className="text-slate-800 font-mono text-xs sm:text-sm">
-                          {getFormattedSlotSummary(mbSelectedSlots)}
-                        </strong>
-                      </div>
-                      {mbSelectedSlots.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => setMbSelectedSlots([])}
-                          className="text-[10px] font-bold text-slate-500 hover:text-red-600 px-2 py-1 bg-white border border-slate-200 rounded-lg shadow-2xs hover:bg-red-50 transition-colors cursor-pointer"
-                        >
-                          Clear
-                        </button>
-                      )}
+                <div className="space-y-2">
+                  {/* Selection Summary Header */}
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 flex items-center justify-between text-xs">
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-bold uppercase block">Selected Time Slot</span>
+                      <strong className={`font-mono text-xs sm:text-sm ${mbSelectedSlots.length > 0 ? 'text-indigo-700 font-extrabold' : 'text-slate-600'}`}>
+                        {getFormattedSlotSummary(mbSelectedSlots)}
+                      </strong>
                     </div>
-
-                    {/* Interactive Chips Grid */}
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-1.5 border border-slate-200 rounded-2xl bg-slate-50/50">
-                      {mbAvailableSlots.length === 0 ? (
-                        <div className="col-span-full p-4 text-center text-slate-400 text-xs">
-                          No predefined slots loaded for this date. Click "Custom Text" above to write custom range.
-                        </div>
-                      ) : (
-                        mbAvailableSlots.map((s) => {
-                          const isSelected = mbSelectedSlots.includes(s.timeSlot);
-                          const remaining = s.remainingCapacity !== undefined ? s.remainingCapacity : (s.capacity - s.bookedCount);
-                          const isFull = remaining <= 0;
-
-                          return (
-                            <button
-                              key={s.timeSlot}
-                              type="button"
-                              onClick={() => {
-                                if (isSelected) {
-                                  setMbSelectedSlots(mbSelectedSlots.filter((slot) => slot !== s.timeSlot));
-                                } else {
-                                  setMbSelectedSlots([...mbSelectedSlots, s.timeSlot]);
-                                }
-                              }}
-                              className={`p-2 rounded-xl text-left border transition-all cursor-pointer flex flex-col justify-between ${
-                                isSelected
-                                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs font-bold scale-[1.02]'
-                                  : isFull
-                                  ? 'bg-red-50/80 hover:bg-red-100 border-red-200 text-slate-800'
-                                  : 'bg-white hover:bg-slate-100 border-slate-200 text-slate-800'
-                              }`}
-                            >
-                              <div className="flex items-center justify-between text-xs font-mono font-bold">
-                                <span>{s.timeSlot}</span>
-                                {isSelected && <Check className="w-3.5 h-3.5 shrink-0 ml-1" />}
-                              </div>
-                              <div className="mt-1 flex items-center justify-between text-[10px]">
-                                <span className={`font-semibold ${
-                                  isSelected
-                                    ? 'text-indigo-100'
-                                    : isFull
-                                    ? 'text-red-600 font-bold'
-                                    : 'text-slate-500'
-                                }`}>
-                                  {isFull ? '🔴 0 left (Full)' : `🟢 ${remaining} left`}
-                                </span>
-                                <span className={`font-mono text-[9px] ${isSelected ? 'text-indigo-200' : 'text-slate-400'}`}>
-                                  {s.bookedCount}/{s.capacity}
-                                </span>
-                              </div>
-                            </button>
-                          );
-                        })
-                      )}
-                    </div>
-                    <p className="text-[10px] text-slate-400 italic">
-                      💡 Click one or multiple slots to set custom duration (e.g. 1.5 Hrs). Full slots (0 left) can still be clicked by staff for walk-in overrides.
-                    </p>
+                    {mbSelectedSlots.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setMbSelectedSlots([])}
+                        className="text-[10px] font-bold text-slate-500 hover:text-red-600 px-2 py-1 bg-white border border-slate-200 rounded-lg shadow-2xs hover:bg-red-50 transition-colors cursor-pointer"
+                      >
+                        Clear
+                      </button>
+                    )}
                   </div>
-                )}
+
+                  {/* Interactive Slots Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-1.5 border border-slate-200 rounded-2xl bg-slate-50/50">
+                    {mbAvailableSlots.length === 0 ? (
+                      <div className="col-span-full p-4 text-center text-slate-400 text-xs">
+                        No predefined slots available for this date. Defaulting to Immediate Walk-In.
+                      </div>
+                    ) : (
+                      mbAvailableSlots.map((s) => {
+                        const isSelected = mbSelectedSlots.includes(s.timeSlot);
+                        const remaining = s.remainingCapacity !== undefined ? s.remainingCapacity : (s.capacity - s.bookedCount);
+                        const isFull = remaining <= 0;
+
+                        return (
+                          <button
+                            key={s.timeSlot}
+                            type="button"
+                            onClick={() => {
+                              if (isSelected) {
+                                setMbSelectedSlots(mbSelectedSlots.filter((slot) => slot !== s.timeSlot));
+                              } else {
+                                setMbSelectedSlots([...mbSelectedSlots, s.timeSlot]);
+                              }
+                            }}
+                            className={`p-2 rounded-xl text-left border transition-all cursor-pointer flex flex-col justify-between ${
+                              isSelected
+                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs font-bold scale-[1.02]'
+                                : isFull
+                                ? 'bg-red-50/80 hover:bg-red-100 border-red-200 text-slate-800'
+                                : 'bg-white hover:bg-slate-100 border-slate-200 text-slate-800'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between text-xs font-mono font-bold">
+                              <span>{s.timeSlot}</span>
+                              {isSelected && <Check className="w-3.5 h-3.5 shrink-0 ml-1" />}
+                            </div>
+                            <div className="mt-1 flex items-center justify-between text-[10px]">
+                              <span className={`font-semibold ${
+                                isSelected
+                                  ? 'text-indigo-100'
+                                  : isFull
+                                  ? 'text-red-600 font-bold'
+                                  : 'text-slate-500'
+                              }`}>
+                                {isFull ? '🔴 0 left (Full)' : `🟢 ${remaining} left`}
+                              </span>
+                              <span className={`font-mono text-[9px] ${isSelected ? 'text-indigo-200' : 'text-slate-400'}`}>
+                                {s.bookedCount}/{s.capacity}
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                  <p className="text-[10px] text-slate-400">
+                    💡 Click a time slot above to reserve a specific time, or leave as Immediate / Walk-In.
+                  </p>
+                </div>
               </div>
 
               {/* Service Selection & Price */}
@@ -5475,6 +6171,63 @@ export const OwnerDashboard: React.FC = () => {
                 </select>
               </div>
 
+              {/* On-Site Settlement Method */}
+              <div>
+                <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1.5 flex items-center justify-between">
+                  <span>Payment Settlement Method</span>
+                  <span className="text-[10px] text-slate-400 font-normal lowercase">(collected at counter)</span>
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setMbPaymentMode('Cash')}
+                    className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      mbPaymentMode === 'Cash'
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-900 shadow-2xs'
+                        : 'border-slate-200 bg-slate-50/70 text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    <span>💵</span> Cash
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMbPaymentMode('Transfer')}
+                    className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      mbPaymentMode === 'Transfer'
+                        ? 'border-sky-500 bg-sky-50 text-sky-900 shadow-2xs'
+                        : 'border-slate-200 bg-slate-50/70 text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    <span>📱</span> Bank / Digital Transfer
+                  </button>
+                </div>
+
+                {mbPaymentMode === 'Transfer' && (
+                  <div className="mt-2.5 p-3 bg-sky-50/60 border border-sky-200/80 rounded-xl space-y-2.5 animate-fade-in">
+                    <TransferProviderSelector
+                      value={mbTransferProvider}
+                      onChange={setMbTransferProvider}
+                      idPrefix="od-mb"
+                      businessId={selectedBusiness?.id}
+                      businessMethods={selectedBusinessPaymentMethods}
+                    />
+
+                    <div>
+                      <span className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
+                        Transaction Reference / Approval Code (Optional)
+                      </span>
+                      <input
+                        type="text"
+                        placeholder="e.g. Ref #, approval code, or last 4 digits (8492)"
+                        value={mbTxnReference}
+                        onChange={(e) => setMbTxnReference(e.target.value)}
+                        className="w-full px-3 py-1.5 border border-slate-200 rounded-xl text-slate-800 text-xs font-mono outline-none focus:border-indigo-500"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Notes */}
               <div>
                 <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
@@ -5520,6 +6273,17 @@ export const OwnerDashboard: React.FC = () => {
         }}
         booking={editingBooking}
         location={selectedBusiness}
+      />
+
+      {/* Confirmation & Settlement Modal on Job Completion */}
+      <SettlementConfirmationModal
+        isOpen={showSettlementModal}
+        onClose={() => {
+          setShowSettlementModal(false);
+          setSettlementBooking(null);
+        }}
+        booking={settlementBooking}
+        onConfirm={handleConfirmSettlement}
       />
 
       {/* Multi-Item Tick Selection Picker Sub-Modal */}

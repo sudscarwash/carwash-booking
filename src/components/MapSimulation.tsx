@@ -5,7 +5,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { MapPin, Navigation, ZoomIn, ZoomOut, Sliders, Search, X, Maximize2, Minimize2, ExternalLink, Tag, ChevronRight, Instagram, Sparkles, Calendar } from 'lucide-react';
+import { MapPin, Navigation, ZoomIn, ZoomOut, Sliders, Search, X, Maximize2, Minimize2, ExternalLink, Tag, ChevronRight, ChevronDown, Instagram, Sparkles, Calendar, Phone } from 'lucide-react';
 import { CarWash, MapPreset } from '../types.js';
 
 const computeDistanceKm = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
@@ -42,8 +42,8 @@ const getInitials = (name: string): string => {
 
 interface MapSimulationProps {
   locations: CarWash[];
-  selectedLocationId?: string;
-  onLocationSelect?: (loc: CarWash) => void;
+  selectedLocationId?: string | null;
+  onLocationSelect?: (loc: CarWash | null) => void;
   onBookLocation?: (loc: CarWash) => void;
   interactiveSelectCoords?: { lat: number; lng: number };
   onMapClickSelectCoords?: (coords: { lat: number; lng: number }) => void;
@@ -164,6 +164,11 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
   const [markerDisplayMode, setMarkerDisplayMode] = useState<'smart' | 'all' | 'dots'>('smart');
   const [mapZoom, setMapZoom] = useState<number>(13);
   const [previewLocation, setPreviewLocation] = useState<CarWash | null>(null);
+  const [isLocatingGps, setIsLocatingGps] = useState(false);
+  const [isGpsActive, setIsGpsActive] = useState(false);
+  const [gpsNotification, setGpsNotification] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [showPresetsMenu, setShowPresetsMenu] = useState(false);
+  const [showRadiusMenu, setShowRadiusMenu] = useState(false);
 
   const leafletContainerRef = useRef<HTMLDivElement>(null);
   const leafletMapRef = useRef<any>(null);
@@ -172,6 +177,27 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
   const leafletNewPinRef = useRef<any>(null);
   const leafletCircleRef = useRef<any>(null);
   const [leafletLoaded, setLeafletLoaded] = useState(false);
+
+  // Fresh mutable refs for event handlers
+  const previewLocationRef = useRef<CarWash | null>(previewLocation);
+  previewLocationRef.current = previewLocation;
+
+  const selectedLocationIdRef = useRef<string | null | undefined>(selectedLocationId);
+  selectedLocationIdRef.current = selectedLocationId;
+
+  const onLocationSelectRef = useRef(onLocationSelect);
+  onLocationSelectRef.current = onLocationSelect;
+
+  const onBookLocationRef = useRef(onBookLocation);
+  onBookLocationRef.current = onBookLocation;
+
+  const onMapClickSelectCoordsRef = useRef(onMapClickSelectCoords);
+  onMapClickSelectCoordsRef.current = onMapClickSelectCoords;
+
+  const onUserLocationChangeRef = useRef(onUserLocationChange);
+  onUserLocationChangeRef.current = onUserLocationChange;
+
+  const prevSelectedIdRef = useRef<string | null | undefined>(selectedLocationId);
 
   // Load Leaflet assets dynamically
   useEffect(() => {
@@ -239,15 +265,25 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
       if (found) {
         setPreviewLocation(found);
       }
+    } else {
+      setPreviewLocation(null);
     }
   }, [selectedLocationId, locations]);
 
   useEffect(() => {
     (window as any).__selectCarWash = (locId: string) => {
+      // Toggle off / Unclick if already selected or previewed
+      const isCurrent = (previewLocationRef.current?.id === locId) || (selectedLocationIdRef.current === locId);
+      if (isCurrent) {
+        setPreviewLocation(null);
+        if (onLocationSelectRef.current) onLocationSelectRef.current(null);
+        if (leafletMapRef.current) leafletMapRef.current.closePopup();
+        return;
+      }
       const loc = locations.find((l: CarWash) => l.id === locId);
       if (loc) {
         setPreviewLocation(loc);
-        if (onLocationSelect) onLocationSelect(loc);
+        if (onLocationSelectRef.current) onLocationSelectRef.current(loc);
         if (leafletMapRef.current) leafletMapRef.current.panTo([loc.locationLat, loc.locationLng]);
       }
     };
@@ -256,10 +292,10 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
       const loc = locations.find((l: CarWash) => l.id === locId);
       if (loc) {
         setPreviewLocation(loc);
-        if (onBookLocation) {
-          onBookLocation(loc);
-        } else if (onLocationSelect) {
-          onLocationSelect(loc);
+        if (onBookLocationRef.current) {
+          onBookLocationRef.current(loc);
+        } else if (onLocationSelectRef.current) {
+          onLocationSelectRef.current(loc);
         }
       }
     };
@@ -268,14 +304,11 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
       delete (window as any).__selectCarWash;
       delete (window as any).__bookCarWash;
     };
-  }, [locations, onLocationSelect, onBookLocation]);
+  }, [locations]);
 
   const getGoogleMapsCoords = () => {
     if (interactiveSelectCoords) {
       return { lat: interactiveSelectCoords.lat, lng: interactiveSelectCoords.lng };
-    }
-    if (userLat !== undefined && userLng !== undefined) {
-      return { lat: userLat, lng: userLng };
     }
     if (selectedLocationId) {
       const selectedLoc = locations.find(l => l.id === selectedLocationId);
@@ -283,10 +316,13 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
         return { lat: selectedLoc.locationLat, lng: selectedLoc.locationLng };
       }
     }
+    if (userLat !== undefined && userLng !== undefined && !isNaN(userLat) && !isNaN(userLng)) {
+      return { lat: userLat, lng: userLng };
+    }
     if (locations.length > 0) {
       return { lat: locations[0].locationLat, lng: locations[0].locationLng };
     }
-    return { lat: 37.7749, lng: -122.4194 };
+    return { lat: 4.8917, lng: 114.9401 };
   };
 
   const currentCenter = getGoogleMapsCoords();
@@ -305,20 +341,34 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
 
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(leafletMapRef.current);
 
-      // Handle map clicks for coordinates selection
+      // Handle map clicks: if a location is selected, clicking empty map UNCLICKS it!
       leafletMapRef.current.on('click', (e: any) => {
+        if (previewLocationRef.current || selectedLocationIdRef.current) {
+          setPreviewLocation(null);
+          if (onLocationSelectRef.current) {
+            onLocationSelectRef.current(null);
+          }
+          if (leafletMapRef.current) {
+            leafletMapRef.current.closePopup();
+          }
+          return;
+        }
+
         const coords = { lat: parseFloat(e.latlng.lat.toFixed(6)), lng: parseFloat(e.latlng.lng.toFixed(6)) };
-        if (onMapClickSelectCoords) {
-          onMapClickSelectCoords(coords);
-        } else if (onUserLocationChange) {
-          onUserLocationChange(coords.lat, coords.lng);
+        setIsGpsActive(false);
+        if (onMapClickSelectCoordsRef.current) {
+          onMapClickSelectCoordsRef.current(coords);
+        } else if (onUserLocationChangeRef.current) {
+          onUserLocationChangeRef.current(coords.lat, coords.lng);
         }
       });
 
-      // Track zoom level changes for intelligent decluttering
+      // Track zoom level changes without resetting when panning/clicking
       leafletMapRef.current.on('zoomend', () => {
         if (leafletMapRef.current) {
-          setMapZoom(leafletMapRef.current.getZoom());
+          const z = leafletMapRef.current.getZoom();
+          setMapZoom(z);
+          setZoom(z);
         }
       });
     }
@@ -332,20 +382,28 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
     };
   }, [leafletLoaded, isMaximized]);
 
-  // Sync zoom changes from state to Leaflet map
+  // Sync zoom changes from state to Leaflet map ONLY if zoom was explicitly set and differs
   useEffect(() => {
-    if (leafletMapRef.current) {
+    if (leafletMapRef.current && leafletMapRef.current.getZoom() !== zoom) {
       leafletMapRef.current.setZoom(zoom);
     }
-  }, [zoom, isMaximized]);
+  }, [zoom]);
 
-  // Sync center movements
+  // Sync center movements smoothly WITHOUT resetting the user's current zoom level
   useEffect(() => {
-    if (leafletMapRef.current) {
-      const center = getGoogleMapsCoords();
-      leafletMapRef.current.setView([center.lat, center.lng], zoom);
+    if (!leafletMapRef.current) return;
+
+    // Pan to newly selected location without changing the user's zoom size
+    if (selectedLocationId && selectedLocationId !== prevSelectedIdRef.current) {
+      const selectedLoc = locations.find(l => l.id === selectedLocationId);
+      if (selectedLoc) {
+        leafletMapRef.current.panTo([selectedLoc.locationLat, selectedLoc.locationLng]);
+      }
+    } else if (interactiveSelectCoords) {
+      leafletMapRef.current.panTo([interactiveSelectCoords.lat, interactiveSelectCoords.lng]);
     }
-  }, [selectedLocationId, interactiveSelectCoords?.lat, interactiveSelectCoords?.lng, userLat, userLng, isMaximized]);
+    prevSelectedIdRef.current = selectedLocationId;
+  }, [selectedLocationId, interactiveSelectCoords?.lat, interactiveSelectCoords?.lng, locations]);
 
   // Update map markers, user location pin, and radius circle layers
   useEffect(() => {
@@ -371,12 +429,14 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
     }
 
     // 1. Draw User Location Pin & Radius Circle
-    if (onRadiusChange) {
+    const hasUserCoords = userLat !== undefined && userLng !== undefined && !isNaN(userLat) && !isNaN(userLng);
+    if (hasUserCoords) {
+      const isLiveGps = isGpsActive;
       const userIcon = L.divIcon({
         className: 'user-marker-icon',
         html: `<div class="relative flex items-center justify-center">
-          <span class="animate-ping absolute inline-flex h-7 w-7 rounded-full bg-sky-400 opacity-60"></span>
-          <span class="relative inline-flex rounded-full h-4 w-4 bg-sky-600 border-2 border-white shadow-md"></span>
+          <span class="animate-ping absolute inline-flex h-7 w-7 rounded-full ${isLiveGps ? 'bg-emerald-400' : 'bg-sky-400'} opacity-60"></span>
+          <span class="relative inline-flex rounded-full h-4 w-4 ${isLiveGps ? 'bg-emerald-600' : 'bg-sky-600'} border-2 border-white shadow-md"></span>
         </div>`,
         iconSize: [24, 24],
         iconAnchor: [12, 12]
@@ -384,15 +444,33 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
 
       leafletUserPinRef.current = L.marker([userLat, userLng], { icon: userIcon })
         .addTo(leafletMapRef.current)
-        .bindPopup(`<div class="font-sans font-bold text-xs p-1">You (Alex)</div>`);
+        .bindPopup(
+          isLiveGps
+            ? `<div class="font-sans text-xs p-1 text-slate-800">
+                 <div class="flex items-center gap-1.5 text-emerald-600 font-extrabold mb-0.5">
+                   <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                   <span>Your Live GPS Location</span>
+                 </div>
+                 <div class="text-[10px] text-slate-500 font-mono">${userLat.toFixed(5)}, ${userLng.toFixed(5)}</div>
+               </div>`
+            : `<div class="font-sans text-xs p-1 text-slate-800">
+                 <div class="flex items-center gap-1.5 text-sky-600 font-extrabold mb-0.5">
+                   <span>📍 Search & Filter Center</span>
+                 </div>
+                 <div class="text-[10px] text-slate-500 font-mono">${userLat.toFixed(5)}, ${userLng.toFixed(5)}</div>
+                 <div class="text-[9px] text-slate-400 mt-0.5">Tap anywhere on map to reposition pin</div>
+               </div>`
+        );
 
       // Draw Radius range Circle
-      leafletCircleRef.current = L.circle([userLat, userLng], {
-        color: '#0284c7',
-        fillColor: '#38bdf8',
-        fillOpacity: 0.12,
-        radius: radiusKm * 1000
-      }).addTo(leafletMapRef.current);
+      if (onRadiusChange || radiusKm) {
+        leafletCircleRef.current = L.circle([userLat, userLng], {
+          color: isLiveGps ? '#059669' : '#0284c7',
+          fillColor: isLiveGps ? '#34d399' : '#38bdf8',
+          fillOpacity: 0.12,
+          radius: (radiusKm || 1) * 1000
+        }).addTo(leafletMapRef.current);
+      }
     }
 
     // 2. Draw onboarding coordinate marker
@@ -425,18 +503,34 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
         ? computeDistanceKm(userLat, userLng, loc.locationLat, loc.locationLng).toFixed(1)
         : null;
 
-      // Handle co-located markers: If multiple locations share identical or near-identical coordinates (< 25m),
-      // apply a radial offset so each business has its own distinct, clickable pin
+      // Handle co-located markers: If multiple locations share identical or near-identical coordinates (< 35m),
+      // apply a radial multi-ring offset so each business has its own distinct, clickable pin even with 10+ in the same spot
       const coLocated = locations.filter(other => 
-        Math.abs(other.locationLat - loc.locationLat) < 0.00025 &&
-        Math.abs(other.locationLng - loc.locationLng) < 0.00025
+        Math.abs(other.locationLat - loc.locationLat) < 0.00035 &&
+        Math.abs(other.locationLng - loc.locationLng) < 0.00035
       );
       let renderLat = loc.locationLat;
       let renderLng = loc.locationLng;
       if (coLocated.length > 1) {
         const indexInCluster = coLocated.findIndex(o => o.id === loc.id);
-        const angle = (indexInCluster / coLocated.length) * 2 * Math.PI;
-        const offsetDist = 0.00022; // ~22 meters separation
+        let offsetDist = 0.00022;
+        let angle = 0;
+        if (coLocated.length <= 5) {
+          offsetDist = 0.00020 + coLocated.length * 0.00003;
+          angle = (indexInCluster / coLocated.length) * 2 * Math.PI;
+        } else {
+          // Dynamic 2-ring distribution for 6 to 15+ carwashes in the exact same spot:
+          const innerCount = Math.min(4, Math.ceil(coLocated.length * 0.35));
+          if (indexInCluster < innerCount) {
+            offsetDist = 0.00020; // ~20m inner ring
+            angle = (indexInCluster / innerCount) * 2 * Math.PI;
+          } else {
+            const outerCount = coLocated.length - innerCount;
+            const outerIndex = indexInCluster - innerCount;
+            offsetDist = 0.00045; // ~45m outer ring
+            angle = (outerIndex / outerCount) * 2 * Math.PI + (Math.PI / outerCount);
+          }
+        }
         renderLat += Math.sin(angle) * offsetDist;
         renderLng += (Math.cos(angle) * offsetDist) / Math.cos((loc.locationLat * Math.PI) / 180);
       }
@@ -457,11 +551,11 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
         // 'smart' mode:
         // 1. Currently selected or previewed car wash ALWAYS gets the prominent expanded name pill
         // 2. When zoomed in close to street level (zoom >= 15), roads are wide enough to show all names
-        // 3. When zoomed in to neighborhood level (zoom >= 14), show names unless it's a dense cluster
-        // 4. When zoomed out (zoom < 14) or dense cluster (e.g. 10 at the same place), condense to compact pins
+        // 3. When zoomed in to neighborhood level (zoom >= 14), show names unless it's a dense cluster (e.g. 10 in same area)
+        // 4. When dense cluster or zoomed out, condense to clean letter pins
         if (isSelected || isPreviewed) {
           shouldShowName = true;
-        } else if (mapZoom >= 15) {
+        } else if (mapZoom >= 16) {
           shouldShowName = true;
         } else if (mapZoom >= 14 && !isDenseCluster) {
           shouldShowName = true;
@@ -476,7 +570,7 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
 
       if (shouldShowName) {
         markerHtml = `
-          <div class="carwash-marker-pill cursor-pointer flex flex-col items-center select-none ${isSelected ? 'carwash-marker-selected z-50' : 'z-20'}" style="pointer-events: auto;">
+          <div class="carwash-marker-pill cursor-pointer flex flex-col items-center select-none hover:z-[9999] transition-transform hover:scale-105 ${isSelected ? 'carwash-marker-selected z-50' : 'z-20'}" style="pointer-events: auto;">
             <div class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl shadow-xl border backdrop-blur-md transition-all ${
               isSelected
                 ? 'bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-700 text-white border-white ring-2 ring-sky-300 ring-offset-1 scale-105 shadow-sky-900/40'
@@ -486,7 +580,7 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
                 <span class="animate-ping absolute inline-flex h-full w-full rounded-full ${isSelected ? 'bg-amber-300' : 'bg-emerald-400'} opacity-75"></span>
                 <span class="relative inline-flex rounded-full h-1.5 w-1.5 ${isSelected ? 'bg-amber-200' : 'bg-emerald-400'}"></span>
               </span>
-              <span class="font-black text-[11px] sm:text-xs tracking-tight text-white whitespace-nowrap max-w-[100px] sm:max-w-[150px] truncate leading-none">
+              <span class="font-black text-[11px] sm:text-xs tracking-tight text-white whitespace-nowrap max-w-[120px] sm:max-w-[160px] truncate leading-none">
                 ${safeName}
               </span>
               ${distKm ? `
@@ -499,25 +593,32 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
             <div class="w-2.5 h-2.5 rounded-full ${isSelected ? 'bg-sky-400 ring-2 ring-white' : 'bg-emerald-400 border border-white'} -mt-0.5 shadow-md"></div>
           </div>
         `;
-        iconSize = [220, 48];
-        iconAnchor = [110, 46];
+        iconSize = [230, 48];
+        iconAnchor = [115, 46];
       } else {
-        // Sleek compact badge with operator initials - keeps map completely uncluttered even with 10+ nearby
+        // Sleek compact circular badge with operator initials - keeps map completely uncluttered even when 10+ are nearby!
+        // Instant hover tooltip displaying the full name & distance
         markerHtml = `
-          <div class="group cursor-pointer flex flex-col items-center select-none transition-transform duration-150 hover:scale-115 ${isSelected ? 'scale-115 z-50' : 'z-10'}" style="pointer-events: auto;">
-            <div class="relative flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-full shadow-lg border-2 transition-all ${
+          <div class="group cursor-pointer relative flex flex-col items-center select-none transition-transform duration-150 hover:scale-125 hover:z-[9999] ${isSelected ? 'scale-125 z-50' : 'z-10'}" style="pointer-events: auto;">
+            <!-- Hover Tooltip showing full name & distance -->
+            <div class="opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-950/95 backdrop-blur-md text-white text-[10px] font-black px-2.5 py-1 rounded-lg shadow-xl whitespace-nowrap border border-slate-700/80 z-[10000] flex items-center gap-1.5">
+              <span class="w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-amber-300' : 'bg-emerald-400'} shrink-0"></span>
+              <span class="max-w-[160px] truncate">${safeName}</span>
+              ${distKm ? `<span class="text-sky-300 text-[9px] font-mono font-bold shrink-0">${distKm}km</span>` : ''}
+            </div>
+            <div class="relative flex items-center justify-center w-8 h-8 rounded-full shadow-lg border-2 transition-all ${
               isSelected
-                ? 'bg-gradient-to-br from-sky-500 to-indigo-600 border-white ring-4 ring-sky-300/60 shadow-sky-950/50 text-white'
-                : 'bg-slate-900 border-emerald-400 hover:border-white shadow-black/50 text-emerald-300 hover:bg-emerald-600 hover:text-white'
+                ? 'bg-gradient-to-br from-sky-500 to-indigo-600 border-white ring-4 ring-sky-300/60 shadow-sky-950/50 text-white font-black'
+                : 'bg-slate-900 border-emerald-400 hover:border-white shadow-black/50 text-emerald-300 hover:bg-emerald-600 hover:text-white font-extrabold'
             }">
-              <span class="font-black text-[10px] sm:text-[11px] font-mono tracking-tight leading-none">${initials}</span>
+              <span class="text-[10px] sm:text-[11px] font-mono tracking-tight leading-none">${initials}</span>
               <span class="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full ${isSelected ? 'bg-amber-300 ring-1 ring-white' : 'bg-emerald-400 border border-slate-900'}"></span>
             </div>
             <div style="width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid ${isSelected ? '#2563eb' : '#0f172a'}; margin-top: -1px;"></div>
           </div>
         `;
-        iconSize = [34, 38];
-        iconAnchor = [17, 36];
+        iconSize = [36, 40];
+        iconAnchor = [18, 38];
       }
 
       const businessIcon = L.divIcon({
@@ -528,23 +629,64 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
       });
 
       const popupContent = `
-        <div class="p-1 font-sans text-slate-900 min-w-[180px]">
-          <div class="flex items-center gap-1.5 mb-1">
-            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0"></span>
-            <strong class="text-xs text-slate-900 block font-black leading-tight">${safeName}</strong>
+        <div style="min-width: 270px; max-width: 360px; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 2px;">
+          <!-- Header with Initials badge and FULL car wash name with right padding so close button NEVER overlaps -->
+          <div style="display: flex; align-items: flex-start; gap: 10px; margin-bottom: 8px; padding-right: 32px;">
+            <div style="width: 38px; height: 38px; border-radius: 11px; background: linear-gradient(135deg, #0284c7, #2563eb); color: #ffffff; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 14px; flex-shrink: 0; box-shadow: 0 3px 8px rgba(2, 132, 199, 0.35);">
+              ${initials || 'CW'}
+            </div>
+            <div style="flex: 1; min-width: 0;">
+              <div style="display: flex; align-items: center; gap: 5px; margin-bottom: 3px; flex-wrap: wrap;">
+                <span style="display: inline-flex; align-items: center; gap: 3px; background-color: #ecfdf5; color: #059669; border: 1px solid #a7f3d0; border-radius: 9999px; padding: 1px 6px; font-size: 9.5px; font-weight: 800; text-transform: uppercase;">
+                  <span style="display: inline-block; width: 5px; height: 5px; border-radius: 9999px; background-color: #10b981;"></span>
+                  Open Now
+                </span>
+                ${loc.services && loc.services.length > 0 ? `
+                  <span style="background-color: #f0f9ff; color: #0284c7; border: 1px solid #bae6fd; border-radius: 9999px; padding: 1px 6px; font-size: 9.5px; font-weight: 700;">
+                    ${loc.services.length} services
+                  </span>
+                ` : ''}
+              </div>
+              <h3 style="margin: 0; font-weight: 900; font-size: 15px; color: #0f172a; line-height: 1.35; word-break: break-word; letter-spacing: -0.01em;">
+                ${safeName}
+              </h3>
+            </div>
           </div>
-          <span class="text-[10px] text-slate-500 block truncate mb-1">${safeAddress}</span>
-          ${distKm ? `<span class="text-[10px] text-sky-700 font-bold block mb-1.5 bg-sky-50 px-1.5 py-0.5 rounded border border-sky-100">📍 ${distKm} km away</span>` : ''}
-          <div class="flex flex-wrap gap-1.5 mt-2">
-            <button type="button" class="px-2.5 py-1.5 bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white rounded-lg text-[10px] font-black shadow-xs flex items-center gap-1 cursor-pointer" onclick="window.__bookCarWash && window.__bookCarWash('${loc.id}')">
-              📅 Book Appointment &rarr;
+
+          <!-- Full Address without truncation -->
+          <div style="display: flex; align-items: flex-start; gap: 6px; font-size: 11.5px; color: #334155; margin-bottom: 8px; line-height: 1.45; background-color: #f8fafc; padding: 6px 9px; border-radius: 10px; border: 1px solid #e2e8f0;">
+            <span style="color: #e11d48; flex-shrink: 0; font-size: 13px; margin-top: 1px;">📍</span>
+            <span style="word-break: break-word; font-weight: 500;">${safeAddress}</span>
+          </div>
+
+          <!-- Distance & Phone row -->
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 8px; flex-wrap: wrap;">
+            ${distKm ? `
+              <div style="display: inline-flex; align-items: center; gap: 4px; background-color: #f0f9ff; color: #0369a1; border: 1px solid #bae6fd; font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 6px;">
+                <span>🧭</span>
+                <span>${distKm} km away</span>
+              </div>
+            ` : '<div></div>'}
+
+            ${loc.phone ? `
+              <a href="tel:${escapeHtml(loc.phone)}" style="display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: #0284c7; font-weight: 700; text-decoration: underline; background-color: #f8fafc; padding: 2px 7px; border-radius: 6px; border: 1px solid #e2e8f0;">
+                <span>📞</span>
+                <span>${escapeHtml(loc.phone)}</span>
+              </a>
+            ` : ''}
+          </div>
+
+          <!-- Action buttons -->
+          <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #f1f5f9;">
+            <button type="button" style="flex: 1; min-width: 130px; padding: 8px 12px; background: linear-gradient(to right, #0284c7, #2563eb); color: #ffffff; border: none; border-radius: 10px; font-size: 11.5px; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 5px; box-shadow: 0 2px 5px rgba(2, 132, 199, 0.35);" onclick="window.__bookCarWash && window.__bookCarWash('${loc.id}')">
+              <span>📅 Book Appointment &rarr;</span>
             </button>
-            <a href="https://www.google.com/maps?q=${loc.locationLat},${loc.locationLng}" target="_blank" rel="noopener noreferrer" class="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] font-bold border border-slate-200 flex items-center gap-1">
-              Directions
+            <a href="https://www.google.com/maps?q=${loc.locationLat},${loc.locationLng}" target="_blank" rel="noopener noreferrer" style="padding: 7px 10px; background-color: #f8fafc; color: #334155; border: 1px solid #cbd5e1; border-radius: 10px; font-size: 11px; font-weight: 700; text-decoration: none; display: flex; align-items: center; gap: 4px;">
+              <span>Directions</span>
             </a>
             ${loc.instagram ? `
-              <a href="https://instagram.com/${loc.instagram}" target="_blank" rel="noopener noreferrer" class="px-2 py-1 bg-pink-50 text-pink-600 hover:bg-pink-100 rounded-lg text-[10px] font-bold border border-pink-100 flex items-center gap-1">
-                Instagram
+              <a href="https://instagram.com/${escapeHtml(loc.instagram)}" target="_blank" rel="noopener noreferrer" style="padding: 7px 10px; background-color: #fdf2f8; color: #db2777; border: 1px solid #fbcfe8; border-radius: 10px; font-size: 11px; font-weight: 700; text-decoration: none; display: flex; align-items: center; gap: 4px;">
+                <span>Instagram</span>
               </a>
             ` : ''}
           </div>
@@ -553,22 +695,42 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
 
       const m = L.marker([renderLat, renderLng], { icon: businessIcon })
         .addTo(leafletMapRef.current)
-        .bindPopup(popupContent);
+        .bindPopup(popupContent, {
+          maxWidth: 380,
+          minWidth: 270,
+          autoPan: true,
+          autoPanPaddingTopLeft: [20, 75],
+          autoPanPaddingBottomRight: [20, 20],
+          className: 'custom-leaflet-popup',
+        });
 
       m.on('click', () => {
+        const isCurrent = (previewLocationRef.current?.id === loc.id) || (selectedLocationIdRef.current === loc.id);
+        if (isCurrent) {
+          // Toggle off / Unclick!
+          setPreviewLocation(null);
+          if (onLocationSelectRef.current) {
+            onLocationSelectRef.current(null);
+          }
+          if (leafletMapRef.current) {
+            leafletMapRef.current.closePopup();
+          }
+          return;
+        }
+
         setPreviewLocation(loc);
-        if (onLocationSelect) {
-          onLocationSelect(loc);
+        if (onLocationSelectRef.current) {
+          onLocationSelectRef.current(loc);
         }
         if (leafletMapRef.current) {
-          leafletMapRef.current.panTo([loc.locationLat, loc.locationLng]);
+          leafletMapRef.current.panTo([renderLat, renderLng]);
         }
       });
 
       leafletMarkersRef.current.push(m);
     });
 
-  }, [leafletLoaded, locations, selectedLocationId, userLat, userLng, radiusKm, interactiveSelectCoords, isMaximized, markerDisplayMode, mapZoom, previewLocation]);
+  }, [leafletLoaded, locations, selectedLocationId, userLat, userLng, radiusKm, interactiveSelectCoords, isMaximized, markerDisplayMode, mapZoom, previewLocation, isGpsActive]);
 
   const sfLandmarks = [
     { name: 'Fisherman\'s Wharf', lat: 37.8080, lng: -122.4177 },
@@ -596,6 +758,7 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
   const handleSelectSuggestion = (type: 'landmark' | 'location', item: any) => {
     setSearchQuery(item.name);
     setShowSuggestions(false);
+    setIsGpsActive(false);
 
     if (type === 'landmark') {
       if (onUserLocationChange) {
@@ -652,6 +815,7 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
   }, {});
 
   const handlePresetSelect = (preset: MapPreset) => {
+    setIsGpsActive(false);
     if (onUserLocationChange) {
       onUserLocationChange(preset.lat, preset.lng);
     } else if (onMapClickSelectCoords) {
@@ -659,90 +823,174 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
     }
   };
 
+  // 1. Live GPS: Request actual device GPS position via browser Geolocation API
+  const handleRequestLiveGps = () => {
+    if (!navigator.geolocation) {
+      setGpsNotification({
+        message: 'GPS geolocation is not supported by your browser.',
+        type: 'error',
+      });
+      setTimeout(() => setGpsNotification(null), 5000);
+      return;
+    }
+
+    setIsLocatingGps(true);
+    setGpsNotification({
+      message: 'Acquiring high-accuracy device GPS position...',
+      type: 'info',
+    });
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        setIsLocatingGps(false);
+        setIsGpsActive(true);
+        setGpsNotification({
+          message: `Live GPS acquired! (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`,
+          type: 'success',
+        });
+        setTimeout(() => setGpsNotification(null), 4000);
+
+        if (onUserLocationChangeRef.current) {
+          onUserLocationChangeRef.current(latitude, longitude);
+        } else if (onMapClickSelectCoordsRef.current) {
+          onMapClickSelectCoordsRef.current({ lat: latitude, lng: longitude });
+        }
+
+        if (leafletMapRef.current) {
+          const currentZ = leafletMapRef.current.getZoom() || 15;
+          leafletMapRef.current.flyTo([latitude, longitude], Math.max(currentZ, 15), {
+            duration: 1.0,
+          });
+        }
+
+        if (leafletUserPinRef.current) {
+          leafletUserPinRef.current.openPopup();
+        }
+      },
+      (error) => {
+        setIsLocatingGps(false);
+        let errMsg = 'Unable to access your device GPS.';
+        if (error.code === error.PERMISSION_DENIED) {
+          errMsg = 'Location permission denied. Please allow location access in your browser, or tap on the map to set your pin.';
+        } else if (error.code === error.POSITION_UNAVAILABLE) {
+          errMsg = 'GPS position unavailable. Please check your device location settings or tap the map.';
+        } else if (error.code === error.TIMEOUT) {
+          errMsg = 'GPS request timed out. Please retry or click on the map to place your pin.';
+        }
+        setGpsNotification({
+          message: errMsg,
+          type: 'error',
+        });
+        setTimeout(() => setGpsNotification(null), 6000);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 12000,
+        maximumAge: 0,
+      }
+    );
+  };
+
+  // 2. Search Pin: Recenter map view to current search pin / filter center (renamed from My Location)
+  const handleRecenterSearchPin = () => {
+    if (!leafletMapRef.current) return;
+    const targetLat = userLat !== undefined && !isNaN(userLat) ? userLat : 4.8917;
+    const targetLng = userLng !== undefined && !isNaN(userLng) ? userLng : 114.9401;
+
+    const currentZ = leafletMapRef.current.getZoom() || zoom;
+    leafletMapRef.current.flyTo([targetLat, targetLng], Math.max(currentZ, 14), {
+      duration: 0.8,
+    });
+
+    if (leafletUserPinRef.current) {
+      leafletUserPinRef.current.openPopup();
+    }
+  };
+
   const element = (
-    <div className={`flex flex-col bg-slate-50 rounded-2xl border border-slate-200/80 p-3 sm:p-4 shadow-xs h-full min-h-[250px] ${
+    <div className={`flex flex-col bg-slate-50 rounded-2xl border border-slate-200/80 p-2 sm:p-3 shadow-xs h-full min-h-[250px] ${
       isMaximized ? 'fixed inset-4 bg-white z-[100] border-slate-300 shadow-2xl m-auto max-w-6xl max-h-[85vh]' : 'w-full'
     }`} id="interactive-map-root">
       
-      {/* Map Search & Preset Header Block */}
-      {!compact && (
-        <div className="mb-4 space-y-3">
-        <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
-          <div>
-            <h4 className="text-sm font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
-              <Navigation className="h-4 w-4 text-sky-600 animate-pulse" />
-              Interactive Map Integration
-            </h4>
-            <p className="text-[10px] text-slate-500">Real-time OpenStreetMap Layers powered by Leaflet & external Google Maps</p>
-          </div>
-
-          {/* Quick preset chips */}
-          <div className="flex flex-wrap gap-1.5 max-h-16 overflow-y-auto pr-1">
-            {Object.keys(presetsByCountry).map((country) => (
-              <div key={country} className="flex items-center gap-1 bg-slate-100 border border-slate-200 rounded-lg p-1 text-[10px] font-medium text-slate-600">
-                <span className="font-bold text-slate-400 px-1 uppercase text-[8px] tracking-wider border-r border-slate-200/80 mr-0.5">{country}</span>
-                {presetsByCountry[country].map((pre) => (
-                  <button
-                    key={pre.id}
-                    type="button"
-                    onClick={() => handlePresetSelect(pre)}
-                    className="px-1.5 py-0.5 hover:bg-white hover:text-sky-600 hover:shadow-2xs rounded border border-transparent transition-all cursor-pointer"
-                  >
-                    {pre.name}
-                  </button>
-                ))}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-      )}
-
-      {/* Search Bar Input */}
-      <div className={`relative ${compact ? 'mb-2' : 'mb-4'}`}>
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  setShowSuggestions(true);
+      {/* Single-Row Unified Sleek Top Bar (Height ~38px, High Contrast, Always Visible) */}
+      <div className="flex items-center gap-1.5 mb-2 relative z-30 flex-wrap sm:flex-nowrap">
+        {/* Search Input & Areas Dropdown */}
+        <div className="relative flex-1 min-w-[180px]">
+          <div className="relative flex items-center">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setShowSuggestions(true);
+              }}
+              onFocus={() => setShowSuggestions(true)}
+              placeholder="Search Brunei (e.g. Gadong, Kiulap, KB)..."
+              className="w-full pl-8 pr-16 py-1.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-sky-100 focus:border-sky-500 transition-all text-slate-800"
+              id="map-address-search"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSearchSubmit();
+              }}
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('');
+                  setShowSuggestions(false);
                 }}
-                onFocus={() => setShowSuggestions(true)}
-                placeholder="Search Brunei (e.g. Gadong BE1118, Kiulap, KB) or enter coordinates..."
-                className="w-full pl-9 pr-8 py-1.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-sky-100 focus:border-sky-500"
-                id="map-address-search"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleSearchSubmit();
-                }}
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearchQuery('');
-                    setShowSuggestions(false);
-                  }}
-                  className="absolute right-2.5 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-100"
-                >
-                  <X className="h-3 w-3" />
-                </button>
+                className="absolute right-14 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                title="Clear search"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            )}
+
+            {/* Quick Areas Dropdown inside search */}
+            <div className="absolute right-1 top-1/2 -translate-y-1/2">
+              <button
+                type="button"
+                onClick={() => setShowPresetsMenu(!showPresetsMenu)}
+                className="px-2 py-1 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center gap-0.5 border border-slate-200"
+                title="Select Brunei districts & popular areas"
+                id="map-areas-dropdown-btn"
+              >
+                <MapPin className="h-3 w-3 text-sky-600" />
+                <span className="hidden xs:inline text-[10px]">Areas</span>
+                <ChevronDown className={`h-2.5 w-2.5 transition-transform ${showPresetsMenu ? 'rotate-180' : ''}`} />
+              </button>
+
+              {showPresetsMenu && (
+                <div className="absolute right-0 mt-1.5 w-56 bg-white border border-slate-200 rounded-xl shadow-xl z-50 p-1.5 animate-fade-in text-left">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 py-1 border-b border-slate-100 mb-1">
+                    Brunei & Popular Areas
+                  </div>
+                  <div className="max-h-56 overflow-y-auto space-y-0.5">
+                    {activePresets.map((pre) => (
+                      <button
+                        key={pre.id}
+                        type="button"
+                        onClick={() => {
+                          handlePresetSelect(pre);
+                          setShowPresetsMenu(false);
+                        }}
+                        className="w-full text-left px-2 py-1.5 text-xs text-slate-700 hover:bg-sky-50 hover:text-sky-700 rounded-lg flex items-center justify-between transition-colors cursor-pointer"
+                      >
+                        <span className="font-medium truncate">{pre.name}</span>
+                        <span className="text-[9px] text-slate-400 font-mono shrink-0 ml-1">{pre.country}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
-            <button
-              type="button"
-              onClick={handleSearchSubmit}
-              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs shrink-0"
-            >
-              Search
-            </button>
           </div>
 
           {/* Search suggestions dropdown list */}
           {showSuggestions && searchQuery.trim() !== '' && (
-            <div className="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden max-h-56 overflow-y-auto">
+            <div className="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden max-h-56 overflow-y-auto text-left">
               {geocodeSuggestion && (
                 <div
                   onClick={() => handleSelectSuggestion('landmark', geocodeSuggestion)}
@@ -784,51 +1032,120 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
           )}
         </div>
 
-      {/* Radius adjustment slider (Only on customer view) */}
-      {onRadiusChange && (
-        <div className="mb-4 bg-sky-50/80 border border-sky-100/50 rounded-xl p-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
-            <div className="flex items-center gap-2">
-              <Sliders className="h-4 w-4 text-sky-600 shrink-0" />
-              <span className="text-xs font-semibold text-sky-900">
-                Filter Radius: <strong className="font-bold text-sky-700">{radiusKm} km</strong>
-              </span>
-            </div>
-            {/* Quick 1km / 3km / 5km / 10km / 25km chips */}
-            <div className="flex items-center gap-1 flex-wrap">
-              {[1, 3, 5, 10, 25].map((dist) => (
-                <button
-                  key={dist}
-                  type="button"
-                  onClick={() => onRadiusChange(dist)}
-                  className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold cursor-pointer transition-all ${
-                    radiusKm === dist
-                      ? 'bg-sky-600 text-white shadow-xs'
-                      : 'bg-white/80 hover:bg-white text-sky-800 border border-sky-200 hover:border-sky-300'
-                  }`}
-                  title={`Filter to ${dist} km`}
-                >
-                  {dist}km
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <span className="text-[10px] font-bold text-slate-500 shrink-0">1km</span>
-            <input
-              type="range"
-              min="1"
-              max="25"
-              step="1"
-              value={radiusKm}
-              onChange={(e) => onRadiusChange(parseInt(e.target.value))}
-              className="w-full sm:w-36 h-1.5 bg-sky-200 rounded-lg appearance-none cursor-pointer accent-sky-600"
-              id="map-radius-slider"
-            />
-            <span className="text-[10px] font-bold text-slate-500 shrink-0">25km</span>
-          </div>
+        {/* Pin Display Toggle: Names vs Letters vs Auto (ALWAYS VISIBLE on all devices) */}
+        <div className="flex items-center bg-white border border-slate-200/90 rounded-xl p-0.5 shadow-2xs shrink-0" role="group" aria-label="Pin display format">
+          <button
+            type="button"
+            onClick={() => setMarkerDisplayMode('all')}
+            className={`px-2 py-1 rounded-lg text-[10px] sm:text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${
+              markerDisplayMode === 'all'
+                ? 'bg-sky-600 text-white shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+            title="Show full name pills for all car washes"
+            id="map-mode-names-btn"
+          >
+            <Tag className="h-3 w-3 shrink-0" />
+            <span className="whitespace-nowrap">Names</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setMarkerDisplayMode('dots')}
+            className={`px-2 py-1 rounded-lg text-[10px] sm:text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${
+              markerDisplayMode === 'dots'
+                ? 'bg-emerald-600 text-white shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+            title="Show compact letter pins (ideal for dense areas with multiple car washes nearby)"
+            id="map-mode-letters-btn"
+          >
+            <span className="w-3.5 h-3.5 rounded-full bg-current/20 flex items-center justify-center text-[9px] font-mono font-black leading-none shrink-0">A</span>
+            <span className="whitespace-nowrap">Letters</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setMarkerDisplayMode('smart')}
+            className={`px-1.5 sm:px-2 py-1 rounded-lg text-[10px] sm:text-xs font-black transition-all cursor-pointer hidden sm:flex items-center gap-1 ${
+              markerDisplayMode === 'smart'
+                ? 'bg-indigo-600 text-white shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+            title="Auto: Letters when crowded, Names when clear or zoomed in"
+            id="map-mode-auto-btn"
+          >
+            <Sparkles className="h-3 w-3 shrink-0" />
+            <span className="whitespace-nowrap">Auto</span>
+          </button>
         </div>
-      )}
+
+        {/* Compact Radius Filter Pill (if onRadiusChange provided) */}
+        {onRadiusChange && (
+          <div className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() => setShowRadiusMenu(!showRadiusMenu)}
+              className="px-2 py-1.5 bg-white hover:bg-slate-100 text-slate-700 rounded-xl text-[10px] sm:text-xs font-bold transition-all cursor-pointer flex items-center gap-1 border border-slate-200 shadow-2xs"
+              title="Filter car washes by distance radius"
+              id="map-radius-dropdown-btn"
+            >
+              <Sliders className="h-3 w-3 text-sky-600 shrink-0" />
+              <span className="font-mono font-bold text-sky-900">{radiusKm}km</span>
+              <ChevronDown className={`h-2.5 w-2.5 transition-transform ${showRadiusMenu ? 'rotate-180' : ''}`} />
+            </button>
+
+            {showRadiusMenu && (
+              <div className="absolute right-0 mt-1.5 w-48 bg-white border border-slate-200 rounded-xl shadow-xl z-50 p-2.5 animate-fade-in text-left">
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pb-1.5 border-b border-slate-100 mb-2 flex items-center justify-between">
+                  <span>Radius Filter</span>
+                  <span className="font-mono text-sky-600 font-bold">{radiusKm} km</span>
+                </div>
+                <div className="grid grid-cols-5 gap-1 my-1.5">
+                  {[1, 3, 5, 10, 25].map((dist) => (
+                    <button
+                      key={dist}
+                      type="button"
+                      onClick={() => {
+                        onRadiusChange(dist);
+                        setShowRadiusMenu(false);
+                      }}
+                      className={`py-1 rounded-md text-[10px] font-extrabold cursor-pointer transition-all text-center ${
+                        radiusKm === dist
+                          ? 'bg-sky-600 text-white shadow-2xs'
+                          : 'bg-slate-50 text-slate-700 hover:bg-sky-50 hover:text-sky-700 border border-slate-200/80'
+                      }`}
+                    >
+                      {dist}k
+                    </button>
+                  ))}
+                </div>
+                <div className="pt-2 border-t border-slate-100">
+                  <input
+                    type="range"
+                    min="1"
+                    max="25"
+                    step="1"
+                    value={radiusKm}
+                    onChange={(e) => onRadiusChange(parseInt(e.target.value))}
+                    className="w-full h-1 bg-sky-200 rounded-lg appearance-none cursor-pointer accent-sky-600"
+                    id="map-radius-slider"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Maximize / Minimize Button */}
+        <button
+          type="button"
+          onClick={() => setIsMaximized(!isMaximized)}
+          className="p-1.5 bg-white hover:bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200 rounded-xl transition-all flex items-center justify-center cursor-pointer shrink-0 shadow-2xs"
+          title={isMaximized ? "Minimize Map" : "Maximize Map"}
+          id="map-top-maximize-btn"
+        >
+          {isMaximized ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+        </button>
+      </div>
 
       {/* Real Leaflet Map Canvas */}
       <div className="relative flex-1 rounded-xl bg-slate-100/80 border border-slate-200 overflow-hidden min-h-[180px] h-full">
@@ -843,50 +1160,85 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
 
         {/* Floating Quick Preview Card (Mobile & Desktop) */}
         {previewLocation && (
-          <div className="absolute top-2.5 left-2.5 right-2.5 sm:top-auto sm:bottom-3 sm:left-3 sm:right-auto sm:max-w-xs bg-slate-950/95 backdrop-blur-md border border-slate-800 rounded-2xl p-3 shadow-2xl z-30 animate-fade-in text-white pointer-events-auto">
-            <div className="flex items-start justify-between gap-2 mb-1.5">
-              <div className="flex items-center gap-2 min-w-0">
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center text-white shrink-0 shadow-sm font-black text-xs">
-                  {previewLocation.name.charAt(0)}
+          <div className="absolute bottom-3 left-3 right-3 sm:right-auto sm:max-w-md sm:w-[390px] bg-slate-950/95 backdrop-blur-md border border-slate-700/90 rounded-2xl p-3.5 shadow-2xl z-30 animate-fade-in text-white pointer-events-auto max-h-[65vh] overflow-y-auto">
+            <div className="flex items-start justify-between gap-2.5 mb-2">
+              <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-500 via-blue-600 to-indigo-600 flex items-center justify-center text-white shrink-0 shadow-md font-black text-sm ring-2 ring-sky-400/30">
+                  {getInitials(previewLocation.name)}
                 </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <h4 className="font-extrabold text-xs sm:text-sm text-white truncate">
-                      {previewLocation.name}
-                    </h4>
-                    <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[9px] font-black px-1.5 py-0.2 rounded-full shrink-0">
-                      Active
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[9px] font-black px-2 py-0.5 rounded-full shrink-0">
+                      Open Now
                     </span>
+                    {previewLocation.services && previewLocation.services.length > 0 && (
+                      <span className="bg-sky-500/20 text-sky-300 border border-sky-500/30 text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0">
+                        {previewLocation.services.length} services
+                      </span>
+                    )}
                   </div>
-                  <p className="text-[10px] text-slate-400 truncate flex items-center gap-1 mt-0.5">
-                    <MapPin className="w-3 h-3 text-rose-400 shrink-0" />
-                    <span className="truncate">{previewLocation.address}</span>
+                  {/* Full business name - completely visible without any truncation */}
+                  <h4 className="font-black text-sm sm:text-base text-white leading-snug break-words mt-1">
+                    {previewLocation.name}
+                  </h4>
+                  {/* Full address - completely visible with wrapping */}
+                  <p className="text-xs text-slate-300 flex items-start gap-1.5 mt-1 leading-relaxed">
+                    <MapPin className="w-3.5 h-3.5 text-rose-400 shrink-0 mt-0.5" />
+                    <span className="break-words font-medium">{previewLocation.address}</span>
                   </p>
+                  {previewLocation.phone && (
+                    <p className="text-xs text-slate-300 flex items-center gap-1.5 mt-1">
+                      <Phone className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                      <a href={`tel:${previewLocation.phone}`} className="text-sky-300 hover:text-sky-200 font-semibold underline">
+                        {previewLocation.phone}
+                      </a>
+                    </p>
+                  )}
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setPreviewLocation(null)}
-                className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
-                title="Close preview"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPreviewLocation(null);
+                    if (onLocationSelectRef.current) onLocationSelectRef.current(null);
+                    if (leafletMapRef.current) leafletMapRef.current.closePopup();
+                  }}
+                  className="px-2 py-1 text-[10px] font-bold text-slate-400 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-lg transition-colors cursor-pointer"
+                  title="Unselect car wash"
+                  id="preview-deselect-btn"
+                >
+                  Unselect
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPreviewLocation(null);
+                    if (onLocationSelectRef.current) onLocationSelectRef.current(null);
+                    if (leafletMapRef.current) leafletMapRef.current.closePopup();
+                  }}
+                  className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
+                  title="Close preview & unselect"
+                  id="preview-close-btn"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
             {userLat !== undefined && userLng !== undefined && !isNaN(userLat) && !isNaN(userLng) && (
-              <div className="text-[10px] text-slate-300 font-medium mb-2 flex items-center justify-between bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-800">
-                <span className="text-sky-300 font-bold flex items-center gap-1">
-                  <Navigation className="w-3 h-3 text-sky-400" />
+              <div className="text-xs text-slate-300 font-medium mb-2.5 flex items-center justify-between bg-slate-900/90 px-3 py-1.5 rounded-xl border border-slate-800">
+                <span className="text-sky-300 font-bold flex items-center gap-1.5">
+                  <Navigation className="w-3.5 h-3.5 text-sky-400" />
                   Distance:
                 </span>
-                <span className="font-bold text-white font-mono">
+                <span className="font-extrabold text-white font-mono bg-sky-950 px-2 py-0.5 rounded border border-sky-800/80">
                   {computeDistanceKm(userLat, userLng, previewLocation.locationLat, previewLocation.locationLng).toFixed(1)} km away
                 </span>
               </div>
             )}
 
-            <div className="flex items-center gap-1.5 pt-0.5">
+            <div className="flex items-center gap-2 pt-1">
               {(onBookLocation || onLocationSelect) && (
                 <button
                   type="button"
@@ -897,11 +1249,11 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
                       onLocationSelect(previewLocation);
                     }
                   }}
-                  className="flex-1 py-2 px-3.5 bg-gradient-to-r from-sky-500 via-sky-600 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white text-xs font-black rounded-xl shadow-md hover:shadow-sky-500/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                  className="flex-1 py-2.5 px-4 bg-gradient-to-r from-sky-500 via-sky-600 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white text-xs font-black rounded-xl shadow-md hover:shadow-sky-500/25 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  <Calendar className="w-3.5 h-3.5" />
+                  <Calendar className="w-4 h-4" />
                   <span>Book Appointment</span>
-                  <ChevronRight className="w-3.5 h-3.5" />
+                  <ChevronRight className="w-4 h-4" />
                 </button>
               )}
 
@@ -909,7 +1261,7 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
                 href={`https://www.google.com/maps?q=${previewLocation.locationLat},${previewLocation.locationLng}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="p-2 bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-800 rounded-xl text-xs font-bold transition-all flex items-center justify-center cursor-pointer shrink-0"
+                className="p-2.5 bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700/80 rounded-xl text-xs font-bold transition-all flex items-center justify-center cursor-pointer shrink-0 hover:border-slate-600"
                 title="Open GPS Navigation in Google Maps"
               >
                 <ExternalLink className="w-4 h-4 text-rose-400" />
@@ -920,7 +1272,7 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
                   href={`https://instagram.com/${previewLocation.instagram}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="p-2 bg-slate-900 hover:bg-slate-800 text-pink-400 border border-slate-800 rounded-xl text-xs font-bold transition-all flex items-center justify-center cursor-pointer shrink-0"
+                  className="p-2.5 bg-slate-900 hover:bg-slate-800 text-pink-400 border border-slate-700/80 rounded-xl text-xs font-bold transition-all flex items-center justify-center cursor-pointer shrink-0 hover:border-slate-600"
                   title="Open Instagram"
                 >
                   <Instagram className="w-4 h-4" />
@@ -930,111 +1282,152 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
           </div>
         )}
 
-        {/* Floating Map Controls overlay */}
-        <div className="absolute bottom-3 right-3 flex flex-row items-center gap-1 border border-slate-200/60 bg-white/95 backdrop-blur-xs p-1 rounded-xl shadow-md z-20 pointer-events-auto">
-          {/* Toggle Pin Display Mode: Smart (Auto) / All Names / Minimal */}
+        {/* Real-time GPS Notification Toast */}
+        {gpsNotification && (
+          <div
+            className={`absolute top-2.5 left-2.5 right-2.5 sm:left-auto sm:right-3 max-w-sm z-30 p-2.5 rounded-xl border text-xs shadow-xl flex items-center justify-between gap-2 animate-fade-in ${
+              gpsNotification.type === 'success'
+                ? 'bg-emerald-950/95 text-emerald-200 border-emerald-700/80 backdrop-blur-md'
+                : gpsNotification.type === 'error'
+                ? 'bg-rose-950/95 text-rose-200 border-rose-700/80 backdrop-blur-md'
+                : 'bg-slate-900/95 text-sky-200 border-slate-700 backdrop-blur-md'
+            }`}
+            role="alert"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              {gpsNotification.type === 'success' ? (
+                <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0"></span>
+              ) : gpsNotification.type === 'error' ? (
+                <X className="w-4 h-4 text-rose-400 shrink-0" />
+              ) : (
+                <span className="w-3.5 h-3.5 border-2 border-sky-400 border-t-transparent rounded-full animate-spin shrink-0"></span>
+              )}
+              <span className="text-[11px] font-medium truncate break-words">{gpsNotification.message}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setGpsNotification(null)}
+              className="text-slate-400 hover:text-white p-0.5 rounded cursor-pointer shrink-0"
+              title="Dismiss notification"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
+        {/* Compact Vertical Zoom Stack (Top-Right) */}
+        <div className="absolute top-2.5 right-2.5 flex flex-col rounded-xl border border-slate-200/90 bg-white/95 shadow-md overflow-hidden z-20 pointer-events-auto">
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              setMarkerDisplayMode((prev) => {
-                if (prev === 'smart') return 'all';
-                if (prev === 'all') return 'dots';
-                return 'smart';
-              });
+              if (leafletMapRef.current) {
+                leafletMapRef.current.zoomIn();
+              } else {
+                setZoom((prev) => Math.min(18, prev + 1));
+              }
             }}
-            className={`px-2 py-1.5 border rounded-lg shadow-xs transition-all flex items-center gap-1.5 cursor-pointer text-xs font-bold ${
-              markerDisplayMode === 'smart'
-                ? 'bg-sky-50 border-sky-300 text-sky-700'
-                : markerDisplayMode === 'all'
-                ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
-                : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-500'
-            }`}
-            title={
-              markerDisplayMode === 'smart'
-                ? 'Smart Mode: Declutters map automatically when zoomed out, expands selected & street views'
-                : markerDisplayMode === 'all'
-                ? 'All Names Mode: Always displays operator names for all car washes'
-                : 'Minimal Mode: Compact pin dots only'
-            }
+            className="p-1.5 hover:bg-slate-100 text-slate-700 transition-colors border-b border-slate-100 flex items-center justify-center cursor-pointer"
+            title="Zoom In"
+            id="map-zoom-in-btn"
           >
-            <Tag className="h-3.5 w-3.5 shrink-0" />
+            <ZoomIn className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (leafletMapRef.current) {
+                leafletMapRef.current.zoomOut();
+              } else {
+                setZoom((prev) => Math.max(10, prev - 1));
+              }
+            }}
+            className="p-1.5 hover:bg-slate-100 text-slate-700 transition-colors flex items-center justify-center cursor-pointer"
+            title="Zoom Out"
+            id="map-zoom-out-btn"
+          >
+            <ZoomOut className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        {/* Sleek Floating Action Controls (Bottom-Right, Compact, Non-Obtrusive) */}
+        <div className="absolute bottom-2.5 right-2.5 flex items-center gap-1.5 border border-slate-200/90 bg-white/95 backdrop-blur-md p-1 rounded-full shadow-lg z-20 pointer-events-auto">
+          {/* Button 1: Live GPS */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleRequestLiveGps();
+            }}
+            disabled={isLocatingGps}
+            className={`px-2.5 py-1 rounded-full shadow-2xs transition-all flex items-center gap-1 cursor-pointer text-xs font-bold shrink-0 ${
+              isLocatingGps
+                ? 'bg-emerald-700 text-white opacity-80 cursor-wait'
+                : isGpsActive
+                ? 'bg-emerald-600 hover:bg-emerald-700 text-white ring-2 ring-emerald-300 ring-offset-1'
+                : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+            }`}
+            title="Locate via device GPS coordinates"
+            id="map-live-gps-btn"
+          >
+            <Navigation className={`h-3 w-3 fill-white/40 shrink-0 ${isLocatingGps ? 'animate-spin' : ''}`} />
             <span className="text-[10px] font-extrabold whitespace-nowrap">
-              {markerDisplayMode === 'smart' ? 'Pins: Smart' : markerDisplayMode === 'all' ? 'Pins: All' : 'Pins: Minimal'}
+              {isLocatingGps ? 'Locating...' : 'Live GPS'}
             </span>
+            {isGpsActive && !isLocatingGps && (
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-200 animate-pulse shrink-0"></span>
+            )}
           </button>
 
-          {/* External Google Maps Link */}
+          {/* Button 2: Search Pin */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleRecenterSearchPin();
+            }}
+            className="px-2.5 py-1 bg-sky-500 hover:bg-sky-600 text-white rounded-full shadow-2xs transition-all flex items-center gap-1 cursor-pointer text-xs font-bold shrink-0"
+            title="Center map on your active Search Pin location"
+            id="map-search-pin-btn"
+          >
+            <MapPin className="h-3 w-3 fill-white/30 shrink-0" />
+            <span className="text-[10px] font-extrabold whitespace-nowrap">Search Pin</span>
+          </button>
+
+          {/* Button 3: Google Maps Link */}
           <a
             href={`https://www.google.com/maps?q=${currentCenter.lat},${currentCenter.lng}`}
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
-            className="p-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-rose-600 rounded-lg shadow-md transition-all flex items-center justify-center cursor-pointer"
+            className="p-1.5 hover:bg-slate-100 text-rose-600 rounded-full transition-all flex items-center justify-center cursor-pointer shrink-0"
             title="Open real coordinates on Google Maps"
+            id="map-gmaps-link"
           >
-            <ExternalLink className="h-4 w-4" />
+            <ExternalLink className="h-3.5 w-3.5" />
           </a>
 
-          {/* Toggle Fullscreen / Maximize */}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setIsMaximized(!isMaximized);
-            }}
-            className="p-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-indigo-700 rounded-lg shadow-md transition-all flex items-center justify-center cursor-pointer"
-            title={isMaximized ? "Minimize Map" : "Maximize Map"}
-          >
-            {isMaximized ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-          </button>
-
-          {/* Zoom In */}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setZoom(Math.min(18, zoom + 1));
-            }}
-            className="p-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg shadow-md transition-all flex items-center justify-center cursor-pointer"
-            title="Zoom In"
-          >
-            <ZoomIn className="h-4 w-4" />
-          </button>
-
-          {/* Zoom Out */}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setZoom(Math.max(10, zoom - 1));
-            }}
-            className="p-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg shadow-md transition-all flex items-center justify-center cursor-pointer"
-            title="Zoom Out"
-          >
-            <ZoomOut className="h-4 w-4" />
-          </button>
+          {/* Button 4: Unselect Active Pin (Only when pin selected) */}
+          {(previewLocation || selectedLocationId) && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setPreviewLocation(null);
+                if (onLocationSelectRef.current) onLocationSelectRef.current(null);
+                if (leafletMapRef.current) leafletMapRef.current.closePopup();
+              }}
+              className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-full border border-rose-200 transition-all flex items-center gap-1 cursor-pointer shrink-0"
+              title="Unselect car wash"
+              id="map-unselect-btn"
+            >
+              <X className="h-3 w-3 shrink-0" />
+              <span className="text-[10px] font-bold whitespace-nowrap">Clear</span>
+            </button>
+          )}
         </div>
       </div>
-
-      {/* Coordinate Info readout bottom bar */}
-      {!compact && (
-        <div className="bg-slate-100 border border-slate-200 rounded-xl p-3 mt-4 text-[11px] font-mono text-slate-600 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-slate-400"></span>
-            <span>Center Ref: {currentCenter.lat.toFixed(4)}°N, {currentCenter.lng.toFixed(4)}°W</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-slate-400">|</span>
-            <span className="text-slate-500">
-              Total Grid Pins Loaded:{' '}
-              <strong className="text-slate-700 font-sans font-bold">
-                {locations.length} active
-              </strong>
-            </span>
-          </div>
-        </div>
-      )}
     </div>
   );
 

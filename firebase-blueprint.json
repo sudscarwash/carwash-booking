@@ -69,6 +69,27 @@
         "timestamp": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "userId", "userEmail", "action", "details", "timestamp"]
+    },
+    "Review": {
+      "title": "Review",
+      "description": "Customer ratings, reviews, and business owner responses.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "carWashId": { "type": "string" },
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "customerEmail": { "type": "string" },
+        "rating": { "type": "number", "minimum": 1, "maximum": 5 },
+        "comment": { "type": "string", "maxLength": 250 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "bookingId": { "type": "string" },
+        "ownerReply": { "type": "string", "maxLength": 250 },
+        "ownerReplyAt": { "type": "string", "format": "date-time" },
+        "ownerReplyBy": { "type": "string" }
+      },
+      "required": ["id", "carWashId", "customerId", "customerName", "rating", "comment", "createdAt", "updatedAt"]
     }
   },
   "firestore": {
@@ -87,6 +108,10 @@
     "/auditLogs/{logId}": {
       "schema": "AuditLog",
       "description": "Security audit log database."
+    },
+    "/reviews/{reviewId}": {
+      "schema": "Review",
+      "description": "Customer reviews and owner replies."
     }
   }
 }

@@ -3,17 +3,18 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext.js';
-import { MapSimulation } from '../components/MapSimulation.js';
 import { BookingStatus, Booking, CarWash, WashService } from '../types.js';
 import {
   Briefcase as BriefcaseIcon, Calendar as CalendarIcon, Clock as ClockIcon, Check as CheckIcon, ChevronRight as ChevronRightIcon,
   CheckCircle as CheckCircleIcon, Info as InfoIcon, MapPin as MapPinIcon, CalendarDays, ChevronLeft, ChevronRight, Plus,
-  Sparkles, Phone, Car, User as UserIcon, X, CheckCheck, Pencil, MessageCircle
+  Sparkles, Phone, Car, User as UserIcon, X, CheckCheck, Pencil, MessageCircle, CreditCard
 } from 'lucide-react';
 import { EditBookingModal } from '../components/EditBookingModal.js';
 import { ServicePickerModal } from '../components/ServicePickerModal.js';
+import { SettlementConfirmationModal } from '../components/SettlementConfirmationModal.js';
+import { TransferProviderSelector } from '../components/TransferProviderSelector.js';
 
 const getTodayDateString = () => new Date().toISOString().split('T')[0];
 
@@ -138,7 +139,8 @@ const getCatalogForLocation = (loc?: CarWash | null): WashService[] => {
 export const EmployeeDashboard: React.FC = () => {
   const { user, bookings, updateBookingStatus, locations, createManualBooking } = useApp();
   const [updatingId, setUpdatingId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'queue' | 'calendar' | 'station'>('queue');
+  const [activeTab, setActiveTab] = useState<'queue' | 'calendar'>('queue');
+  const [showStationInfoModal, setShowStationInfoModal] = useState(false);
 
   // Edit Booking Modal state
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
@@ -156,8 +158,6 @@ export const EmployeeDashboard: React.FC = () => {
   const [mbVehicle, setMbVehicle] = useState('');
   const [mbDate, setMbDate] = useState<string>(getTodayDateString());
   const [mbTimeSlot, setMbTimeSlot] = useState<string>('09:00 - 09:30');
-  const [mbIsCustomSlot, setMbIsCustomSlot] = useState(false);
-  const [mbCustomSlotText, setMbCustomSlotText] = useState('');
   const [mbSelectedServiceId, setMbSelectedServiceId] = useState<string>('');
   const [mbSelectedItems, setMbSelectedItems] = useState<WashService[]>([]);
   const [showServicePickerModal, setShowServicePickerModal] = useState(false);
@@ -165,9 +165,14 @@ export const EmployeeDashboard: React.FC = () => {
   const [mbNotes, setMbNotes] = useState('');
   const [mbSource, setMbSource] = useState<'PHONE' | 'WALK_IN' | 'ONLINE'>('WALK_IN');
   const [mbStatus, setMbStatus] = useState<BookingStatus>(BookingStatus.IN_PROGRESS);
+  const [mbPaymentMode, setMbPaymentMode] = useState<'Cash' | 'Transfer'>('Cash');
+  const [mbTransferProvider, setMbTransferProvider] = useState<string>('Bank Transfer');
+  const [mbTxnReference, setMbTxnReference] = useState('');
   const [mbAvailableSlots, setMbAvailableSlots] = useState<any[]>([]);
   const [mbSelectedSlots, setMbSelectedSlots] = useState<string[]>([]);
   const [mbIsSubmitting, setMbIsSubmitting] = useState(false);
+  const [settlementBooking, setSettlementBooking] = useState<Booking | null>(null);
+  const [showSettlementModal, setShowSettlementModal] = useState<boolean>(false);
 
   const getFormattedSlotSummary = (slots: string[]) => {
     if (!slots || slots.length === 0) {
@@ -199,6 +204,23 @@ export const EmployeeDashboard: React.FC = () => {
   // Employees can view and manage bookings for their assigned business
   const myLocation = locations.find((loc) => loc.id === user?.businessId);
   const filteredBookings = bookings.filter((b) => b.carWashId === user?.businessId);
+
+  const myLocationPaymentMethods = useMemo(() => {
+    if (!myLocation) return [];
+    const methods: string[] = [];
+    if (myLocation.bibdEnabled) methods.push('BIBD');
+    if (myLocation.baiduriEnabled) methods.push('Baiduri');
+    if (myLocation.customPaymentMethods) {
+      myLocation.customPaymentMethods
+        .filter((m) => m.isEnabled)
+        .forEach((m) => {
+          if (m.providerName && !methods.includes(m.providerName)) {
+            methods.push(m.providerName);
+          }
+        });
+    }
+    return methods;
+  }, [myLocation]);
 
   const openWhatsAppCustomer = (phone?: string, customerName?: string, date?: string, timeSlot?: string, serviceName?: string) => {
     if (!phone) {
@@ -244,7 +266,7 @@ export const EmployeeDashboard: React.FC = () => {
             }
           }
         })
-        .catch((err) => console.error('Error fetching slots:', err));
+        .catch((err) => console.warn('Could not fetch slots for date:', err));
     }
   }, [myLocation, mbDate]);
 
@@ -252,6 +274,21 @@ export const EmployeeDashboard: React.FC = () => {
     setUpdatingId(bookingId);
     await updateBookingStatus(bookingId, status);
     setUpdatingId(null);
+  };
+
+  const handleConfirmSettlement = async (bookingId: string, paymentMethod: string, txnReference?: string) => {
+    setUpdatingId(bookingId);
+    await updateBookingStatus(
+      bookingId,
+      BookingStatus.COMPLETED,
+      undefined,
+      undefined,
+      paymentMethod,
+      txnReference
+    );
+    setUpdatingId(null);
+    setShowSettlementModal(false);
+    setSettlementBooking(null);
   };
 
   const handleManualBookingSubmit = async (e: React.FormEvent) => {
@@ -271,9 +308,7 @@ export const EmployeeDashboard: React.FC = () => {
       ? mbSelectedItems.reduce((sum, item) => sum + (Number(item.price) || 0), 0)
       : (parseFloat(mbPrice) || 15.00);
 
-    const finalSlot = mbIsCustomSlot
-      ? (mbCustomSlotText.trim() || 'Walk-in / Immediate (No Slot)')
-      : getFormattedSlotSummary(mbSelectedSlots);
+    const finalSlot = getFormattedSlotSummary(mbSelectedSlots);
 
     const success = await createManualBooking({
       carWashId: myLocation.id,
@@ -288,6 +323,8 @@ export const EmployeeDashboard: React.FC = () => {
       price: calculatedPrice,
       notes: mbNotes.trim() || undefined,
       status: mbStatus,
+      paymentBank: mbPaymentMode === 'Cash' ? 'Cash' : (mbTransferProvider.trim() || 'Bank Transfer'),
+      txnReference: mbPaymentMode === 'Transfer' ? mbTxnReference.trim() || undefined : undefined,
     });
 
     setMbIsSubmitting(false);
@@ -298,8 +335,9 @@ export const EmployeeDashboard: React.FC = () => {
       setMbPhone('');
       setMbVehicle('');
       setMbNotes('');
-      setMbIsCustomSlot(false);
-      setMbCustomSlotText('');
+      setMbPaymentMode('Cash');
+      setMbTransferProvider('Bank Transfer');
+      setMbTxnReference('');
       setMbSelectedSlots([]);
       setMbSelectedItems([]);
     }
@@ -326,7 +364,20 @@ export const EmployeeDashboard: React.FC = () => {
         <div className="bg-slate-50 border border-slate-100 rounded-xl px-4 py-2 text-xs flex items-center gap-3">
           <div>
             <span className="text-slate-400 block uppercase font-bold tracking-wider text-[9px]">Station Reference</span>
-            <strong className="text-slate-700">{myLocation ? myLocation.name : 'Unassigned Station'}</strong>
+            <div className="flex items-center gap-1.5">
+              <strong className="text-slate-700">{myLocation ? myLocation.name : 'Unassigned Station'}</strong>
+              {myLocation && (
+                <button
+                  type="button"
+                  onClick={() => setShowStationInfoModal(true)}
+                  className="text-slate-400 hover:text-amber-600 p-0.5 rounded transition-colors cursor-pointer"
+                  title="View Branch Details & Operational Parameters"
+                  id="btn-emp-view-station-info"
+                >
+                  <InfoIcon className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
           <button
             type="button"
@@ -342,14 +393,14 @@ export const EmployeeDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Responsive Bottom Navigation Bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200/80 px-4 py-2.5 flex justify-around items-center z-40 md:hidden shadow-[0_-4px_12px_rgba(0,0,0,0.03)] rounded-t-2xl">
+      {/* Responsive Bottom Navigation Bar - Streamlined to Queue & Calendar */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200/80 px-4 py-2 flex justify-around items-center z-40 md:hidden shadow-[0_-4px_12px_rgba(0,0,0,0.03)] rounded-t-2xl">
         <button
           onClick={() => {
             setActiveTab('queue');
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
-          className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition-all cursor-pointer ${
+          className={`flex-1 flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition-all cursor-pointer ${
             activeTab === 'queue'
               ? 'text-amber-600 font-extrabold scale-105'
               : 'text-slate-400 font-medium hover:text-slate-600'
@@ -365,7 +416,7 @@ export const EmployeeDashboard: React.FC = () => {
             setActiveTab('calendar');
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
-          className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition-all cursor-pointer ${
+          className={`flex-1 flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition-all cursor-pointer ${
             activeTab === 'calendar'
               ? 'text-amber-600 font-extrabold scale-105'
               : 'text-slate-400 font-medium hover:text-slate-600'
@@ -374,22 +425,6 @@ export const EmployeeDashboard: React.FC = () => {
         >
           <CalendarDays className="w-5 h-5" />
           <span className="text-[10px]">Calendar & Slots</span>
-        </button>
-
-        <button
-          onClick={() => {
-            setActiveTab('station');
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          }}
-          className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition-all cursor-pointer ${
-            activeTab === 'station'
-              ? 'text-amber-600 font-extrabold scale-105'
-              : 'text-slate-400 font-medium hover:text-slate-600'
-          }`}
-          id="btn-emp-nav-station"
-        >
-          <MapPinIcon className="w-5 h-5" />
-          <span className="text-[10px]">Station Info</span>
         </button>
       </div>
 
@@ -415,16 +450,6 @@ export const EmployeeDashboard: React.FC = () => {
         >
           <CalendarDays className="w-4 h-4" />
           <span>Calendar & Quick Slots</span>
-        </button>
-        <button
-          onClick={() => setActiveTab('station')}
-          className={`px-4 py-2 text-sm font-bold border-b-2 transition-all cursor-pointer ${
-            activeTab === 'station'
-              ? 'border-amber-600 text-amber-600 font-extrabold'
-              : 'border-transparent text-slate-400 hover:text-slate-600'
-          }`}
-        >
-          Station Map & Details
         </button>
       </div>
 
@@ -506,13 +531,13 @@ export const EmployeeDashboard: React.FC = () => {
                             </div>
                           )}
 
-                          {bk.paymentBank ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] bg-indigo-50 border border-indigo-100 text-indigo-700 font-extrabold px-2 py-0.5 rounded-lg mt-1 font-mono uppercase">
-                              💳 Bank Transfer: {bk.paymentBank}
+                          {bk.paymentBank && bk.paymentBank.trim().length > 0 && bk.paymentBank.toUpperCase() !== 'CASH' ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] bg-sky-50 border border-sky-200/80 text-sky-800 font-extrabold px-2 py-0.5 rounded-lg mt-1 font-mono">
+                              <span>📱</span> Pay on Site ({bk.paymentBank}){bk.txnReference ? ` • #${bk.txnReference}` : ''}
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 text-[10px] bg-emerald-50 border border-emerald-100 text-emerald-700 font-extrabold px-2 py-0.5 rounded-lg mt-1 font-mono uppercase">
-                              💵 Cash / Pay on Site
+                            <span className="inline-flex items-center gap-1 text-[10px] bg-emerald-50 border border-emerald-200/80 text-emerald-800 font-extrabold px-2 py-0.5 rounded-lg mt-1 font-mono">
+                              <span>💵</span> Pay on Site (Cash)
                             </span>
                           )}
                         </div>
@@ -585,7 +610,10 @@ export const EmployeeDashboard: React.FC = () => {
                           {bk.status === BookingStatus.IN_PROGRESS && (
                             <>
                               <button
-                                onClick={() => handleUpdateStatus(bk.id, BookingStatus.COMPLETED)}
+                                onClick={() => {
+                                  setSettlementBooking(bk);
+                                  setShowSettlementModal(true);
+                                }}
                                 disabled={updatingId === bk.id}
                                 className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-xs transition-colors flex items-center gap-1 cursor-pointer animate-pulse"
                                 id={`emp-complete-${bk.id}`}
@@ -951,6 +979,10 @@ export const EmployeeDashboard: React.FC = () => {
                                     <Sparkles className="w-3 h-3 text-amber-500 shrink-0" />
                                     <span>Service: {bk.serviceName || 'Standard Wash'} (${(bk.price || 15).toFixed(2)})</span>
                                   </p>
+                                  <p className="flex items-center gap-1.5 text-slate-600">
+                                    <CreditCard className="w-3 h-3 text-slate-400 shrink-0" />
+                                    <span>Payment: {bk.paymentBank && bk.paymentBank.trim().length > 0 && bk.paymentBank.toUpperCase() !== 'CASH' ? `Pay on Site (${bk.paymentBank})${bk.txnReference ? ` #${bk.txnReference}` : ''}` : 'Pay on Site (Cash)'}</span>
+                                  </p>
                                 </div>
 
                                 {/* Status Toggle Actions */}
@@ -980,7 +1012,10 @@ export const EmployeeDashboard: React.FC = () => {
                                   {bk.status === BookingStatus.IN_PROGRESS && (
                                     <button
                                       type="button"
-                                      onClick={() => handleUpdateStatus(bk.id, BookingStatus.COMPLETED)}
+                                      onClick={() => {
+                                        setSettlementBooking(bk);
+                                        setShowSettlementModal(true);
+                                      }}
                                       className="px-2 py-1 bg-emerald-600 text-white font-bold text-[10px] rounded-lg shadow-2xs hover:bg-emerald-500 cursor-pointer animate-pulse"
                                     >
                                       Finish & Done
@@ -996,50 +1031,6 @@ export const EmployeeDashboard: React.FC = () => {
                   })()}
                 </div>
               </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'station' && (
-          <div className="space-y-6 animate-fade-in">
-            {/* Station Map & Location details */}
-            <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm flex flex-col h-full">
-              <div className="pb-3 border-b border-slate-100 mb-4">
-                <h3 className="font-bold text-slate-800 text-base flex items-center gap-1.5">
-                  <MapPinIcon className="h-5 w-5 text-emerald-600" />
-                  Station Map View
-                </h3>
-                <p className="text-xs text-slate-400 mt-0.5">Physical dispatch and coordinate tracking sandbox.</p>
-              </div>
-
-              {/* Taller Map Container on Mobile */}
-              <div className="rounded-2xl border border-slate-200 overflow-hidden relative h-[420px] sm:h-[350px]">
-                <MapSimulation
-                  locations={myLocation ? [myLocation] : []}
-                  selectedLocationId={myLocation?.id}
-                  userLat={myLocation?.locationLat}
-                  userLng={myLocation?.locationLng}
-                />
-              </div>
-
-              {myLocation && (
-                <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 mt-4 space-y-2.5 text-left">
-                  <div>
-                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Assigned Address</span>
-                    <strong className="text-xs text-slate-700 block">{myLocation.address}</strong>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div>
-                      <span className="text-[10px] text-slate-400 font-bold block">Slot Duration</span>
-                      <strong className="text-slate-700 font-mono">{myLocation.slotDuration} mins</strong>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-slate-400 font-bold block">Capacity per Slot</span>
-                      <strong className="text-slate-700 font-mono">{myLocation.capacityPerSlot} washes</strong>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         )}
@@ -1173,119 +1164,100 @@ export const EmployeeDashboard: React.FC = () => {
                 />
               </div>
 
-              {/* Time Slot Selection (Interactive Chips Picker) */}
+              {/* Time Slot Selection */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider">
-                    Time Slot Selection (Click chips to choose 1 or multi-slots) *
+                    Time Slot Selection *
                   </label>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setMbSelectedSlots([])}
-                      className="text-[10px] font-bold text-amber-600 hover:underline cursor-pointer"
-                    >
-                      ⚡ Immediate / Unscheduled
-                    </button>
-                    <span className="text-slate-300">|</span>
-                    <button
-                      type="button"
-                      onClick={() => setMbIsCustomSlot(!mbIsCustomSlot)}
-                      className="text-[10px] font-bold text-amber-600 hover:underline cursor-pointer"
-                    >
-                      {mbIsCustomSlot ? "Select Interactive Slots" : "✍️ Custom Text"}
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setMbSelectedSlots([])}
+                    className="text-[10px] font-bold text-amber-600 hover:underline cursor-pointer flex items-center gap-1"
+                    title="Mark booking as unscheduled / immediate walk-in"
+                  >
+                    <span>⚡ Immediate / Walk-In Now</span>
+                  </button>
                 </div>
 
-                {mbIsCustomSlot ? (
-                  <input
-                    type="text"
-                    placeholder="e.g. 09:00 - 10:30 (Walk-in Bay 2 / 1.5 Hrs)"
-                    value={mbCustomSlotText}
-                    onChange={(e) => setMbCustomSlotText(e.target.value)}
-                    className="w-full px-3 py-2 border border-amber-300 bg-amber-50/30 rounded-xl text-slate-800 text-xs sm:text-sm outline-none focus:border-amber-500 font-mono font-bold"
-                  />
-                ) : (
-                  <div className="space-y-2">
-                    {/* Selection Summary Header */}
-                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 flex items-center justify-between text-xs">
-                      <div>
-                        <span className="text-[10px] text-slate-400 font-bold uppercase block">Selected Time Window</span>
-                        <strong className="text-slate-800 font-mono text-xs sm:text-sm">
-                          {getFormattedSlotSummary(mbSelectedSlots)}
-                        </strong>
-                      </div>
-                      {mbSelectedSlots.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => setMbSelectedSlots([])}
-                          className="text-[10px] font-bold text-slate-500 hover:text-red-600 px-2 py-1 bg-white border border-slate-200 rounded-lg shadow-2xs hover:bg-red-50 transition-colors cursor-pointer"
-                        >
-                          Clear
-                        </button>
-                      )}
+                <div className="space-y-2">
+                  {/* Selection Summary Header */}
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 flex items-center justify-between text-xs">
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-bold uppercase block">Selected Time Slot</span>
+                      <strong className={`font-mono text-xs sm:text-sm ${mbSelectedSlots.length > 0 ? 'text-amber-700 font-extrabold' : 'text-slate-600'}`}>
+                        {getFormattedSlotSummary(mbSelectedSlots)}
+                      </strong>
                     </div>
-
-                    {/* Interactive Chips Grid */}
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-1.5 border border-slate-200 rounded-2xl bg-slate-50/50">
-                      {mbAvailableSlots.length === 0 ? (
-                        <div className="col-span-full p-4 text-center text-slate-400 text-xs">
-                          No predefined slots loaded for this date. Click "Custom Text" above to write custom range.
-                        </div>
-                      ) : (
-                        mbAvailableSlots.map((s) => {
-                          const isSelected = mbSelectedSlots.includes(s.timeSlot);
-                          const remaining = s.remainingCapacity !== undefined ? s.remainingCapacity : (s.capacity - s.bookedCount);
-                          const isFull = remaining <= 0;
-
-                          return (
-                            <button
-                              key={s.timeSlot}
-                              type="button"
-                              onClick={() => {
-                                if (isSelected) {
-                                  setMbSelectedSlots(mbSelectedSlots.filter((slot) => slot !== s.timeSlot));
-                                } else {
-                                  setMbSelectedSlots([...mbSelectedSlots, s.timeSlot]);
-                                }
-                              }}
-                              className={`p-2 rounded-xl text-left border transition-all cursor-pointer flex flex-col justify-between ${
-                                isSelected
-                                  ? 'bg-amber-600 text-white border-amber-600 shadow-xs font-bold scale-[1.02]'
-                                  : isFull
-                                  ? 'bg-red-50/80 hover:bg-red-100 border-red-200 text-slate-800'
-                                  : 'bg-white hover:bg-slate-100 border-slate-200 text-slate-800'
-                              }`}
-                            >
-                              <div className="flex items-center justify-between text-xs font-mono font-bold">
-                                <span>{s.timeSlot}</span>
-                                {isSelected && <CheckIcon className="w-3.5 h-3.5 shrink-0 ml-1" />}
-                              </div>
-                              <div className="mt-1 flex items-center justify-between text-[10px]">
-                                <span className={`font-semibold ${
-                                  isSelected
-                                    ? 'text-amber-100'
-                                    : isFull
-                                    ? 'text-red-600 font-bold'
-                                    : 'text-slate-500'
-                                }`}>
-                                  {isFull ? '🔴 0 left (Full)' : `🟢 ${remaining} left`}
-                                </span>
-                                <span className={`font-mono text-[9px] ${isSelected ? 'text-amber-200' : 'text-slate-400'}`}>
-                                  {s.bookedCount}/{s.capacity}
-                                </span>
-                              </div>
-                            </button>
-                          );
-                        })
-                      )}
-                    </div>
-                    <p className="text-[10px] text-slate-400 italic">
-                      💡 Click one or multiple slots to set custom duration (e.g. 1.5 Hrs). Full slots (0 left) can still be clicked by staff for walk-in overrides.
-                    </p>
+                    {mbSelectedSlots.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setMbSelectedSlots([])}
+                        className="text-[10px] font-bold text-slate-500 hover:text-red-600 px-2 py-1 bg-white border border-slate-200 rounded-lg shadow-2xs hover:bg-red-50 transition-colors cursor-pointer"
+                      >
+                        Clear
+                      </button>
+                    )}
                   </div>
-                )}
+
+                  {/* Interactive Slots Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-1.5 border border-slate-200 rounded-2xl bg-slate-50/50">
+                    {mbAvailableSlots.length === 0 ? (
+                      <div className="col-span-full p-4 text-center text-slate-400 text-xs">
+                        No predefined slots available for this date. Defaulting to Immediate Walk-In.
+                      </div>
+                    ) : (
+                      mbAvailableSlots.map((s) => {
+                        const isSelected = mbSelectedSlots.includes(s.timeSlot);
+                        const remaining = s.remainingCapacity !== undefined ? s.remainingCapacity : (s.capacity - s.bookedCount);
+                        const isFull = remaining <= 0;
+
+                        return (
+                          <button
+                            key={s.timeSlot}
+                            type="button"
+                            onClick={() => {
+                              if (isSelected) {
+                                setMbSelectedSlots(mbSelectedSlots.filter((slot) => slot !== s.timeSlot));
+                              } else {
+                                setMbSelectedSlots([...mbSelectedSlots, s.timeSlot]);
+                              }
+                            }}
+                            className={`p-2 rounded-xl text-left border transition-all cursor-pointer flex flex-col justify-between ${
+                              isSelected
+                                ? 'bg-amber-600 text-white border-amber-600 shadow-xs font-bold scale-[1.02]'
+                                : isFull
+                                ? 'bg-red-50/80 hover:bg-red-100 border-red-200 text-slate-800'
+                                : 'bg-white hover:bg-slate-100 border-slate-200 text-slate-800'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between text-xs font-mono font-bold">
+                              <span>{s.timeSlot}</span>
+                              {isSelected && <CheckIcon className="w-3.5 h-3.5 shrink-0 ml-1" />}
+                            </div>
+                            <div className="mt-1 flex items-center justify-between text-[10px]">
+                              <span className={`font-semibold ${
+                                isSelected
+                                  ? 'text-amber-100'
+                                  : isFull
+                                  ? 'text-red-600 font-bold'
+                                  : 'text-slate-500'
+                              }`}>
+                                {isFull ? '🔴 0 left (Full)' : `🟢 ${remaining} left`}
+                              </span>
+                              <span className={`font-mono text-[9px] ${isSelected ? 'text-amber-200' : 'text-slate-400'}`}>
+                                {s.bookedCount}/{s.capacity}
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                  <p className="text-[10px] text-slate-400">
+                    💡 Click a time slot above to reserve a specific time, or leave as Immediate / Walk-In.
+                  </p>
+                </div>
               </div>
 
               {/* Service Selection & Custom Price */}
@@ -1370,6 +1342,63 @@ export const EmployeeDashboard: React.FC = () => {
                 </select>
               </div>
 
+              {/* On-Site Settlement Method */}
+              <div>
+                <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1.5 flex items-center justify-between">
+                  <span>Payment Settlement Method</span>
+                  <span className="text-[10px] text-slate-400 font-normal lowercase">(collected at counter)</span>
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setMbPaymentMode('Cash')}
+                    className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      mbPaymentMode === 'Cash'
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-900 shadow-2xs'
+                        : 'border-slate-200 bg-slate-50/70 text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    <span>💵</span> Cash
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMbPaymentMode('Transfer')}
+                    className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      mbPaymentMode === 'Transfer'
+                        ? 'border-sky-500 bg-sky-50 text-sky-900 shadow-2xs'
+                        : 'border-slate-200 bg-slate-50/70 text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    <span>📱</span> Bank / Digital Transfer
+                  </button>
+                </div>
+
+                {mbPaymentMode === 'Transfer' && (
+                  <div className="mt-2.5 p-3 bg-sky-50/60 border border-sky-200/80 rounded-xl space-y-2.5 animate-fade-in">
+                    <TransferProviderSelector
+                      value={mbTransferProvider}
+                      onChange={setMbTransferProvider}
+                      idPrefix="ed-mb"
+                      businessId={myLocation?.id}
+                      businessMethods={myLocationPaymentMethods}
+                    />
+
+                    <div>
+                      <span className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
+                        Transaction Reference / Approval Code (Optional)
+                      </span>
+                      <input
+                        type="text"
+                        placeholder="e.g. Ref #, approval code, or last 4 digits (8492)"
+                        value={mbTxnReference}
+                        onChange={(e) => setMbTxnReference(e.target.value)}
+                        className="w-full px-3 py-1.5 border border-slate-200 rounded-xl text-slate-800 text-xs font-mono outline-none focus:border-sky-500"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Notes / Special Instructions */}
               <div>
                 <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
@@ -1418,6 +1447,17 @@ export const EmployeeDashboard: React.FC = () => {
         location={myLocation}
       />
 
+      {/* Confirmation & Settlement Modal on Job Completion */}
+      <SettlementConfirmationModal
+        isOpen={showSettlementModal}
+        onClose={() => {
+          setShowSettlementModal(false);
+          setSettlementBooking(null);
+        }}
+        booking={settlementBooking}
+        onConfirm={handleConfirmSettlement}
+      />
+
       {/* Multi-Item Tick Selection Picker Sub-Modal */}
       <ServicePickerModal
         isOpen={showServicePickerModal}
@@ -1430,6 +1470,100 @@ export const EmployeeDashboard: React.FC = () => {
           setMbPrice(total.toFixed(2));
         }}
       />
+
+      {/* Lightweight Station Details Modal */}
+      {showStationInfoModal && myLocation && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-amber-50 text-amber-600 rounded-xl border border-amber-100">
+                  <MapPinIcon className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-800 text-base">{myLocation.name}</h3>
+                  <p className="text-[11px] text-slate-400">Assigned Branch Specifications</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowStationInfoModal(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+                id="btn-close-station-info-modal"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-left text-xs">
+              <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3.5 space-y-1">
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Physical Address</span>
+                <p className="text-slate-800 font-semibold leading-relaxed">{myLocation.address}</p>
+                {myLocation.locationLat && myLocation.locationLng && (
+                  <a
+                    href={`https://www.google.com/maps?q=${myLocation.locationLat},${myLocation.locationLng}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-[11px] text-sky-600 font-bold hover:underline pt-1"
+                  >
+                    <span>Open in Google Maps &rarr;</span>
+                  </a>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5">
+                <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3">
+                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Slot Duration</span>
+                  <strong className="text-slate-800 font-mono text-sm block mt-0.5">{myLocation.slotDuration || 30} mins</strong>
+                  <span className="text-[10px] text-slate-400">per booking slot</span>
+                </div>
+                <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3">
+                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Bay Capacity</span>
+                  <strong className="text-slate-800 font-mono text-sm block mt-0.5">{myLocation.capacityPerSlot || 2} vehicles</strong>
+                  <span className="text-[10px] text-slate-400">concurrent capacity</span>
+                </div>
+              </div>
+
+              {(myLocation.phone || myLocation.instagram) && (
+                <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3 space-y-1.5">
+                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Branch Contact</span>
+                  <div className="flex flex-wrap items-center gap-3">
+                    {myLocation.phone && (
+                      <a
+                        href={`tel:${myLocation.phone}`}
+                        className="inline-flex items-center gap-1.5 text-sky-600 font-bold hover:underline"
+                      >
+                        <Phone className="w-3.5 h-3.5" />
+                        <span>{myLocation.phone}</span>
+                      </a>
+                    )}
+                    {myLocation.instagram && (
+                      <a
+                        href={`https://instagram.com/${myLocation.instagram}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1.5 text-pink-600 font-bold hover:underline"
+                      >
+                        <span>@{myLocation.instagram}</span>
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-2 border-t border-slate-100 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowStationInfoModal(false)}
+                className="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex gap-3 text-xs text-slate-500 text-left">
         <InfoIcon className="h-5 w-5 text-slate-400 shrink-0" />

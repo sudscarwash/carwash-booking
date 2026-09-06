@@ -174,5 +174,55 @@ service cloud.firestore {
 
       allow update, delete: if false;
     }
+
+    // --- Collection: /reviews ---
+    match /reviews/{reviewId} {
+      // Reviews are publicly viewable by all users
+      allow read: if true;
+
+      // Customer creates review: must be authenticated and match customerId
+      allow create: if isSignedIn() && isUserActive() && (
+        incoming().customerId == request.auth.uid &&
+        incoming().rating >= 1 && incoming().rating <= 5 &&
+        incoming().comment is string &&
+        incoming().comment.size() <= 250 &&
+        incoming().carWashId is string
+      ) || isAdmin();
+
+      // Updates:
+      // 1. Author updates their review rating or comment (max 250 characters)
+      // 2. Business owner adds/edits ownerReply (max 250 characters)
+      // 3. Admin has full rights
+      allow update: if isSignedIn() && isUserActive() && (
+        isAdmin() ||
+        (
+          existing().customerId == request.auth.uid &&
+          incoming().customerId == existing().customerId &&
+          incoming().carWashId == existing().carWashId &&
+          incoming().comment is string &&
+          incoming().comment.size() <= 250
+        ) ||
+        (
+          exists(/databases/$(database)/documents/carWashes/$(existing().carWashId)) &&
+          get(/databases/$(database)/documents/carWashes/$(existing().carWashId)).data.ownerId == request.auth.uid &&
+          incoming().customerId == existing().customerId &&
+          incoming().carWashId == existing().carWashId &&
+          incoming().rating == existing().rating &&
+          incoming().comment == existing().comment &&
+          (!incoming().keys().hasAll(['ownerReply']) || incoming().ownerReply.size() <= 250)
+        )
+      );
+
+      // Deletion:
+      // Author can delete their own review; Admin and Special users can delete any review (spam/moderation)
+      allow delete: if isSignedIn() && (
+        isAdmin() ||
+        (
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ["special", "admin"]
+        ) ||
+        existing().customerId == request.auth.uid
+      );
+    }
   }
 }

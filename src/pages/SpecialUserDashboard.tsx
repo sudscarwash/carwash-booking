@@ -19,9 +19,14 @@ import {
   PlusCircle,
   Building2,
   Save,
-  Navigation
+  Navigation,
+  Star,
+  Trash2,
+  RefreshCw,
+  Filter
 } from 'lucide-react';
-import { CarWash, Role } from '../types.js';
+import { CarWash, Role, Review } from '../types.js';
+import { FEATURES } from '../config/features.js';
 
 // Quick Brunei location presets for rapid mapping
 const BRUNEI_PRESETS = [
@@ -40,7 +45,64 @@ const BRUNEI_PRESETS = [
 export const SpecialUserDashboard: React.FC = () => {
   const { locations, adminUsersList, createOwnerWithBusiness, updateLocationConfig, token } = useApp();
 
-  const [activeTab, setActiveTab] = useState<'onboard' | 'edit_existing'>('onboard');
+  const [activeTab, setActiveTab] = useState<'onboard' | 'edit_existing' | 'reviews'>('onboard');
+
+  // Special User Review Moderation State (Structured and ready when reviews are activated)
+  const [specialReviews, setSpecialReviews] = useState<Review[]>([]);
+  const [specialReviewsLoading, setSpecialReviewsLoading] = useState(false);
+  const [specialReviewsSearch, setSpecialReviewsSearch] = useState('');
+  const [specialReviewsRatingFilter, setSpecialReviewsRatingFilter] = useState<string>('ALL');
+  const [deletingReviewId, setDeletingReviewId] = useState<string | null>(null);
+
+  const fetchSpecialReviews = async () => {
+    if (!token || !FEATURES.ENABLE_REVIEWS) return;
+    setSpecialReviewsLoading(true);
+    try {
+      const res = await fetch('/api/reviews', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSpecialReviews(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      console.warn('Failed to load reviews for special user:', err);
+    } finally {
+      setSpecialReviewsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (FEATURES.ENABLE_REVIEWS && activeTab === 'reviews') {
+      fetchSpecialReviews();
+    }
+  }, [activeTab, token]);
+
+  const handleSpecialDeleteReview = async (reviewId: string) => {
+    if (!window.confirm('Special User Moderation Action: Are you sure you want to permanently delete this review to combat spam or policy violations?')) {
+      return;
+    }
+    setDeletingReviewId(reviewId);
+    try {
+      const res = await fetch(`/api/reviews/${reviewId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to delete review');
+      }
+      setSpecialReviews(prev => prev.filter(r => r.id !== reviewId));
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete review');
+    } finally {
+      setDeletingReviewId(null);
+    }
+  };
 
   // Special onboard form states
   const [onboardOwnerMode, setOnboardOwnerMode] = useState<'new' | 'existing'>('new');
@@ -299,6 +361,21 @@ export const SpecialUserDashboard: React.FC = () => {
             <Edit3 className="w-4 h-4" />
             <span>Update Existing Location Coordinates ({locations.length})</span>
           </button>
+
+          {FEATURES.ENABLE_REVIEWS && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('reviews')}
+              className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
+                activeTab === 'reviews'
+                  ? 'bg-white text-emerald-900 shadow-md ring-2 ring-white/50'
+                  : 'bg-black/20 text-white hover:bg-black/30'
+              }`}
+            >
+              <Star className="w-4 h-4" />
+              <span>Review Moderation</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -839,6 +916,170 @@ export const SpecialUserDashboard: React.FC = () => {
               </form>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* TAB 3: REVIEW MODERATION (Pre-wired & ready in structure) */}
+      {FEATURES.ENABLE_REVIEWS && activeTab === 'reviews' && (
+        <div className="space-y-6 animate-fade-in" id="special-reviews-moderation-section">
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200">
+            <div>
+              <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                <Star className="h-5 w-5 text-emerald-600 fill-emerald-600" />
+                <span>Customer Reviews Moderation</span>
+                <span className="text-xs font-semibold bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                  {specialReviews.length} {specialReviews.length === 1 ? 'Review' : 'Reviews'}
+                </span>
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Monitor reviews across all car wash locations and remove spam or offensive entries to maintain platform quality.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={fetchSpecialReviews}
+              disabled={specialReviewsLoading}
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer self-start sm:self-auto"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${specialReviewsLoading ? 'animate-spin' : ''}`} />
+              <span>Refresh</span>
+            </button>
+          </div>
+
+          {/* Filter Bar */}
+          <div className="flex flex-col sm:flex-row gap-3 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
+            <div className="flex-1 relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search by customer, comment, or car wash..."
+                value={specialReviewsSearch}
+                onChange={(e) => setSpecialReviewsSearch(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-100 focus:border-emerald-500 font-medium"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Filter className="w-4 h-4 text-slate-400" />
+              <select
+                value={specialReviewsRatingFilter}
+                onChange={(e) => setSpecialReviewsRatingFilter(e.target.value)}
+                className="text-xs border border-slate-200 rounded-xl px-3 py-2 bg-white text-slate-700 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-100 focus:border-emerald-500"
+              >
+                <option value="ALL">All Star Ratings</option>
+                <option value="5">5 Stars ★★★★★</option>
+                <option value="4">4 Stars ★★★★☆</option>
+                <option value="3">3 Stars ★★★☆☆</option>
+                <option value="2">2 Stars ★★☆☆☆</option>
+                <option value="1">1 Star ★☆☆☆☆</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Reviews List */}
+          {specialReviewsLoading ? (
+            <div className="p-12 text-center bg-white rounded-2xl border border-slate-200">
+              <RefreshCw className="w-6 h-6 animate-spin text-slate-400 mx-auto mb-2" />
+              <p className="text-xs text-slate-500 font-medium">Loading platform customer reviews...</p>
+            </div>
+          ) : (() => {
+            const filtered = specialReviews.filter(rev => {
+              const matchesSearch = !specialReviewsSearch.trim() ||
+                rev.customerName.toLowerCase().includes(specialReviewsSearch.toLowerCase()) ||
+                (rev.customerEmail && rev.customerEmail.toLowerCase().includes(specialReviewsSearch.toLowerCase())) ||
+                rev.comment.toLowerCase().includes(specialReviewsSearch.toLowerCase()) ||
+                rev.carWashId.toLowerCase().includes(specialReviewsSearch.toLowerCase());
+              const matchesRating = specialReviewsRatingFilter === 'ALL' || rev.rating === Number(specialReviewsRatingFilter);
+              return matchesSearch && matchesRating;
+            });
+
+            if (filtered.length === 0) {
+              return (
+                <div className="p-10 text-center bg-white rounded-2xl border border-slate-200">
+                  <Star className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                  <p className="text-sm font-bold text-slate-700">No Reviews Found</p>
+                  <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                    {specialReviews.length === 0
+                      ? 'No customer reviews have been submitted on the platform yet.'
+                      : 'No reviews match your current search or rating filter.'}
+                  </p>
+                </div>
+              );
+            }
+
+            return (
+              <div className="space-y-3">
+                {filtered.map(rev => {
+                  const matchedLoc = locations.find(l => l.id === rev.carWashId);
+                  return (
+                    <div
+                      key={rev.id}
+                      className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-start justify-between gap-4 transition-all"
+                    >
+                      <div className="space-y-2 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-black text-slate-800">{rev.customerName}</span>
+                          {rev.customerEmail && (
+                            <span className="text-[11px] text-slate-400 font-mono">({rev.customerEmail})</span>
+                          )}
+                          <span className="text-[10px] text-slate-400">•</span>
+                          <span className="text-[11px] text-slate-500 font-semibold">
+                            Location: <strong>{matchedLoc ? matchedLoc.name : rev.carWashId}</strong>
+                          </span>
+                          <span className="text-[10px] text-slate-400">•</span>
+                          <span className="text-[10px] text-slate-400">{new Date(rev.createdAt).toLocaleDateString()}</span>
+                        </div>
+
+                        {/* Stars */}
+                        <div className="flex items-center gap-1">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <Star
+                              key={star}
+                              className={`w-3.5 h-3.5 ${
+                                star <= rev.rating
+                                  ? 'fill-amber-400 text-amber-400'
+                                  : 'text-slate-200'
+                              }`}
+                            />
+                          ))}
+                          <span className="text-xs font-bold text-slate-700 ml-1">{rev.rating}.0</span>
+                        </div>
+
+                        {/* Comment text */}
+                        <p className="text-xs text-slate-700 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100 font-medium">
+                          "{rev.comment}"
+                        </p>
+
+                        {/* Owner Reply if present */}
+                        {rev.ownerReply && (
+                          <div className="ml-4 pl-3 border-l-2 border-emerald-200 text-xs text-emerald-900 bg-emerald-50/50 p-2.5 rounded-r-xl space-y-0.5">
+                            <span className="font-bold text-[11px] text-emerald-700 block">
+                              {rev.ownerReplyBy || 'Business Owner Reply'}:
+                            </span>
+                            <p className="italic text-slate-600">"{rev.ownerReply}"</p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Special User Delete Action */}
+                      <div className="shrink-0 flex sm:flex-col items-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleSpecialDeleteReview(rev.id)}
+                          disabled={deletingReviewId === rev.id}
+                          className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+                          title="Permanently delete review (Spam / Policy Moderation)"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                          <span>{deletingReviewId === rev.id ? 'Deleting...' : 'Delete Review'}</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       )}
 

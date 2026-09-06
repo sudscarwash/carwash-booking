@@ -54,7 +54,10 @@ interface AppContextType {
   changePassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
   deleteAccount: () => Promise<boolean>;
   fetchLocations: (search?: string, lat?: number, lng?: number, radius?: number) => Promise<void>;
-  fetchBookings: () => Promise<void>;
+  fetchBookings: (silent?: boolean) => Promise<void>;
+  lastSyncedAt: Date;
+  isLiveSyncing: boolean;
+  syncNow: () => Promise<void>;
   fetchEmployees: () => Promise<void>;
   fetchLogs: () => Promise<void>;
   createBooking: (
@@ -82,9 +85,18 @@ interface AppContextType {
     price?: number;
     notes?: string;
     status?: BookingStatus;
+    paymentBank?: string;
+    txnReference?: string;
   }) => Promise<boolean>;
-  updateBookingStatus: (bookingId: string, status: string, notes?: string, employeeId?: string) => Promise<boolean>;
-  updateBookingDetails: (bookingId: string, data: { serviceId?: string; serviceName?: string; price?: number; vehicleInfo?: string; notes?: string }) => Promise<boolean>;
+  updateBookingStatus: (
+    bookingId: string,
+    status: string,
+    notes?: string,
+    employeeId?: string,
+    paymentBank?: string,
+    txnReference?: string
+  ) => Promise<boolean>;
+  updateBookingDetails: (bookingId: string, data: { serviceId?: string; serviceName?: string; price?: number; vehicleInfo?: string; notes?: string; paymentBank?: string; txnReference?: string }) => Promise<boolean>;
   rescheduleBooking: (bookingId: string, date: string, timeSlot: string) => Promise<boolean>;
   createEmployee: (email: string, name: string, businessId: string, password?: string) => Promise<boolean>;
   updateEmployee: (id: string, name: string, email: string, businessId: string) => Promise<boolean>;
@@ -112,6 +124,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [platformInfo, setPlatformInfo] = useState<PlatformInfo | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date>(new Date());
+  const [isLiveSyncing, setIsLiveSyncing] = useState<boolean>(false);
 
   // Initialize Auth from LocalStorage and verify with server
   useEffect(() => {
@@ -492,17 +506,140 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const fetchBookings = async () => {
+  const fetchBookings = async (silent: boolean = false) => {
     if (!token) return;
     try {
+      if (!silent) setIsLiveSyncing(true);
       const data = await apiFetch('/api/bookings');
-      setBookings(data);
+      if (Array.isArray(data)) {
+        setBookings((prevBookings) => {
+          // Detect newly arrived bookings in real-time for business operators
+          if (prevBookings.length > 0 && (user?.role === Role.OWNER || user?.role === Role.EMPLOYEE)) {
+            const prevIds = new Set(prevBookings.map((b) => b.id));
+            const newOrders = data.filter((b) => !prevIds.has(b.id));
+            if (newOrders.length > 0) {
+              const latest = newOrders[0];
+              showNotification(
+                `🚗 New booking received: ${latest.customerName || 'Customer'} (${latest.serviceName || 'Car Wash'}) on ${latest.date} at ${latest.timeSlot}`,
+                'success'
+              );
+            }
+          }
+          return data;
+        });
+        setLastSyncedAt(new Date());
+      }
     } catch (err: any) {
       if (err?.message !== 'Failed to fetch') {
         console.warn('Failed to fetch bookings:', err?.message || err);
       }
+    } finally {
+      if (!silent) setIsLiveSyncing(false);
     }
   };
+
+  const syncNow = async () => {
+    setIsLiveSyncing(true);
+    try {
+      await Promise.all([
+        fetchBookings(false),
+        fetchAppNotifications(),
+        fetchLocations(),
+      ]);
+      setLastSyncedAt(new Date());
+      showNotification('Dashboard synchronized live with database', 'success');
+    } catch {
+      showNotification('Failed to sync live data', 'error');
+    } finally {
+      setIsLiveSyncing(false);
+    }
+  };
+
+  // 🔄 Real-time Server-Sent Events (SSE) stream for instantaneous live bookings without refresh
+  useEffect(() => {
+    if (!token) return;
+
+    let eventSource: EventSource | null = null;
+    let reconnectTimer: NodeJS.Timeout | null = null;
+    let isMounted = true;
+
+    const connectStream = () => {
+      if (!isMounted) return;
+      try {
+        const streamUrl = `/api/realtime/stream?token=${encodeURIComponent(token)}`;
+        eventSource = new EventSource(streamUrl);
+
+        eventSource.onopen = () => {
+          setLastSyncedAt(new Date());
+        };
+
+        eventSource.onmessage = (event) => {
+          if (!event.data) return;
+          try {
+            const payload = JSON.parse(event.data);
+            if (payload.type === 'BOOKING_CREATED' || payload.type === 'BOOKING_UPDATED') {
+              fetchBookings(true);
+              fetchAppNotifications();
+            } else if (payload.type === 'NOTIFICATION_CREATED') {
+              fetchAppNotifications();
+            }
+          } catch {
+            // Heartbeat comment
+          }
+        };
+
+        eventSource.onerror = () => {
+          if (eventSource) {
+            eventSource.close();
+            eventSource = null;
+          }
+          if (isMounted) {
+            reconnectTimer = setTimeout(connectStream, 4000);
+          }
+        };
+      } catch (err) {
+        console.warn('Realtime SSE connection failed:', err);
+      }
+    };
+
+    connectStream();
+
+    return () => {
+      isMounted = false;
+      if (eventSource) eventSource.close();
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+    };
+  }, [token]);
+
+  // ⏱️ Active background sync fallback (every 4s) + auto-sync on window focus / tab switch
+  useEffect(() => {
+    if (!token) return;
+
+    const interval = setInterval(() => {
+      fetchBookings(true);
+    }, 4000);
+
+    const handleFocus = () => {
+      fetchBookings(true);
+      fetchAppNotifications();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchBookings(true);
+        fetchAppNotifications();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [token]);
 
   const fetchEmployees = async () => {
     if (!token) return;
@@ -590,6 +727,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     price?: number;
     notes?: string;
     status?: BookingStatus;
+    paymentBank?: string;
+    txnReference?: string;
   }): Promise<boolean> => {
     try {
       await apiFetch('/api/owner/manual-booking', {
@@ -605,11 +744,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const updateBookingStatus = async (bookingId: string, status: string, notes?: string, employeeId?: string): Promise<boolean> => {
+  const updateBookingStatus = async (
+    bookingId: string,
+    status: string,
+    notes?: string,
+    employeeId?: string,
+    paymentBank?: string,
+    txnReference?: string
+  ): Promise<boolean> => {
     try {
       await apiFetch(`/api/bookings/${bookingId}/status`, {
         method: 'PUT',
-        body: JSON.stringify({ status, notes, employeeId }),
+        body: JSON.stringify({ status, notes, employeeId, paymentBank, txnReference }),
       });
       showNotification(`Booking status updated to ${status}`, 'success');
       fetchBookings();
@@ -622,7 +768,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateBookingDetails = async (
     bookingId: string,
-    data: { serviceId?: string; serviceName?: string; price?: number; vehicleInfo?: string; notes?: string }
+    data: { serviceId?: string; serviceName?: string; price?: number; vehicleInfo?: string; notes?: string; paymentBank?: string; txnReference?: string }
   ): Promise<boolean> => {
     try {
       await apiFetch(`/api/bookings/${bookingId}/details`, {
@@ -878,6 +1024,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteAccount,
         fetchLocations,
         fetchBookings,
+        lastSyncedAt,
+        isLiveSyncing,
+        syncNow,
         fetchEmployees,
         fetchLogs,
         createBooking,

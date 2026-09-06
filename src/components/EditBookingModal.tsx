@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { X, Check, Plus, Trash2, Tag, Car, FileText, AlertCircle, Sparkles, DollarSign, Phone } from 'lucide-react';
 import { Booking, CarWash, WashService } from '../types';
 import { useApp } from '../context/AppContext';
+import { TransferProviderSelector } from './TransferProviderSelector';
 
 interface EditBookingModalProps {
   isOpen: boolean;
@@ -44,6 +45,23 @@ export const EditBookingModal: React.FC<EditBookingModalProps> = ({
   // Find carwash location if not passed
   const activeLocation = location || locations.find((loc) => loc.id === booking?.carWashId);
 
+  const businessMethods = useMemo(() => {
+    if (!activeLocation) return [];
+    const methods: string[] = [];
+    if (activeLocation.bibdEnabled) methods.push('BIBD');
+    if (activeLocation.baiduriEnabled) methods.push('Baiduri');
+    if (activeLocation.customPaymentMethods) {
+      activeLocation.customPaymentMethods
+        .filter((m) => m.isEnabled)
+        .forEach((m) => {
+          if (m.providerName && !methods.includes(m.providerName)) {
+            methods.push(m.providerName);
+          }
+        });
+    }
+    return methods;
+  }, [activeLocation]);
+
   const [selectedMainServiceId, setSelectedMainServiceId] = useState<string>('');
   const [selectedMainServiceName, setSelectedMainServiceName] = useState<string>('');
   const [selectedMainServicePrice, setSelectedMainServicePrice] = useState<number>(0);
@@ -54,6 +72,9 @@ export const EditBookingModal: React.FC<EditBookingModalProps> = ({
 
   const [vehicleInfo, setVehicleInfo] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
+  const [paymentMode, setPaymentMode] = useState<'Cash' | 'Transfer'>('Cash');
+  const [transferProvider, setTransferProvider] = useState<string>('Bank Transfer');
+  const [txnReference, setTxnReference] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
 
@@ -150,6 +171,16 @@ export const EditBookingModal: React.FC<EditBookingModalProps> = ({
       setSelectedMainServiceName(mainSvcName);
       setSelectedMainServicePrice(mainSvcPrice);
       setAddonsList(parsedAddons);
+
+      const bank = (booking.paymentBank || '').trim();
+      if (bank && bank.toUpperCase() !== 'CASH') {
+        setPaymentMode('Transfer');
+        setTransferProvider(bank);
+      } else {
+        setPaymentMode('Cash');
+        setTransferProvider('Bank Transfer');
+      }
+      setTxnReference(booking.txnReference || '');
       setErrorMessage('');
     }
   }, [booking, activeLocation]);
@@ -226,12 +257,15 @@ export const EditBookingModal: React.FC<EditBookingModalProps> = ({
       finalServiceName += ' + ' + addonsList.map((a) => `${a.name} ($${a.price.toFixed(2)})`).join(' + ');
     }
 
+    const finalBank = paymentMode === 'Cash' ? 'Cash' : (transferProvider.trim() || 'Bank Transfer');
     const success = await updateBookingDetails(booking.id, {
       serviceId: selectedMainServiceId !== 'custom' ? selectedMainServiceId : booking.serviceId,
       serviceName: finalServiceName,
       price: totalPrice,
       vehicleInfo: vehicleInfo.trim(),
       notes: notes.trim(),
+      paymentBank: finalBank,
+      txnReference: paymentMode === 'Transfer' ? txnReference.trim() || undefined : undefined,
     });
 
     setIsSubmitting(false);
@@ -477,6 +511,63 @@ export const EditBookingModal: React.FC<EditBookingModalProps> = ({
                 onChange={(e) => setNotes(e.target.value)}
                 className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 bg-white"
               />
+            </div>
+
+            {/* Settlement Method */}
+            <div className="pt-2 border-t border-slate-100">
+              <label className="text-[11px] font-black text-slate-700 uppercase tracking-wider block mb-1.5 flex items-center justify-between">
+                <span>Payment Settlement Method</span>
+                <span className="text-[10px] text-slate-400 font-normal lowercase">(settled at counter)</span>
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPaymentMode('Cash')}
+                  className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                    paymentMode === 'Cash'
+                      ? 'border-emerald-500 bg-emerald-50 text-emerald-900 shadow-2xs'
+                      : 'border-slate-200 bg-slate-50/70 text-slate-600 hover:border-slate-300'
+                  }`}
+                >
+                  <span>💵</span> Cash
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentMode('Transfer')}
+                  className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                    paymentMode === 'Transfer'
+                      ? 'border-sky-500 bg-sky-50 text-sky-900 shadow-2xs'
+                      : 'border-slate-200 bg-slate-50/70 text-slate-600 hover:border-slate-300'
+                  }`}
+                >
+                  <span>📱</span> Bank / Digital Transfer
+                </button>
+              </div>
+
+              {paymentMode === 'Transfer' && (
+                <div className="mt-2.5 p-3 bg-sky-50/60 border border-sky-200/80 rounded-xl space-y-2.5 animate-fade-in">
+                  <TransferProviderSelector
+                    value={transferProvider}
+                    onChange={setTransferProvider}
+                    idPrefix="ebm"
+                    businessId={activeLocation?.id || booking?.carWashId}
+                    businessMethods={businessMethods}
+                  />
+
+                  <div>
+                    <span className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
+                      Transaction Reference / Approval Code (Optional)
+                    </span>
+                    <input
+                      type="text"
+                      placeholder="e.g. Ref #, approval code, or last 4 digits (8492)"
+                      value={txnReference}
+                      onChange={(e) => setTxnReference(e.target.value)}
+                      className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-mono text-slate-800 bg-white outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

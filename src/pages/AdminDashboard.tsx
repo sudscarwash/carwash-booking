@@ -9,10 +9,12 @@ import { MapSimulation } from '../components/MapSimulation.js';
 import {
   ShieldAlert, ShieldCheck, Users, Activity, Sliders, Check, X,
   Plus, Edit, UserPlus, FileText, Ban, CheckCircle, Info, Lock, Key, Sparkles, MapPin, Navigation,
-  Database, Mail, AlertTriangle, RefreshCw, Server, Send, Eye, Trash2, Terminal, Building, Phone
+  Database, Mail, AlertTriangle, RefreshCw, Server, Send, Eye, Trash2, Terminal, Building, Phone, Star,
+  Search, Filter
 } from 'lucide-react';
-import { Role, User, MapPreset } from '../types.js';
+import { Role, User, MapPreset, Review } from '../types.js';
 import { isValidEmail } from '../lib/validation.js';
+import { FEATURES } from '../config/features.js';
 
 export const AdminDashboard: React.FC = () => {
   const {
@@ -82,8 +84,59 @@ export const AdminDashboard: React.FC = () => {
   const [editLocOwnerId, setEditLocOwnerId] = useState('');
   const [editLocSubmitting, setEditLocSubmitting] = useState(false);
   const [deletingLocId, setDeletingLocId] = useState<string | null>(null);
+  
+  // Review Moderation States (Structured and ready when reviews are activated)
+  const [adminReviews, setAdminReviews] = useState<Review[]>([]);
+  const [adminReviewsLoading, setAdminReviewsLoading] = useState(false);
+  const [adminReviewsSearch, setAdminReviewsSearch] = useState('');
+  const [adminReviewsRatingFilter, setAdminReviewsRatingFilter] = useState<string>('ALL');
+  const [deletingReviewId, setDeletingReviewId] = useState<string | null>(null);
 
-  const [activeSubTab, setActiveSubTab] = useState<'users' | 'logs' | 'emails' | 'businesses' | 'presets' | 'info' | 'system'>('users');
+  const fetchAdminReviews = async () => {
+    if (!token || !FEATURES.ENABLE_REVIEWS) return;
+    setAdminReviewsLoading(true);
+    try {
+      const res = await fetch('/api/reviews', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAdminReviews(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      console.warn('Failed to load reviews for admin:', err);
+    } finally {
+      setAdminReviewsLoading(false);
+    }
+  };
+
+  const handleAdminDeleteReview = async (reviewId: string) => {
+    if (!window.confirm('Admin Moderation Action: Are you sure you want to permanently delete this review? This action cannot be undone.')) {
+      return;
+    }
+    setDeletingReviewId(reviewId);
+    try {
+      const res = await fetch(`/api/reviews/${reviewId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to delete review');
+      }
+      setAdminReviews(prev => prev.filter(r => r.id !== reviewId));
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete review');
+    } finally {
+      setDeletingReviewId(null);
+    }
+  };
+
+  const [activeSubTab, setActiveSubTab] = useState<'users' | 'logs' | 'emails' | 'businesses' | 'presets' | 'info' | 'system' | 'reviews'>('users');
 
   // Platform & Enquiry Info States
   const [infoEmail, setInfoEmail] = useState('');
@@ -301,6 +354,8 @@ export const AdminDashboard: React.FC = () => {
       fetchPresets();
     } else if (activeSubTab === 'system') {
       fetchSystemStatus();
+    } else if (activeSubTab === 'reviews' && FEATURES.ENABLE_REVIEWS) {
+      fetchAdminReviews();
     }
   }, [activeSubTab]);
 
@@ -663,6 +718,19 @@ export const AdminDashboard: React.FC = () => {
         >
           <Server className="h-4 w-4" /> Database & System Diagnostics
         </button>
+        {FEATURES.ENABLE_REVIEWS && (
+          <button
+            onClick={() => setActiveSubTab('reviews')}
+            className={`pb-3.5 px-1 border-b-2 transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+              activeSubTab === 'reviews'
+                ? 'border-red-600 text-red-600 font-bold'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+            id="admin-subtab-reviews"
+          >
+            <Star className="h-4 w-4" /> Review Moderation
+          </button>
+        )}
       </div>
 
       {/* Sub Tab: Users */}
@@ -1947,6 +2015,170 @@ export const AdminDashboard: React.FC = () => {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Sub Tab: Review Moderation (Pre-wired & ready in structure) */}
+      {FEATURES.ENABLE_REVIEWS && activeSubTab === 'reviews' && (
+        <div className="space-y-6 animate-fade-in" id="admin-reviews-moderation-section">
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200">
+            <div>
+              <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                <Star className="h-5 w-5 text-amber-500 fill-amber-500" />
+                <span>Customer Reviews Moderation</span>
+                <span className="text-xs font-semibold bg-amber-50 text-amber-700 px-2.5 py-0.5 rounded-full border border-amber-200">
+                  {adminReviews.length} {adminReviews.length === 1 ? 'Review' : 'Reviews'}
+                </span>
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Oversee customer feedback across all registered car wash locations, combat spam, and permanently delete inappropriate reviews.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={fetchAdminReviews}
+              disabled={adminReviewsLoading}
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer self-start sm:self-auto"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${adminReviewsLoading ? 'animate-spin' : ''}`} />
+              <span>Refresh</span>
+            </button>
+          </div>
+
+          {/* Filter Bar */}
+          <div className="flex flex-col sm:flex-row gap-3 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
+            <div className="flex-1 relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search by customer, comment, or car wash..."
+                value={adminReviewsSearch}
+                onChange={(e) => setAdminReviewsSearch(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-500 font-medium"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Filter className="w-4 h-4 text-slate-400" />
+              <select
+                value={adminReviewsRatingFilter}
+                onChange={(e) => setAdminReviewsRatingFilter(e.target.value)}
+                className="text-xs border border-slate-200 rounded-xl px-3 py-2 bg-white text-slate-700 font-semibold focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-500"
+              >
+                <option value="ALL">All Star Ratings</option>
+                <option value="5">5 Stars ★★★★★</option>
+                <option value="4">4 Stars ★★★★☆</option>
+                <option value="3">3 Stars ★★★☆☆</option>
+                <option value="2">2 Stars ★★☆☆☆</option>
+                <option value="1">1 Star ★☆☆☆☆</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Reviews List */}
+          {adminReviewsLoading ? (
+            <div className="p-12 text-center bg-white rounded-2xl border border-slate-200">
+              <RefreshCw className="w-6 h-6 animate-spin text-slate-400 mx-auto mb-2" />
+              <p className="text-xs text-slate-500 font-medium">Loading platform customer reviews...</p>
+            </div>
+          ) : (() => {
+            const filtered = adminReviews.filter(rev => {
+              const matchesSearch = !adminReviewsSearch.trim() ||
+                rev.customerName.toLowerCase().includes(adminReviewsSearch.toLowerCase()) ||
+                (rev.customerEmail && rev.customerEmail.toLowerCase().includes(adminReviewsSearch.toLowerCase())) ||
+                rev.comment.toLowerCase().includes(adminReviewsSearch.toLowerCase()) ||
+                rev.carWashId.toLowerCase().includes(adminReviewsSearch.toLowerCase());
+              const matchesRating = adminReviewsRatingFilter === 'ALL' || rev.rating === Number(adminReviewsRatingFilter);
+              return matchesSearch && matchesRating;
+            });
+
+            if (filtered.length === 0) {
+              return (
+                <div className="p-10 text-center bg-white rounded-2xl border border-slate-200">
+                  <Star className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                  <p className="text-sm font-bold text-slate-700">No Reviews Found</p>
+                  <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                    {adminReviews.length === 0
+                      ? 'No customer reviews have been submitted on the platform yet.'
+                      : 'No reviews match your current search or rating filter.'}
+                  </p>
+                </div>
+              );
+            }
+
+            return (
+              <div className="space-y-3">
+                {filtered.map(rev => {
+                  const matchedLoc = locations.find(l => l.id === rev.carWashId);
+                  return (
+                    <div
+                      key={rev.id}
+                      className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-start justify-between gap-4 transition-all"
+                    >
+                      <div className="space-y-2 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-black text-slate-800">{rev.customerName}</span>
+                          {rev.customerEmail && (
+                            <span className="text-[11px] text-slate-400 font-mono">({rev.customerEmail})</span>
+                          )}
+                          <span className="text-[10px] text-slate-400">•</span>
+                          <span className="text-[11px] text-slate-500 font-semibold">
+                            Location: <strong>{matchedLoc ? matchedLoc.name : rev.carWashId}</strong>
+                          </span>
+                          <span className="text-[10px] text-slate-400">•</span>
+                          <span className="text-[10px] text-slate-400">{new Date(rev.createdAt).toLocaleDateString()}</span>
+                        </div>
+
+                        {/* Stars */}
+                        <div className="flex items-center gap-1">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <Star
+                              key={star}
+                              className={`w-3.5 h-3.5 ${
+                                star <= rev.rating
+                                  ? 'fill-amber-400 text-amber-400'
+                                  : 'text-slate-200'
+                              }`}
+                            />
+                          ))}
+                          <span className="text-xs font-bold text-slate-700 ml-1">{rev.rating}.0</span>
+                        </div>
+
+                        {/* Comment text */}
+                        <p className="text-xs text-slate-700 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100 font-medium">
+                          "{rev.comment}"
+                        </p>
+
+                        {/* Owner Reply if present */}
+                        {rev.ownerReply && (
+                          <div className="ml-4 pl-3 border-l-2 border-indigo-200 text-xs text-indigo-900 bg-indigo-50/50 p-2.5 rounded-r-xl space-y-0.5">
+                            <span className="font-bold text-[11px] text-indigo-700 block">
+                              {rev.ownerReplyBy || 'Business Owner Reply'}:
+                            </span>
+                            <p className="italic text-slate-600">"{rev.ownerReply}"</p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Admin Delete Action */}
+                      <div className="shrink-0 flex sm:flex-col items-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleAdminDeleteReview(rev.id)}
+                          disabled={deletingReviewId === rev.id}
+                          className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+                          title="Permanently delete review (Spam / Moderation)"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                          <span>{deletingReviewId === rev.id ? 'Deleting...' : 'Delete Review'}</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       )}
 

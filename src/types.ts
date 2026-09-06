@@ -202,3 +202,25 @@ export interface MapPreset {
   createdAt: string;
 }
 
+export interface Review {
+  id: string;
+  carWashId: string;
+  customerId: string;
+  customerName: string;
+  customerEmail?: string;
+  rating: number; // 1 to 5 stars
+  comment: string; // Max 1000 characters
+  createdAt: string;
+  updatedAt: string;
+  bookingId?: string;
+  ownerReply?: string;
+  ownerReplyAt?: string;
+  ownerReplyBy?: string;
+}
+
+export interface ReviewSummary {
+  averageRating: number;
+  totalReviews: number;
+  ratingCounts: { [stars: number]: number };
+}
+

@@ -23,7 +23,7 @@ import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
 import { uploadReceipt } from './server/upload.js';
 
-import { Role, BookingStatus, User, UserWithPassword, CarWash, Booking, MapPreset, AppNotification } from './src/types.js';
+import { Role, BookingStatus, User, UserWithPassword, CarWash, Booking, MapPreset, AppNotification, Review } from './src/types.js';
 import { 
   seedFirestoreIfEmpty,
   waitForDbReady,
@@ -65,7 +65,16 @@ import {
   syncUserBookings,
   getPlatformInfo,
   updatePlatformInfo,
-  getDatabaseDiagnostics
+  getDatabaseDiagnostics,
+  getReviewsByCarWash,
+  getAllReviews,
+  getReviewById,
+  getCustomerReviewForCarWash,
+  saveReview,
+  deleteReview,
+  saveOwnerReply,
+  deleteOwnerReply,
+  getReviewsSummaryForCarWash
 } from './server/db.js';
 import { 
   isSupabaseAuthEnabled, 
@@ -86,11 +95,39 @@ import {
   clearEmailLogs
 } from './server/emailService.js';
 import { isValidEmail } from './server/validation.js';
-import { authenticateToken, requireRoles, generateToken, AuthenticatedRequest } from './server/auth.js';
+import { authenticateToken, requireRoles, generateToken, AuthenticatedRequest, verifyToken } from './server/auth.js';
 import { generateSlotsForDate, validateSlotCapacity, isZeroSlotBooking } from './server/slots.js';
 import { authRateLimiter, apiRateLimiter } from './server/production/middleware/rateLimiter.js';
 
 dotenv.config();
+
+// Realtime Server-Sent Events (SSE) Hub for instant updates without page refresh
+interface SSEClient {
+  id: string;
+  res: express.Response;
+  user?: User;
+}
+
+const sseClients = new Set<SSEClient>();
+let lastBookingsUpdateTimestamp = Date.now();
+
+export function broadcastRealtimeEvent(event: {
+  type: 'BOOKING_CREATED' | 'BOOKING_UPDATED' | 'BOOKING_DELETED' | 'NOTIFICATION_CREATED';
+  bookingId?: string;
+  carWashId?: string;
+  data?: any;
+  timestamp?: number;
+}) {
+  lastBookingsUpdateTimestamp = Date.now();
+  const eventPayload = `data: ${JSON.stringify({ ...event, timestamp: event.timestamp || lastBookingsUpdateTimestamp })}\n\n`;
+  for (const client of sseClients) {
+    try {
+      client.res.write(eventPayload);
+    } catch {
+      sseClients.delete(client);
+    }
+  }
+}
 
 async function startServer() {
   const app = express();
@@ -120,6 +157,45 @@ async function startServer() {
     } catch (error: any) {
       res.status(500).json({ error: error.message || 'Error running database diagnostics' });
     }
+  });
+
+  // Realtime Live Stream: SSE endpoint allowing dashboards (Owner, Employee, Customer) to receive live booking events instantly
+  app.get('/api/realtime/stream', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
+
+    const rawToken = (req.query.token as string) || (req.headers['authorization'] && req.headers['authorization'].split(' ')[1]);
+    const user = rawToken ? verifyToken(rawToken) : undefined;
+
+    const clientId = `sse_${Math.random().toString(36).substr(2, 9)}`;
+    const client: SSEClient = { id: clientId, res, user: user || undefined };
+    sseClients.add(client);
+
+    // Initial handshake acknowledging connection
+    res.write(`data: ${JSON.stringify({ type: 'CONNECTED', clientId, lastBookingsUpdateTimestamp, timestamp: Date.now() })}\n\n`);
+
+    // Keep-alive heartbeat every 20 seconds so proxies/browsers maintain connection
+    const keepAlive = setInterval(() => {
+      try {
+        res.write(': keepalive\n\n');
+      } catch {
+        clearInterval(keepAlive);
+        sseClients.delete(client);
+      }
+    }, 20000);
+
+    req.on('close', () => {
+      clearInterval(keepAlive);
+      sseClients.delete(client);
+    });
+  });
+
+  // Lightweight status check for bookings freshness
+  app.get('/api/bookings/last-updated', (req, res) => {
+    res.json({ timestamp: lastBookingsUpdateTimestamp });
   });
 
   // Immediately bind to port 0.0.0.0:PORT so Cloud Run health check passes in <10ms
@@ -1259,6 +1335,251 @@ async function startServer() {
   );
 
   // ==========================================
+  // ⭐ RATINGS, REVIEWS & REPLIES ENDPOINTS
+  // ==========================================
+
+  // Public: List reviews for a car wash (or all reviews if Admin/Special)
+  app.get('/api/reviews', async (req, res) => {
+    try {
+      const { carWashId } = req.query;
+      if (carWashId) {
+        const reviews = await getReviewsByCarWash(carWashId as string);
+        res.json(reviews);
+        return;
+      }
+
+      // Check if authenticated user is admin or special
+      const rawToken = req.headers['authorization']?.split(' ')[1];
+      const user = rawToken ? verifyToken(rawToken) : null;
+      if (user && (user.role === Role.ADMIN || user.role === Role.SPECIAL)) {
+        const allReviews = await getAllReviews();
+        res.json(allReviews);
+        return;
+      }
+
+      res.status(400).json({ error: 'Parameter carWashId is required.' });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Public: Get rating summary (average, count, star breakdown) for a car wash
+  app.get('/api/reviews/summary', async (req, res) => {
+    try {
+      const { carWashId } = req.query;
+      if (!carWashId) {
+        res.status(400).json({ error: 'Parameter carWashId is required.' });
+        return;
+      }
+      const summary = await getReviewsSummaryForCarWash(carWashId as string);
+      res.json(summary);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Authenticated: Get customer's own review for a specific car wash
+  app.get('/api/reviews/my', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { carWashId } = req.query;
+      if (!carWashId) {
+        res.status(400).json({ error: 'Parameter carWashId is required.' });
+        return;
+      }
+      const review = await getCustomerReviewForCarWash(carWashId as string, req.user!.id);
+      res.json({ review: review || null });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Authenticated: Create or edit customer review (1 review per customer per car wash)
+  app.post('/api/reviews', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { carWashId, rating, comment, bookingId } = req.body;
+
+      if (!carWashId) {
+        res.status(400).json({ error: 'Car wash ID is required.' });
+        return;
+      }
+
+      const numRating = Number(rating);
+      if (isNaN(numRating) || numRating < 1 || numRating > 5) {
+        res.status(400).json({ error: 'Rating must be an integer between 1 and 5 stars.' });
+        return;
+      }
+
+      const cleanComment = typeof comment === 'string' ? comment.trim() : '';
+      if (!cleanComment) {
+        res.status(400).json({ error: 'Review comment cannot be empty.' });
+        return;
+      }
+
+      // Enforce concise 250 characters limit (lightweight, mobile-first, and database-efficient)
+      if (cleanComment.length > 250) {
+        res.status(400).json({ error: 'Review text exceeds the 250-character maximum limit.' });
+        return;
+      }
+
+      const carWash = await getCarWashById(carWashId);
+      if (!carWash) {
+        res.status(404).json({ error: 'Car wash location not found.' });
+        return;
+      }
+
+      const review: Review = {
+        id: `rev_${Math.random().toString(36).substring(2, 9)}`,
+        carWashId,
+        customerId: req.user!.id,
+        customerName: req.user!.name || 'Verified Customer',
+        customerEmail: req.user!.email,
+        rating: Math.round(numRating),
+        comment: cleanComment,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        bookingId: bookingId || undefined,
+      };
+
+      const saved = await saveReview(review);
+
+      await addAuditLog(
+        req.user!.id,
+        req.user!.email,
+        'REVIEW_SUBMIT',
+        `Submitted ${saved.rating}-star review for ${carWash.name}`
+      );
+
+      res.status(201).json(saved);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Authenticated: Delete review (Customer who wrote it, Admin, or Special user for spam/moderation)
+  app.delete('/api/reviews/:id', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const review = await getReviewById(req.params.id);
+      if (!review) {
+        res.status(404).json({ error: 'Review not found.' });
+        return;
+      }
+
+      const isAuthor = review.customerId === req.user!.id;
+      const isAdmin = req.user!.role === Role.ADMIN;
+      const isSpecial = req.user!.role === Role.SPECIAL;
+
+      if (!isAuthor && !isAdmin && !isSpecial) {
+        res.status(403).json({ error: 'You do not have permission to delete this review.' });
+        return;
+      }
+
+      await deleteReview(req.params.id);
+
+      await addAuditLog(
+        req.user!.id,
+        req.user!.email,
+        'REVIEW_DELETE',
+        `Deleted review ${req.params.id} (Moderator: ${req.user!.role})`
+      );
+
+      res.json({ message: 'Review deleted successfully.' });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Authenticated: Business Owner reply to review
+  app.post('/api/reviews/:id/reply', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { reply } = req.body;
+      const cleanReply = typeof reply === 'string' ? reply.trim() : '';
+
+      if (!cleanReply) {
+        res.status(400).json({ error: 'Reply text cannot be empty.' });
+        return;
+      }
+
+      if (cleanReply.length > 250) {
+        res.status(400).json({ error: 'Owner reply exceeds the 250-character maximum limit.' });
+        return;
+      }
+
+      const review = await getReviewById(req.params.id);
+      if (!review) {
+        res.status(404).json({ error: 'Review not found.' });
+        return;
+      }
+
+      const carWash = await getCarWashById(review.carWashId);
+      if (!carWash) {
+        res.status(404).json({ error: 'Car wash associated with review not found.' });
+        return;
+      }
+
+      const isOwner = carWash.ownerId === req.user!.id;
+      const isAdmin = req.user!.role === Role.ADMIN;
+
+      if (!isOwner && !isAdmin) {
+        res.status(403).json({ error: 'Only the business owner of this location or an administrator can reply.' });
+        return;
+      }
+
+      const responderName = carWash.name ? `${carWash.name} (Owner)` : (req.user!.name || 'Business Owner');
+      const updated = await saveOwnerReply(req.params.id, cleanReply, responderName);
+
+      await addAuditLog(
+        req.user!.id,
+        req.user!.email,
+        'REVIEW_REPLY',
+        `Replied to review ${req.params.id} for location ${carWash.name}`
+      );
+
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Authenticated: Remove Owner reply from review
+  app.delete('/api/reviews/:id/reply', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const review = await getReviewById(req.params.id);
+      if (!review) {
+        res.status(404).json({ error: 'Review not found.' });
+        return;
+      }
+
+      const carWash = await getCarWashById(review.carWashId);
+      if (!carWash) {
+        res.status(404).json({ error: 'Car wash associated with review not found.' });
+        return;
+      }
+
+      const isOwner = carWash.ownerId === req.user!.id;
+      const isAdmin = req.user!.role === Role.ADMIN;
+      const isSpecial = req.user!.role === Role.SPECIAL;
+
+      if (!isOwner && !isAdmin && !isSpecial) {
+        res.status(403).json({ error: 'Only the business owner of this location, an administrator, or a moderator can remove this reply.' });
+        return;
+      }
+
+      const updated = await deleteOwnerReply(req.params.id);
+
+      await addAuditLog(
+        req.user!.id,
+        req.user!.email,
+        'REVIEW_REPLY_DELETE',
+        `Removed reply on review ${req.params.id}`
+      );
+
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // ==========================================
   // BOOKINGS AND SLOTS ENDPOINTS
   // ==========================================
 
@@ -1475,6 +1796,40 @@ async function startServer() {
         }
       }
 
+      // Also notify active assigned employees for this car wash station
+      try {
+        const allUsers = await getUsers();
+        const activeStaff = allUsers.filter((u) => u.role === Role.EMPLOYEE && u.businessId === carWash.id && u.isActive);
+        for (const staff of activeStaff) {
+          await createNotification({
+            id: `notif_${Math.random().toString(36).substr(2, 9)}`,
+            userId: staff.id,
+            title: `New Queue Booking! 🚗`,
+            message: `${newBooking.customerName} booked ${newBooking.serviceName || 'Car Wash Service'} for ${newBooking.date} at ${newBooking.timeSlot}`,
+            type: 'NEW_BOOKING',
+            bookingId: newBooking.id,
+            isRead: false,
+            createdAt: new Date().toISOString(),
+          }).catch(() => {});
+        }
+      } catch (staffNotifErr) {
+        console.error('Failed to notify staff:', staffNotifErr);
+      }
+
+      // Instantly broadcast realtime event to all connected owner and employee dashboards
+      broadcastRealtimeEvent({
+        type: 'BOOKING_CREATED',
+        bookingId: newBooking.id,
+        carWashId: newBooking.carWashId,
+        data: {
+          id: newBooking.id,
+          customerName: newBooking.customerName,
+          serviceName: newBooking.serviceName,
+          date: newBooking.date,
+          timeSlot: newBooking.timeSlot,
+        },
+      });
+
       await addAuditLog(
         req.user!.id,
         req.user!.email,
@@ -1586,6 +1941,8 @@ async function startServer() {
           serviceId: serviceId || undefined,
           serviceName: serviceName || undefined,
           price: price ? parseFloat(price) : undefined,
+          paymentBank: req.body.paymentBank ? String(req.body.paymentBank).trim() : 'Cash',
+          txnReference: req.body.txnReference ? String(req.body.txnReference).trim() : undefined,
         };
 
         await createBooking(newManualBooking);
@@ -1607,6 +1964,20 @@ async function startServer() {
             console.error('Failed to create notification for manual booking:', notifErr);
           }
         }
+
+        // Instantly broadcast realtime event for live dashboard reactivity
+        broadcastRealtimeEvent({
+          type: 'BOOKING_CREATED',
+          bookingId: newManualBooking.id,
+          carWashId: newManualBooking.carWashId,
+          data: {
+            id: newManualBooking.id,
+            customerName: newManualBooking.customerName,
+            serviceName: newManualBooking.serviceName,
+            date: newManualBooking.date,
+            timeSlot: newManualBooking.timeSlot,
+          },
+        });
 
         await addAuditLog(
           req.user!.id,
@@ -1637,6 +2008,12 @@ async function startServer() {
           'SAMPLE_LEDGER_SEED',
           `Generated ${count} sample ledger records from Dec 2025 to present for ${carWashId || 'cw_brunei'}`
         );
+
+        broadcastRealtimeEvent({
+          type: 'BOOKING_UPDATED',
+          carWashId: carWashId || 'cw_brunei',
+        });
+
         res.json({ success: true, count, message: `Successfully generated ${count} sample ledger transactions from Dec 2025 to present!` });
       } catch (error: any) {
         res.status(500).json({ error: error.message || 'Failed to seed sample ledger' });
@@ -1708,6 +2085,13 @@ async function startServer() {
         `Rescheduled booking ${booking.id} from [${oldDate} ${oldSlot}] to [${date} ${timeSlot}]`
       );
 
+      broadcastRealtimeEvent({
+        type: 'BOOKING_UPDATED',
+        bookingId: booking.id,
+        carWashId: booking.carWashId,
+        data: { id: booking.id, date, timeSlot, status: BookingStatus.PENDING },
+      });
+
       res.json({ ...booking, ...updatedData });
     } catch (error: any) {
       res.status(500).json({ error: error.message || 'Internal server error' });
@@ -1717,7 +2101,7 @@ async function startServer() {
   // Authenticated Staff/Owner: Edit booking items, services, add-ons, price, vehicle info, and notes
   app.put('/api/bookings/:id/details', authenticateToken, async (req: AuthenticatedRequest, res) => {
     try {
-      const { serviceId, serviceName, price, vehicleInfo, notes } = req.body;
+      const { serviceId, serviceName, price, vehicleInfo, notes, paymentBank, txnReference } = req.body;
 
       const booking = await getBookingById(req.params.id);
       if (!booking) {
@@ -1747,6 +2131,13 @@ async function startServer() {
         updatedAt: new Date().toISOString(),
       };
 
+      if (paymentBank !== undefined) {
+        updatedData.paymentBank = paymentBank ? String(paymentBank).trim() : 'Cash';
+      }
+      if (txnReference !== undefined) {
+        updatedData.txnReference = txnReference ? String(txnReference).trim() : undefined;
+      }
+
       await updateBooking(booking.id, updatedData);
 
       await addAuditLog(
@@ -1774,6 +2165,13 @@ async function startServer() {
         }
       }
 
+      broadcastRealtimeEvent({
+        type: 'BOOKING_UPDATED',
+        bookingId: booking.id,
+        carWashId: booking.carWashId,
+        data: updatedData,
+      });
+
       res.json({ ...booking, ...updatedData });
     } catch (error: any) {
       res.status(500).json({ error: error.message || 'Internal server error' });
@@ -1783,7 +2181,7 @@ async function startServer() {
   // Authenticated: Change status (Accept, reject, check-in, complete, cancel)
   app.put('/api/bookings/:id/status', authenticateToken, async (req: AuthenticatedRequest, res) => {
     try {
-      const { status, notes, employeeId } = req.body;
+      const { status, notes, employeeId, paymentBank, txnReference } = req.body;
 
       if (!status) {
         res.status(400).json({ error: 'Status is required.' });
@@ -1819,12 +2217,19 @@ async function startServer() {
         }
       }
 
-      const updatedData = {
+      const updatedData: Partial<Booking> = {
         status: status as BookingStatus,
         notes: notes !== undefined ? notes : booking.notes,
         employeeId: employeeId !== undefined ? employeeId : (isEmployeeAtBusiness ? user.id : booking.employeeId),
         updatedAt: new Date().toISOString(),
       };
+
+      if (paymentBank !== undefined) {
+        updatedData.paymentBank = paymentBank ? String(paymentBank).trim() : 'Cash';
+      }
+      if (txnReference !== undefined) {
+        updatedData.txnReference = txnReference ? String(txnReference).trim() : undefined;
+      }
 
       await updateBooking(booking.id, updatedData);
 
@@ -1853,6 +2258,13 @@ async function startServer() {
         'BOOKING_STATUS_CHANGE',
         `Changed booking ${booking.id} status to ${status}. Details: ${notes || 'None'}`
       );
+
+      broadcastRealtimeEvent({
+        type: 'BOOKING_UPDATED',
+        bookingId: booking.id,
+        carWashId: booking.carWashId,
+        data: { id: booking.id, status: updatedData.status },
+      });
 
       res.json({ ...booking, ...updatedData });
     } catch (error: any) {
