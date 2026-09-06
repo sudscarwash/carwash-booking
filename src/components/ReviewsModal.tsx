@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { Star, MessageSquare, Trash2, Edit3, X, CheckCircle2, ShieldCheck, AlertCircle, CornerDownRight } from 'lucide-react';
 import { CarWash, Review, ReviewSummary, Role, User } from '../types';
+import { useModalBack } from '../utils/useBackHandler.js';
 
 interface ReviewsModalProps {
   isOpen: boolean;
@@ -24,6 +25,8 @@ export const ReviewsModal: React.FC<ReviewsModalProps> = ({
   targetBookingId,
   onReviewSubmitted,
 }) => {
+  useModalBack(isOpen, onClose, 'reviews-modal');
+
   const [reviews, setReviews] = useState<Review[]>([]);
   const [summary, setSummary] = useState<ReviewSummary>({
     averageRating: 0,

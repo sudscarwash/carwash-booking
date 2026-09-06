@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { X, Check, Plus, Trash2, Tag, Car, FileText, AlertCircle, Sparkles, DollarSign, Phone } from 'lucide-react';
 import { Booking, CarWash, WashService } from '../types';
 import { useApp } from '../context/AppContext';
+import { useModalBack } from '../utils/useBackHandler.js';
 import { TransferProviderSelector } from './TransferProviderSelector';
 
 interface EditBookingModalProps {
@@ -40,6 +41,8 @@ export const EditBookingModal: React.FC<EditBookingModalProps> = ({
   booking,
   location,
 }) => {
+  useModalBack(isOpen, onClose, 'edit-booking-modal');
+
   const { updateBookingDetails, locations } = useApp();
 
   // Find carwash location if not passed

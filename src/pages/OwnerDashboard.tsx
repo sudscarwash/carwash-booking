@@ -19,6 +19,7 @@ import { ServicePickerModal } from '../components/ServicePickerModal.js';
 import { SettlementConfirmationModal } from '../components/SettlementConfirmationModal.js';
 import { TransferProviderSelector } from '../components/TransferProviderSelector.js';
 import { FEATURES } from '../config/features.js';
+import { useModalBack, useTabBack } from '../utils/useBackHandler.js';
 
 const getTodayDateString = () => {
   const d = new Date();
@@ -641,6 +642,13 @@ export const OwnerDashboard: React.FC = () => {
   const [editEmpEmail, setEditEmpEmail] = useState('');
   const [editEmpBusinessId, setEditEmpBusinessId] = useState('');
   const [deletingEmployeeId, setDeletingEmployeeId] = useState<string | null>(null);
+
+  // 🔄 Navigation & Back button synchronization:
+  useTabBack(activeTab, setActiveTab, 'overview', 'ownerTab');
+  useModalBack(showEmployeeModal, () => setShowEmployeeModal(false), 'owner-add-employee-modal');
+  useModalBack(Boolean(editingEmployee), () => setEditingEmployee(null), 'owner-edit-employee-modal');
+  useModalBack(showManualBookingModal, () => setShowManualBookingModal(false), 'owner-manual-booking-modal');
+  useModalBack(showHolidayModal, () => setShowHolidayModal(false), 'owner-holiday-modal');
 
   // Focus Booking and Owner Audit Log States
   const [ownerLogs, setOwnerLogs] = useState<any[]>([]);

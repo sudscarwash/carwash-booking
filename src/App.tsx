@@ -15,6 +15,7 @@ import { ErrorBoundary } from './components/ErrorBoundary.js';
 import { TermsAndConditionsContent } from './components/TermsAndConditionsContent.js';
 import { Role } from './types.js';
 import { isValidEmail } from './lib/validation.js';
+import { useModalBack } from './utils/useBackHandler.js';
 import { Lock, Mail, UserPlus, LogIn, Sparkles, Compass, Sliders, Briefcase, Shield, Check, Info, X, AlertTriangle, LogOut, Eye, EyeOff, Building, Phone, MapPin } from 'lucide-react';
 import autoshineLogo from './assets/images/autoshine_logo.jpg';
 
@@ -148,6 +149,10 @@ const MainAppContent: React.FC = () => {
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
+
+  // 🔄 Modals Back button dismissal:
+  useModalBack(showTermsModal, () => setShowTermsModal(false), 'app-terms-modal');
+  useModalBack(showExitConfirmModal, () => setShowExitConfirmModal(false), 'app-exit-modal');
 
   // Password reset form state
   const [resetCode, setResetCode] = useState('');

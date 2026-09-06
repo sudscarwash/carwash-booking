@@ -12,6 +12,7 @@ import {
   Tag
 } from 'lucide-react';
 import { WashService } from '../types.js';
+import { useModalBack } from '../utils/useBackHandler.js';
 
 interface ServicePickerModalProps {
   isOpen: boolean;
@@ -30,6 +31,8 @@ export const ServicePickerModal: React.FC<ServicePickerModalProps> = ({
   onConfirm,
   title = "Select Wash Services, Add-ons & Products"
 }) => {
+  useModalBack(isOpen, onClose, 'service-picker-modal');
+
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'all' | 'service' | 'addon' | 'product'>('all');
   const [tempSelected, setTempSelected] = useState<WashService[]>([]);

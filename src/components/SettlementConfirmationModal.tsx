@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { X, Check, DollarSign, Smartphone, AlertCircle } from 'lucide-react';
 import { Booking } from '../types';
 import { useApp } from '../context/AppContext';
+import { useModalBack } from '../utils/useBackHandler.js';
 import { TransferProviderSelector } from './TransferProviderSelector';
 
 interface SettlementConfirmationModalProps {
@@ -17,6 +18,8 @@ export const SettlementConfirmationModal: React.FC<SettlementConfirmationModalPr
   booking,
   onConfirm,
 }) => {
+  useModalBack(isOpen, onClose, 'settlement-modal');
+
   const { locations, carWashes } = useApp();
   const [paymentMode, setPaymentMode] = useState<'Cash' | 'Transfer'>('Cash');
   const [transferProvider, setTransferProvider] = useState<string>('Bank Transfer');

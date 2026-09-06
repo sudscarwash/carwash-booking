@@ -11,6 +11,7 @@ import { BookingFlowModal } from '../components/BookingFlowModal.js';
 import { ReviewsModal } from '../components/ReviewsModal.js';
 import { TermsAndConditionsContent } from '../components/TermsAndConditionsContent.js';
 import { FEATURES } from '../config/features.js';
+import { useModalBack, useTabBack } from '../utils/useBackHandler.js';
 import { Search, Calendar, Clock, MapPin, History, CheckCircle, AlertTriangle, X, ChevronRight, ChevronLeft, ChevronDown, Sliders, Info, Sparkles, Navigation, User, Edit3, Check, Instagram, Landmark, Lock, Key, FileText, Maximize2, Filter, Star, DoorClosed } from 'lucide-react';
 import { CarWash, Booking, BookingStatus } from '../types.js';
 import autoshineLogo from '../assets/images/autoshine_logo.jpg';
@@ -241,6 +242,18 @@ export const CustomerDashboard: React.FC = () => {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [lastBookedInfo, setLastBookedInfo] = useState<any | null>(null);
   const [customWhatsAppPhone, setCustomWhatsAppPhone] = useState('');
+
+  // 🔄 Navigation & Back button synchronization:
+  // 1. Tab changes (book <-> bookings <-> profile)
+  useTabBack(activeTab, setActiveTab, 'book', 'tab');
+
+  // 2. Modals & Overlays Back button dismissal
+  useModalBack(showTermsModal, () => setShowTermsModal(false), 'customer-terms-modal');
+  useModalBack(showFullScreenMap, () => setShowFullScreenMap(false), 'customer-map-modal');
+  useModalBack(showFullScreenDate, () => setShowFullScreenDate(false), 'customer-date-modal');
+  useModalBack(Boolean(reschedulingBooking), () => setReschedulingBooking(null), 'customer-reschedule-modal');
+  useModalBack(showSuccessModal, () => setShowSuccessModal(false), 'customer-success-modal');
+  useModalBack(showDeleteModal, () => setShowDeleteModal(false), 'customer-delete-modal');
 
   const getSelectedDayBreakInfo = () => {
     if (!selectedLocation || !bookingDate) return null;

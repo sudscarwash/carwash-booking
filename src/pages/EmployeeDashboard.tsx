@@ -15,6 +15,7 @@ import { EditBookingModal } from '../components/EditBookingModal.js';
 import { ServicePickerModal } from '../components/ServicePickerModal.js';
 import { SettlementConfirmationModal } from '../components/SettlementConfirmationModal.js';
 import { TransferProviderSelector } from '../components/TransferProviderSelector.js';
+import { useModalBack, useTabBack } from '../utils/useBackHandler.js';
 
 const getTodayDateString = () => new Date().toISOString().split('T')[0];
 
@@ -172,6 +173,11 @@ export const EmployeeDashboard: React.FC = () => {
   const [mbSelectedSlots, setMbSelectedSlots] = useState<string[]>([]);
   const [mbIsSubmitting, setMbIsSubmitting] = useState(false);
   const [settlementBooking, setSettlementBooking] = useState<Booking | null>(null);
+
+  // 🔄 Navigation & Back button synchronization:
+  useTabBack(activeTab, setActiveTab, 'queue', 'empTab');
+  useModalBack(showManualBookingModal, () => setShowManualBookingModal(false), 'employee-manual-booking-modal');
+  useModalBack(showStationInfoModal, () => setShowStationInfoModal(false), 'employee-station-info-modal');
   const [showSettlementModal, setShowSettlementModal] = useState<boolean>(false);
 
   const getFormattedSlotSummary = (slots: string[]) => {

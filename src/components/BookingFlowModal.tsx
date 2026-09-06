@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { CarWash, User, WashService } from '../types.js';
 import { useApp } from '../context/AppContext.js';
+import { useModalBack } from '../utils/useBackHandler.js';
 import { MapSimulation } from './MapSimulation.js';
 import { LocalPaymentForm } from './LocalPaymentForm.js';
 import autoshineLogo from '../assets/images/autoshine_logo.jpg';
@@ -266,6 +267,29 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
     const isCustom = Array.isArray(carWash.customPaymentMethods) && carWash.customPaymentMethods.some(m => m.isEnabled);
     return isBibd || isBaiduri || isCustom;
   };
+
+  // Intercept device Back button / browser Back button for booking flow:
+  // 1. Sub-modal GPS map
+  useModalBack(isOpen && showMapModal, () => setShowMapModal(false), 'booking-map-modal');
+
+  // 2. Sub-modal Bank payment
+  useModalBack(isOpen && showPaymentModal, () => setShowPaymentModal(false), 'booking-payment-modal');
+
+  // 3. Multi-step booking flow navigation on Back
+  useModalBack(
+    isOpen && !showMapModal && !showPaymentModal,
+    () => {
+      if (successBooking) {
+        onClose();
+      } else if (currentStep > 1) {
+        setErrorMessage(null);
+        setCurrentStep((prev) => (prev - 1) as any);
+      } else {
+        onClose();
+      }
+    },
+    `booking-step-${currentStep}`
+  );
 
   const isBankAvailable = checkHasBankTransfer(location);
 

@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { CarWash, Role, Review } from '../types.js';
 import { FEATURES } from '../config/features.js';
+import { useTabBack } from '../utils/useBackHandler.js';
 
 // Quick Brunei location presets for rapid mapping
 const BRUNEI_PRESETS = [
@@ -46,6 +47,7 @@ export const SpecialUserDashboard: React.FC = () => {
   const { locations, adminUsersList, createOwnerWithBusiness, updateLocationConfig, token } = useApp();
 
   const [activeTab, setActiveTab] = useState<'onboard' | 'edit_existing' | 'reviews'>('onboard');
+  useTabBack(activeTab, setActiveTab, 'onboard', 'specialTab');
 
   // Special User Review Moderation State (Structured and ready when reviews are activated)
   const [specialReviews, setSpecialReviews] = useState<Review[]>([]);

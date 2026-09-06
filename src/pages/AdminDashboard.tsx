@@ -15,6 +15,7 @@ import {
 import { Role, User, MapPreset, Review } from '../types.js';
 import { isValidEmail } from '../lib/validation.js';
 import { FEATURES } from '../config/features.js';
+import { useModalBack, useTabBack } from '../utils/useBackHandler.js';
 
 export const AdminDashboard: React.FC = () => {
   const {
@@ -193,6 +194,14 @@ export const AdminDashboard: React.FC = () => {
   const [testEmailBody, setTestEmailBody] = useState('This is a test transactional email sent from your Autoshine BN administration console.');
   const [sendingTestEmail, setSendingTestEmail] = useState(false);
   const [testEmailStatus, setTestEmailStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // 🔄 Navigation & Back button synchronization:
+  useTabBack(activeSubTab, setActiveSubTab, 'users', 'adminTab');
+  useModalBack(showCreateModal, () => setShowCreateModal(false), 'admin-create-user-modal');
+  useModalBack(Boolean(editingUser), () => setEditingUser(null), 'admin-edit-user-modal');
+  useModalBack(showOnboardModal, () => setShowOnboardModal(false), 'admin-onboard-business-modal');
+  useModalBack(Boolean(editingLocation), () => setEditingLocation(null), 'admin-edit-location-modal');
+  useModalBack(Boolean(selectedEmailPreview), () => setSelectedEmailPreview(null), 'admin-email-preview-modal');
 
   const fetchEmailLogs = async () => {
     if (!token) return;
