@@ -807,12 +807,12 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
     { id: 'pre_sf', name: 'San Francisco', lat: 37.7749, lng: -122.4194, country: 'USA' },
   ];
 
-  const presetsByCountry = activePresets.reduce<Record<string, MapPreset[]>>((acc, preset) => {
+  const presetsByCountry: Record<string, MapPreset[]> = {};
+  activePresets.forEach((preset) => {
     const c = preset.country || 'Brunei';
-    if (!acc[c]) acc[c] = [];
-    acc[c].push(preset);
-    return acc;
-  }, {});
+    if (!presetsByCountry[c]) presetsByCountry[c] = [];
+    presetsByCountry[c].push(preset);
+  });
 
   const handlePresetSelect = (preset: MapPreset) => {
     setIsGpsActive(false);

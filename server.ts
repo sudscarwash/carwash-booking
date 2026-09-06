@@ -1837,22 +1837,26 @@ async function startServer() {
         `Booked slot ${timeSlot} on ${date} at ${carWash.name}${dbTxnReference ? ` with bank payment ref: ${dbTxnReference}` : ''}`
       );
 
-      // Dispatch booking confirmation email in the background
-      sendBookingConfirmationEmail({
-        customerEmail: newBooking.customerEmail,
-        customerName: newBooking.customerName,
-        bookingId: newBooking.id,
-        businessName: carWash.name,
-        address: carWash.address,
-        date: newBooking.date,
-        timeSlot: newBooking.timeSlot,
-        serviceName: newBooking.serviceName,
-        price: newBooking.price,
-        paymentBank: newBooking.paymentBank,
-        txnReference: newBooking.txnReference,
-      }).catch((err) => {
-        console.error('[EmailService] Failed to send booking confirmation email:', err);
-      });
+      // Customer booking confirmation emails are currently removed/disabled per preference.
+      // Important emails (password reset, email verification, account welcome) remain active.
+      // sendBookingConfirmationEmail is kept ready for potential future owner notifications.
+      if (process.env.ENABLE_CUSTOMER_BOOKING_EMAILS === 'true') {
+        sendBookingConfirmationEmail({
+          customerEmail: newBooking.customerEmail,
+          customerName: newBooking.customerName,
+          bookingId: newBooking.id,
+          businessName: carWash.name,
+          address: carWash.address,
+          date: newBooking.date,
+          timeSlot: newBooking.timeSlot,
+          serviceName: newBooking.serviceName,
+          price: newBooking.price,
+          paymentBank: newBooking.paymentBank,
+          txnReference: newBooking.txnReference,
+        }).catch((err) => {
+          console.error('[EmailService] Failed to send booking confirmation email:', err);
+        });
+      }
 
       res.status(201).json(newBooking);
     } catch (error: any) {

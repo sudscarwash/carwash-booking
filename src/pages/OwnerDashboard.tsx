@@ -810,7 +810,7 @@ export const OwnerDashboard: React.FC = () => {
   const accTotalCount = accBookingsList.length;
   const accAvgTicket = accTotalCount > 0 ? accTotalRevenue / accTotalCount : 0;
 
-  const accServiceBreakdown: Record<string, { count: number; totalRevenue: number; type: 'service' | 'product' }> = {};
+  const accServiceBreakdown: Record<string, { count: number; totalRevenue: number; type: 'service' | 'product' | 'addon' }> = {};
   accBookingsList.forEach((b) => {
     if (b.status === BookingStatus.CANCELLED || b.status === BookingStatus.REJECTED) return;
     const name = b.serviceName || 'Standard Car Wash';

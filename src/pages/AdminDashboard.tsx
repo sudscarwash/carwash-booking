@@ -1035,7 +1035,7 @@ export const AdminDashboard: React.FC = () => {
                 </p>
                 <ul className="text-xs text-slate-300 space-y-2 list-disc pl-4">
                   <li>
-                    <strong className="text-amber-300">Sandbox Fallback:</strong> If <code className="bg-slate-800 text-amber-200 px-1 py-0.5 rounded">RESEND_API_KEY</code> is not yet configured, all emails (Welcome, Password OTP, Bookings) are logged in real-time in the table below and printed to the server terminal.
+                    <strong className="text-amber-300">Sandbox Fallback:</strong> If <code className="bg-slate-800 text-amber-200 px-1 py-0.5 rounded">RESEND_API_KEY</code> is not yet configured, all emails (Welcome, Password OTP, Verification OTP) are logged in real-time in the table below and printed to the server terminal.
                   </li>
                   <li>
                     <strong className="text-emerald-300">Live Delivery:</strong> Add your real key in <code className="bg-slate-800 text-emerald-200 px-1 py-0.5 rounded">RESEND_API_KEY</code> in your environment variables to send live emails to inbox.
@@ -1472,13 +1472,13 @@ export const AdminDashboard: React.FC = () => {
                 Autoshine BN Global Information &amp; Enquiry Management
               </h2>
               <p className="text-xs text-slate-400 mt-1">
-                Configure platform contact details, support channels, and onboarding inquiry card info displayed to prospective carwash owners on the login screen.
+                Configure platform contact details, support channels, official business address, and enquiry information dynamically displayed across the login/register screens and the official Terms and Conditions of Use.
               </p>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-bold uppercase bg-sky-50 text-sky-700 border border-sky-200 px-2.5 py-1 rounded-xl flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse"></span>
-                Live Sync Enabled
+                Database Live Sync Enabled
               </span>
             </div>
           </div>
@@ -1650,6 +1650,38 @@ export const AdminDashboard: React.FC = () => {
                         <span className="truncate">{infoAddress}</span>
                       </div>
                     )}
+                  </div>
+                </div>
+
+                {/* Terms & Conditions Contact Section Preview */}
+                <div className="border-t border-slate-200/80 pt-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                      <FileText className="w-3.5 h-3.5 text-sky-600" />
+                      <span>Live Preview: Terms &amp; Conditions (Section 20)</span>
+                    </div>
+                    <span className="text-[9px] bg-sky-100 text-sky-700 font-bold px-1.5 py-0.5 rounded">T&amp;C Section 20</span>
+                  </div>
+                  <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2 text-left text-xs">
+                    <p className="text-[11px] text-slate-500 font-medium">For enquiries, support, or complaints, please contact:</p>
+                    <div className="space-y-1.5 pl-1">
+                      <div className="flex items-center gap-2 font-bold text-slate-800">
+                        <Building className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                        <span>{infoCompanyName || 'AUTOSHINE BN'}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-slate-600 text-[11px]">
+                        <Mail className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                        <span>Email: <strong className="text-sky-600">{infoEmail || 'info@autoshinebn.com'}</strong></span>
+                      </div>
+                      <div className="flex items-center gap-2 text-slate-600 text-[11px]">
+                        <Phone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        <span>WhatsApp: <strong className="text-emerald-700">{infoWhatsapp || infoContact || '+673 8974459'}</strong></span>
+                      </div>
+                      <div className="flex items-start gap-2 text-slate-600 text-[11px]">
+                        <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0 mt-0.5" />
+                        <span>Address: <strong className="text-slate-800 font-medium">{infoAddress || 'Unit 1, 1st Floor Block C, Kiarong Complex BSB BE1318'}</strong></span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>

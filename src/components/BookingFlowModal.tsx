@@ -53,7 +53,9 @@ interface BookingFlowModalProps {
     notes?: string,
     serviceId?: string,
     serviceName?: string,
-    price?: number
+    price?: number,
+    customerPhone?: string,
+    vehicleInfo?: string
   ) => Promise<{ success: boolean; error?: string }>;
   onBookingSuccess: (bookingData: any) => void;
 }
@@ -624,7 +626,7 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                 </span>
                 <h2 className="text-xl sm:text-2xl font-black text-slate-800 mt-2">Your Booking is Confirmed!</h2>
                 <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-                  We look forward to serving you at {successBooking.locationName}. Please arrive 5 minutes before your time slot.
+                  We look forward to serving you at {successBooking.locationName}. Please arrive 10 minutes before your time slot.
                 </p>
               </div>
 

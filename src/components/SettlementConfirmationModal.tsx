@@ -17,7 +17,7 @@ export const SettlementConfirmationModal: React.FC<SettlementConfirmationModalPr
   booking,
   onConfirm,
 }) => {
-  const { carWashes } = useApp();
+  const { locations, carWashes } = useApp();
   const [paymentMode, setPaymentMode] = useState<'Cash' | 'Transfer'>('Cash');
   const [transferProvider, setTransferProvider] = useState<string>('Bank Transfer');
   const [txnReference, setTxnReference] = useState('');
@@ -26,8 +26,9 @@ export const SettlementConfirmationModal: React.FC<SettlementConfirmationModalPr
   // Isolate the car wash specific to this booking so Owner 1 and Owner 2 never share provider methods
   const bookingCarWash = useMemo(() => {
     if (!booking?.carWashId) return null;
-    return carWashes.find((cw) => cw.id === booking.carWashId) || null;
-  }, [carWashes, booking?.carWashId]);
+    const allLocations = locations || carWashes || [];
+    return allLocations.find((cw) => cw.id === booking.carWashId) || null;
+  }, [locations, carWashes, booking?.carWashId]);
 
   const businessMethods = useMemo(() => {
     if (!bookingCarWash) return [];

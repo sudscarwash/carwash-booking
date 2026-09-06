@@ -92,6 +92,7 @@ export interface CarWash {
   slotDuration: number; // in minutes (e.g. 30, 45, 60)
   capacityPerSlot: number; // max bookings per slot
   ownerId: string;
+  ownerEmail?: string;
   isActive: boolean;
   createdAt: string;
   phone?: string;

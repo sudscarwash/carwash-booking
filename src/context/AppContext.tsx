@@ -10,6 +10,7 @@ interface AppContextType {
   user: User | null;
   token: string | null;
   locations: CarWash[];
+  carWashes: CarWash[];
   bookings: Booking[];
   employees: User[];
   logs: AuditLog[];
@@ -17,8 +18,8 @@ interface AppContextType {
   unreadNotificationCount: number;
   platformInfo: PlatformInfo | null;
   loading: boolean;
-  notification: { message: string; type: 'success' | 'error' } | null;
-  showNotification: (message: string, type: 'success' | 'error') => void;
+  notification: { message: string; type: 'success' | 'error' | 'info' } | null;
+  showNotification: (message: string, type?: 'success' | 'error' | 'info') => void;
   clearNotification: () => void;
   fetchPlatformInfo: () => Promise<PlatformInfo | null>;
   updatePlatformInfo: (data: Partial<PlatformInfo>) => Promise<boolean>;
@@ -54,6 +55,7 @@ interface AppContextType {
   changePassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
   deleteAccount: () => Promise<boolean>;
   fetchLocations: (search?: string, lat?: number, lng?: number, radius?: number) => Promise<void>;
+  fetchLocationsConfig: (search?: string, lat?: number, lng?: number, radius?: number) => Promise<void>;
   fetchBookings: (silent?: boolean) => Promise<void>;
   lastSyncedAt: Date;
   isLiveSyncing: boolean;
@@ -123,7 +125,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [appNotifications, setAppNotifications] = useState<AppNotification[]>([]);
   const [platformInfo, setPlatformInfo] = useState<PlatformInfo | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date>(new Date());
   const [isLiveSyncing, setIsLiveSyncing] = useState<boolean>(false);
 
@@ -198,7 +200,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [token, user?.role]);
 
-  const showNotification = (message: string, type: 'success' | 'error') => {
+  const showNotification = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
     setNotification({ message, type });
     setTimeout(() => {
       setNotification(null);
@@ -997,6 +999,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         user,
         token,
         locations,
+        carWashes: locations,
         bookings,
         employees,
         logs,
@@ -1023,6 +1026,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         changePassword,
         deleteAccount,
         fetchLocations,
+        fetchLocationsConfig: fetchLocations,
         fetchBookings,
         lastSyncedAt,
         isLiveSyncing,

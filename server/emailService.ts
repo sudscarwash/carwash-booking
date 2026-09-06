@@ -244,6 +244,13 @@ export async function sendBookingConfirmationEmail(options: {
   paymentBank?: string;
   txnReference?: string;
 }): Promise<boolean> {
+  // Customer booking confirmation emails are currently disabled per user preference
+  // Can be re-enabled when needed without losing structure
+  const isEnabled = process.env.ENABLE_CUSTOMER_BOOKING_EMAILS === 'true';
+  if (!isEnabled) {
+    return true;
+  }
+
   const subject = `Booking Confirmed: ${options.businessName} - Autoshine BN`;
   const formattedPrice = options.price ? `$${options.price.toFixed(2)}` : 'N/A';
   

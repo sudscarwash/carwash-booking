@@ -821,28 +821,62 @@ async function executeSeedFirestore() {
 
   console.log('Database schema structures and dynamic tables verified.');
 
-  // Seed Default Autoshine Platform Info
+  // Seed Default Autoshine Platform Info or migrate placeholder values
   try {
-    const hasInfo = await runQueryOne("SELECT COUNT(*) AS count FROM platform_info WHERE id = 'autoshine_info'") as { count: any };
-    const countVal = hasInfo ? parseInt(hasInfo.count, 10) : 0;
-    if (countVal === 0) {
+    const existingRow = await runQueryOne("SELECT * FROM platform_info WHERE id = 'autoshine_info'") as any;
+    if (!existingRow) {
       console.log('Seeding default Autoshine Platform Info...');
       await runQueryRun(`
         INSERT INTO platform_info (id, email, contact, whatsapp, address, companyName, description, updatedAt)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         'autoshine_info',
-        'support@autoshine.bn',
-        '+673 888 1234',
-        '+673 888 1234',
-        'Bandar Seri Begawan, Brunei Darussalam',
-        'Autoshine BN',
+        'info@autoshinebn.com',
+        '+673 8974459',
+        '+673 8974459',
+        'Unit 1, 1st Floor Block C, Kiarong Complex BSB BE1318',
+        'AUTOSHINE BN',
         "Brunei's premier car wash & auto detailing digital booking platform.",
         new Date().toISOString()
       ]);
+    } else if (
+      existingRow.email === 'support@autoshine.bn' || 
+      existingRow.whatsapp === '+673 888 1234' || 
+      existingRow.contact === '+673 888 1234' ||
+      !existingRow.address ||
+      existingRow.address === 'Bandar Seri Begawan, Brunei Darussalam'
+    ) {
+      console.log('Updating database platform_info with official Autoshine BN contact details...');
+      if (usePostgres) {
+        await runQueryRun(`
+          UPDATE platform_info
+          SET email = ?, contact = ?, whatsapp = ?, address = ?, company_name = ?, updated_at = ?
+          WHERE id = 'autoshine_info'
+        `, [
+          'info@autoshinebn.com',
+          '+673 8974459',
+          '+673 8974459',
+          'Unit 1, 1st Floor Block C, Kiarong Complex BSB BE1318',
+          'AUTOSHINE BN',
+          new Date().toISOString()
+        ]);
+      } else {
+        await runQueryRun(`
+          UPDATE platform_info
+          SET email = ?, contact = ?, whatsapp = ?, address = ?, companyName = ?, updatedAt = ?
+          WHERE id = 'autoshine_info'
+        `, [
+          'info@autoshinebn.com',
+          '+673 8974459',
+          '+673 8974459',
+          'Unit 1, 1st Floor Block C, Kiarong Complex BSB BE1318',
+          'AUTOSHINE BN',
+          new Date().toISOString()
+        ]);
+      }
     }
   } catch (err) {
-    console.error('Error seeding default platform info:', err);
+    console.error('Error seeding/updating default platform info:', err);
   }
 
   // Seed default Brunei location
@@ -2170,11 +2204,11 @@ export async function getPlatformInfo(): Promise<PlatformInfo> {
     const row = await runQueryOne('SELECT * FROM platform_info WHERE id = ?', ['autoshine_info']);
     if (row) {
       return {
-        email: row.email ?? 'support@autoshine.bn',
-        contact: row.contact ?? '+673 888 1234',
-        whatsapp: row.whatsapp ?? '+673 888 1234',
-        address: row.address ?? 'Bandar Seri Begawan, Brunei Darussalam',
-        companyName: row.companyName ?? row.company_name ?? 'Autoshine BN',
+        email: row.email ?? 'info@autoshinebn.com',
+        contact: row.contact ?? '+673 8974459',
+        whatsapp: row.whatsapp ?? '+673 8974459',
+        address: row.address ?? 'Unit 1, 1st Floor Block C, Kiarong Complex BSB BE1318',
+        companyName: row.companyName ?? row.company_name ?? 'AUTOSHINE BN',
         description: row.description ?? "Brunei's premier car wash & auto detailing digital booking platform.",
         updatedAt: row.updatedAt ?? row.updated_at ?? new Date().toISOString(),
       };
@@ -2184,11 +2218,11 @@ export async function getPlatformInfo(): Promise<PlatformInfo> {
   }
 
   return {
-    email: 'support@autoshine.bn',
-    contact: '+673 888 1234',
-    whatsapp: '+673 888 1234',
-    address: 'Bandar Seri Begawan, Brunei Darussalam',
-    companyName: 'Autoshine BN',
+    email: 'info@autoshinebn.com',
+    contact: '+673 8974459',
+    whatsapp: '+673 8974459',
+    address: 'Unit 1, 1st Floor Block C, Kiarong Complex BSB BE1318',
+    companyName: 'AUTOSHINE BN',
     description: "Brunei's premier car wash & auto detailing digital booking platform.",
     updatedAt: new Date().toISOString(),
   };

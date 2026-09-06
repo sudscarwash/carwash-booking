@@ -11,6 +11,8 @@ import { OwnerDashboard } from './pages/OwnerDashboard.js';
 import { EmployeeDashboard } from './pages/EmployeeDashboard.js';
 import { AdminDashboard } from './pages/AdminDashboard.js';
 import { SpecialUserDashboard } from './pages/SpecialUserDashboard.js';
+import { ErrorBoundary } from './components/ErrorBoundary.js';
+import { TermsAndConditionsContent } from './components/TermsAndConditionsContent.js';
 import { Role } from './types.js';
 import { isValidEmail } from './lib/validation.js';
 import { Lock, Mail, UserPlus, LogIn, Sparkles, Compass, Sliders, Briefcase, Shield, Check, Info, X, AlertTriangle, LogOut, Eye, EyeOff, Building, Phone, MapPin } from 'lucide-react';
@@ -362,7 +364,9 @@ const MainAppContent: React.FC = () => {
         <>
           <Navbar activeTab={activeTab} setActiveTab={setActiveTab} />
           <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            {renderDashboardByRole(user.role)}
+            <ErrorBoundary>
+              {renderDashboardByRole(user.role)}
+            </ErrorBoundary>
           </main>
         </>
       ) : (
@@ -925,8 +929,8 @@ const MainAppContent: React.FC = () => {
                   <img src={autoshineLogo} alt="Autoshine BN" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-slate-800 tracking-tight">Terms &amp; Conditions</h3>
-                  <p className="text-[10px] text-sky-600 font-mono font-bold tracking-wider uppercase -mt-0.5">Autoshine BN</p>
+                  <h3 className="text-base font-black text-slate-800 tracking-tight">Terms &amp; Conditions of Use</h3>
+                  <p className="text-[10px] text-sky-600 font-mono font-bold tracking-wider uppercase -mt-0.5">Autoshine BN • Effective 1st September 2026</p>
                 </div>
               </div>
               <button
@@ -939,62 +943,8 @@ const MainAppContent: React.FC = () => {
             </div>
 
             {/* Scrollable Content */}
-            <div className="flex-1 overflow-y-auto p-6 text-xs sm:text-sm text-slate-600 space-y-4">
-              <p className="font-semibold text-slate-700">
-                These Terms and Conditions (&quot;Terms&quot;) govern your access to and use of the AUTOSHINE BN mobile application and website (&quot;Platform&quot;). By registering for an account or using the Platform, you agree to be bound by these Terms.
-              </p>
-              
-              <hr className="border-slate-100" />
-
-              <div className="space-y-4">
-                <div>
-                  <h4 className="font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-1 text-xs">
-                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">1</span>
-                    Definitions
-                  </h4>
-                  <p className="pl-7"><strong className="text-slate-800">AUTOSHINE BN</strong> means the owner and operator of the booking platform. <strong className="text-slate-800">User</strong> means any person who registers or uses the Platform.</p>
-                </div>
-
-                <div>
-                  <h4 className="font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-1 text-xs">
-                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">2</span>
-                    Acceptance of Terms
-                  </h4>
-                  <p className="pl-7">By using AUTOSHINE BN, you confirm that you are at least 18 years old or have permission from a parent or guardian, and agree to comply with all applicable laws of Brunei Darussalam.</p>
-                </div>
-
-                <div>
-                  <h4 className="font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-1 text-xs">
-                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">3</span>
-                    Platform Services
-                  </h4>
-                  <p className="pl-7">AUTOSHINE BN acts solely as a booking platform connecting Users with independent car wash Operators in Brunei. We are not the provider of the car wash services themselves.</p>
-                </div>
-
-                <div>
-                  <h4 className="font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-1 text-xs">
-                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">4</span>
-                    User Responsibilities
-                  </h4>
-                  <p className="pl-7">You are responsible for keeping account credentials safe, providing accurate vehicle/location data, arriving on-time, and removing all valuables from the vehicle prior to service. AUTOSHINE BN is not liable for items left inside vehicles.</p>
-                </div>
-
-                <div>
-                  <h4 className="font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-1 text-xs">
-                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">5</span>
-                    Payments and Cancellations
-                  </h4>
-                  <p className="pl-7">Payments are governed by authorized banks or offline channels. Cancellations must be made at least 2 hours prior to the scheduled time. Frequent no-shows may lead to platform suspension.</p>
-                </div>
-
-                <div>
-                  <h4 className="font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-1 text-xs">
-                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">6</span>
-                    Governing Law
-                  </h4>
-                  <p className="pl-7">These terms and conditions are governed exclusively by the laws of Brunei Darussalam, and all disputes shall be resolved in Brunei courts.</p>
-                </div>
-              </div>
+            <div className="flex-1 overflow-y-auto p-6">
+              <TermsAndConditionsContent />
             </div>
 
             {/* Footer */}

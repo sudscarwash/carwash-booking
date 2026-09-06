@@ -10,4 +10,11 @@ export const FEATURES = {
    * - Set to `true`: Immediately activates customer reviews & ratings, owner responses, and admin/special moderation.
    */
   ENABLE_REVIEWS: false,
+
+  /**
+   * Customer Booking Emails
+   * - Set to `false`: Disables booking confirmation emails to customers.
+   * - Set to `true`: Re-enables automated booking receipt/confirmation emails to customers.
+   */
+  ENABLE_CUSTOMER_BOOKING_EMAILS: false,
 };
