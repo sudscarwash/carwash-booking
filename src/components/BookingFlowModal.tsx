@@ -26,21 +26,12 @@ import {
   DoorClosed,
   CalendarX
 } from 'lucide-react';
-import { CarWash, User, WashService } from '../types.js';
+import { CarWash, User, WashService, TimeSlotItem } from '../types.js';
 import { useApp } from '../context/AppContext.js';
 import { useModalBack } from '../utils/useBackHandler.js';
 import { MapSimulation } from './MapSimulation.js';
 import { LocalPaymentForm } from './LocalPaymentForm.js';
 import autoshineLogo from '../assets/images/autoshine_logo.jpg';
-
-interface TimeSlotItem {
-  timeSlot: string;
-  startTime: string;
-  endTime: string;
-  capacity: number;
-  bookedCount: number;
-  isAvailable: boolean;
-}
 
 interface BookingFlowModalProps {
   location: CarWash;
@@ -1233,49 +1224,99 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                         <p className="text-slate-400">All bays are booked for this date. Please select another date on the calendar above.</p>
                       </div>
                     ) : (
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                        {availableSlots.map((slot) => {
-                          const isSelected = selectedSlot === slot.timeSlot;
-                          const isFullyBooked = !slot.isAvailable && slot.bookedCount >= slot.capacity;
+                      <div className="space-y-3">
+                        {totalSelectedDuration > (location.slotDuration || 30) && (
+                          <div className="p-2.5 rounded-xl bg-indigo-50/80 border border-indigo-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1.5 text-xs text-indigo-900">
+                            <div className="flex items-center gap-1.5 font-bold">
+                              <span className="w-2 h-2 rounded-full bg-indigo-500 shrink-0" />
+                              <span>Service Duration: {totalSelectedDuration} mins ({Math.ceil(totalSelectedDuration / (location.slotDuration || 30))} consecutive {location.slotDuration || 30}-min intervals)</span>
+                            </div>
+                            <span className="text-[10px] font-medium text-indigo-600 bg-white/80 px-2 py-0.5 rounded-md border border-indigo-200/60">
+                              Requires continuous bay availability
+                            </span>
+                          </div>
+                        )}
 
-                          return (
-                            <button
-                              type="button"
-                              key={slot.timeSlot}
-                              disabled={!slot.isAvailable}
-                              onClick={() => {
-                                if (slot.isAvailable) {
-                                  setSelectedSlot(slot.timeSlot);
-                                  setErrorMessage(null);
-                                }
-                              }}
-                              className={`p-3.5 rounded-2xl text-xs font-bold border transition-all text-center flex flex-col items-center justify-center gap-1 min-h-[62px] ${
-                                isSelected
-                                  ? 'bg-sky-600 text-white border-sky-600 ring-2 ring-sky-200 shadow-md scale-102 cursor-pointer'
-                                  : slot.isAvailable
-                                  ? 'bg-white text-slate-800 border-slate-200 hover:border-sky-400 hover:bg-sky-50/50 shadow-2xs cursor-pointer'
-                                  : 'bg-slate-100/80 text-slate-400 border-slate-200/80 cursor-not-allowed opacity-80'
-                              }`}
-                            >
-                              <span className={`text-sm font-black ${!slot.isAvailable ? 'line-through text-slate-400' : ''}`}>
-                                {slot.timeSlot}
-                              </span>
-                              <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
-                                isSelected
-                                  ? 'bg-sky-500 text-white'
-                                  : slot.isAvailable
-                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                  : 'bg-rose-50 text-rose-600 border border-rose-200'
-                              }`}>
-                                {slot.isAvailable 
-                                  ? `Available (${slot.capacity - slot.bookedCount}/${slot.capacity})` 
-                                  : isFullyBooked 
-                                  ? `Fully Booked (${slot.bookedCount}/${slot.capacity})` 
-                                  : 'Unavailable'}
-                              </span>
-                            </button>
-                          );
-                        })}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                          {availableSlots.map((slot) => {
+                            const isSelected = selectedSlot === slot.timeSlot;
+                            const isMultiSlot = slot.sliceDetails && slot.sliceDetails.length > 1;
+                            const baseSlotStep = location.slotDuration || 30;
+
+                            return (
+                              <button
+                                type="button"
+                                key={slot.timeSlot}
+                                onClick={() => {
+                                  if (slot.isAvailable) {
+                                    setSelectedSlot(slot.timeSlot);
+                                    setErrorMessage(null);
+                                  } else if (slot.unavailableReason) {
+                                    setErrorMessage(slot.unavailableReason);
+                                  }
+                                }}
+                                className={`p-3 rounded-xl text-xs font-bold border transition-all text-left flex flex-col justify-between gap-1.5 min-h-[72px] ${
+                                  isSelected
+                                    ? 'bg-sky-600 text-white border-sky-600 ring-2 ring-sky-200 shadow-md scale-[1.01] cursor-pointer'
+                                    : slot.isAvailable
+                                    ? 'bg-white text-slate-800 border-slate-200 hover:border-sky-400 hover:bg-sky-50/40 shadow-2xs cursor-pointer'
+                                    : 'bg-slate-50/90 text-slate-400 border-slate-200/80 cursor-not-allowed opacity-90'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between w-full">
+                                  <span className={`text-sm font-black font-mono tracking-tight ${!slot.isAvailable ? 'text-slate-500' : ''}`}>
+                                    {slot.timeSlot}
+                                  </span>
+                                  {slot.durationMinutes && slot.durationMinutes > baseSlotStep && (
+                                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                                      isSelected
+                                        ? 'bg-sky-500 text-white'
+                                        : 'bg-indigo-50 text-indigo-700 border border-indigo-100'
+                                    }`}>
+                                      {slot.durationMinutes}m ({Math.ceil(slot.durationMinutes / baseSlotStep)} slots)
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center justify-between w-full gap-1">
+                                  <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full line-clamp-1 ${
+                                    isSelected
+                                      ? 'bg-sky-500 text-white'
+                                      : slot.isAvailable
+                                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                      : 'bg-rose-50 text-rose-600 border border-rose-200'
+                                  }`}>
+                                    {slot.isAvailable 
+                                      ? `Available (${slot.capacity - slot.bookedCount}/${slot.capacity} bay${slot.capacity > 1 ? 's' : ''})` 
+                                      : slot.unavailableReason 
+                                      ? slot.unavailableReason
+                                      : 'Unavailable'}
+                                  </span>
+                                </div>
+
+                                {isMultiSlot && slot.sliceDetails && (
+                                  <div className="w-full pt-1 border-t border-slate-100/60 mt-0.5 flex items-center gap-1 flex-wrap">
+                                    {slot.sliceDetails.map((slice) => (
+                                      <span
+                                        key={slice.startTime}
+                                        className={`text-[9px] font-mono px-1 py-0.2 rounded ${
+                                          isSelected
+                                            ? 'bg-sky-700/50 text-sky-100'
+                                            : slice.isFull
+                                            ? 'bg-rose-100 text-rose-700 font-bold'
+                                            : 'bg-slate-100 text-slate-600'
+                                        }`}
+                                        title={`${slice.startTime}-${slice.endTime}: ${slice.bookedCount}/${slice.capacity} bays`}
+                                      >
+                                        {slice.startTime}: {slice.isFull ? '✕ Full' : '✓ Open'}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
                     )}
                   </div>

@@ -131,7 +131,8 @@ export function broadcastRealtimeEvent(event: {
 
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+  // PORT MUST be 3000 for the platform's nginx reverse proxy
+  const PORT = 3000;
 
   // Cloud Run & Container Health Probes MUST be mounted first
   app.get(['/api/health', '/_healthz', '/healthz', '/health'], async (req, res) => {

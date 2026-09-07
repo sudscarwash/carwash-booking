@@ -283,6 +283,11 @@ const MainAppContent: React.FC = () => {
   // Automated Test Role Login Quick Switchers
   const handleQuickLogin = async (role: string) => {
     setAuthLoading(true);
+    setIsRegisterMode(false);
+    setIsForgotMode(false);
+    setIsResetMode(false);
+    setIsRegisterOtpMode(false);
+
     let quickEmail = '';
     let quickPass = '';
 
@@ -311,8 +316,17 @@ const MainAppContent: React.FC = () => {
 
     setEmail(quickEmail);
     setPassword(quickPass);
-    await login(quickEmail, quickPass);
-    setAuthLoading(false);
+    try {
+      const res = await login(quickEmail, quickPass);
+      if (typeof res === 'object' && res?.requireOtp) {
+        setIsRegisterOtpMode(true);
+        setPendingRegisterEmail(res.email);
+      }
+    } catch (err) {
+      console.error('Quick login error:', err);
+    } finally {
+      setAuthLoading(false);
+    }
   };
 
   const renderDashboardByRole = (role: Role) => {
@@ -812,62 +826,82 @@ const MainAppContent: React.FC = () => {
                 </>
               )}
 
-              {/* Multi-role Simulator Playground Switcher (Enabled in local dev OR when VITE_ENABLE_DEV_ROLE_SWITCHER=true on staging environments like Render) */}
-              {(!import.meta.env.PROD || import.meta.env.VITE_ENABLE_DEV_ROLE_SWITCHER === 'true') && (
+              {/* Multi-role Simulator Playground Switcher (Enabled in dev/testing/preview, strictly hidden on production domain autoshinebn.com) */}
+              {(typeof window === 'undefined' || (window.location.hostname !== 'autoshinebn.com' && window.location.hostname !== 'www.autoshinebn.com' && import.meta.env.VITE_IS_PRODUCTION !== 'true')) && (
                 <div className="mt-8 border-t border-slate-100 pt-6">
-                  <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 text-center">
-                    🛠️ Interactive Role Play Testing Credentials (Dev Mode Only)
-                  </span>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      🛠️ Quick Role Testing (Dev Mode Only)
+                    </span>
+                    <span className="text-[9px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                      Sandbox
+                    </span>
+                  </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     <button
                       type="button"
                       onClick={() => handleQuickLogin('customer')}
-                      className="p-2 border border-sky-150 hover:bg-sky-50 text-sky-700 text-xs font-bold rounded-xl flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer"
+                      disabled={authLoading}
+                      className="p-2.5 border border-sky-200 hover:bg-sky-50 text-sky-700 text-xs font-bold rounded-xl flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
                       id="quick-login-customer"
+                      title="Email: customer@carwash.com | Pass: customer123"
                     >
-                      <Compass className="h-4 w-4" />
-                      Customer
+                      <Compass className="h-4 w-4 text-sky-600" />
+                      <span>Customer</span>
+                      <span className="text-[9px] font-normal text-slate-400">customer123</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => handleQuickLogin('owner')}
-                      className="p-2 border border-indigo-150 hover:bg-indigo-50 text-indigo-700 text-xs font-bold rounded-xl flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer"
+                      disabled={authLoading}
+                      className="p-2.5 border border-indigo-200 hover:bg-indigo-50 text-indigo-700 text-xs font-bold rounded-xl flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
                       id="quick-login-owner"
+                      title="Email: owner@carwash.com | Pass: owner123"
                     >
-                      <Sliders className="h-4 w-4" />
-                      Owner
+                      <Sliders className="h-4 w-4 text-indigo-600" />
+                      <span>Owner</span>
+                      <span className="text-[9px] font-normal text-slate-400">owner123</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => handleQuickLogin('employee')}
-                      className="p-2 border border-amber-150 hover:bg-amber-50 text-amber-700 text-xs font-bold rounded-xl flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer"
+                      disabled={authLoading}
+                      className="p-2.5 border border-amber-200 hover:bg-amber-50 text-amber-700 text-xs font-bold rounded-xl flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
                       id="quick-login-employee"
+                      title="Email: employee@carwash.com | Pass: employee123"
                     >
-                      <Briefcase className="h-4 w-4" />
-                      Employee
+                      <Briefcase className="h-4 w-4 text-amber-600" />
+                      <span>Employee</span>
+                      <span className="text-[9px] font-normal text-slate-400">employee123</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => handleQuickLogin('special')}
-                      className="p-2 border border-emerald-150 hover:bg-emerald-50 text-emerald-700 text-xs font-bold rounded-xl flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer"
+                      disabled={authLoading}
+                      className="p-2.5 border border-emerald-200 hover:bg-emerald-50 text-emerald-700 text-xs font-bold rounded-xl flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
                       id="quick-login-special"
+                      title="Email: special@carwash.com | Pass: special123"
                     >
-                      <Sparkles className="h-4 w-4" />
-                      Special User
+                      <Sparkles className="h-4 w-4 text-emerald-600" />
+                      <span>Special User</span>
+                      <span className="text-[9px] font-normal text-slate-400">special123</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => handleQuickLogin('admin')}
-                      className="p-2 border border-red-150 hover:bg-red-50 text-red-700 text-xs font-bold rounded-xl flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer col-span-2 sm:col-span-1"
+                      disabled={authLoading}
+                      className="p-2.5 border border-red-200 hover:bg-red-50 text-red-700 text-xs font-bold rounded-xl flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer col-span-2 sm:col-span-1 disabled:opacity-50"
                       id="quick-login-admin"
+                      title="Email: admin@carwash.com | Pass: admin123"
                     >
-                      <Shield className="h-4 w-4" />
-                      Admin
+                      <Shield className="h-4 w-4 text-red-600" />
+                      <span>Admin</span>
+                      <span className="text-[9px] font-normal text-slate-400">admin123</span>
                     </button>
                   </div>
-                  <div className="bg-slate-50 rounded-xl p-2.5 border border-slate-100 text-[10px] text-slate-400 text-center mt-3 flex items-start gap-1.5 justify-center">
-                    <Info className="h-3 w-3 text-slate-400 shrink-0 mt-0.5" />
-                    <span>Click any button above to instantly log in as that role and explore distinct dashboards!</span>
+                  <div className="bg-slate-50 rounded-xl p-2.5 border border-slate-100 text-[10px] text-slate-500 text-center mt-3 flex items-start gap-1.5 justify-center">
+                    <Info className="h-3.5 w-3.5 text-slate-400 shrink-0 mt-0.5" />
+                    <span>Click any role above to automatically authenticate with demo credentials. This testing panel is disabled in live production.</span>
                   </div>
                 </div>
               )}

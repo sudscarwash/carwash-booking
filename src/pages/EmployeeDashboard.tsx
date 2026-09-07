@@ -260,9 +260,13 @@ export const EmployeeDashboard: React.FC = () => {
   }, [myLocation, showManualBookingModal]);
 
   // Fetch available slots for manual booking date
+  const mbTotalDuration = mbSelectedItems.length > 0
+    ? mbSelectedItems.filter((i) => i.type !== 'product').reduce((sum, item) => sum + (Number(item.duration) || 30), 0) || 30
+    : 30;
+
   useEffect(() => {
     if (myLocation && mbDate) {
-      fetch(`/api/bookings/available-slots?carWashId=${myLocation.id}&date=${mbDate}`)
+      fetch(`/api/bookings/available-slots?carWashId=${myLocation.id}&date=${mbDate}&duration=${mbTotalDuration}`)
         .then((res) => res.json())
         .then((data) => {
           if (Array.isArray(data)) {
@@ -274,7 +278,7 @@ export const EmployeeDashboard: React.FC = () => {
         })
         .catch((err) => console.warn('Could not fetch slots for date:', err));
     }
-  }, [myLocation, mbDate]);
+  }, [myLocation, mbDate, mbTotalDuration]);
 
   const handleUpdateStatus = async (bookingId: string, status: BookingStatus) => {
     setUpdatingId(bookingId);

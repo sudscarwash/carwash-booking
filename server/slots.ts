@@ -3,25 +3,18 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { CarWash, Booking, BookingStatus } from '../src/types.js';
+import { CarWash, Booking, BookingStatus, TimeSlotItem, TimeSlotSliceDetail } from '../src/types.js';
 
-export interface TimeSlotResponse {
-  timeSlot: string;
-  startTime: string;
-  endTime: string;
-  capacity: number;
-  bookedCount: number;
-  isAvailable: boolean;
-  bookings: { id: string; customerName: string; status: BookingStatus }[];
-}
+export interface TimeSlotResponse extends TimeSlotItem {}
 
 /**
  * Parses a time string "HH:MM" into total minutes from midnight.
  */
 export function timeStringToMinutes(timeStr: string): number {
   if (!timeStr) return 0;
-  const parts = timeStr.trim().split(':').map(Number);
-  return (parts[0] || 0) * 60 + (parts[1] || 0);
+  const match = timeStr.match(/(\d{1,2}):(\d{2})/);
+  if (!match) return 0;
+  return parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
 }
 
 /**
@@ -195,7 +188,7 @@ export function validateSlotCapacity(
   }
 
   const capacity = carWash.capacityPerSlot || 1;
-  const sliceStep = 30;
+  const sliceStep = carWash.slotDuration || 30;
 
   // Active bookings on this date (excluding the specified booking if rescheduling)
   const activeBookings = allBookings.filter(
@@ -256,9 +249,9 @@ export function generateSlotsForDate(
   const startMinutes = timeStringToMinutes(daySchedule.open);
   const endMinutes = timeStringToMinutes(daySchedule.close);
   
-  // Standard 30-minute interval step
-  const slotInterval = 30;
-  const duration = Math.max(30, requestedDurationMinutes || 30);
+  // Base slot interval step configured by the car wash (defaults to 30 mins)
+  const slotInterval = carWash.slotDuration || 30;
+  const duration = Math.max(slotInterval, requestedDurationMinutes || slotInterval);
   const capacity = carWash.capacityPerSlot || 1;
 
   const slots: TimeSlotResponse[] = [];
@@ -282,37 +275,49 @@ export function generateSlotsForDate(
       !isZeroSlotBooking(b.timeSlot)
   );
 
-  // 3. Generate slots iteratively in 30-minute starting steps
-  while (currentStart + duration <= endMinutes) {
+  // 3. Generate slots iteratively in 30-minute starting steps up to closing time
+  while (currentStart < endMinutes) {
     const candidateEnd = currentStart + duration;
+    const startTimeStr = minutesToTimeString(currentStart);
+    const endTimeStr = minutesToTimeString(candidateEnd);
+    const timeSlotStr = `${startTimeStr} - ${endTimeStr}`;
 
-    // Check holiday / ad-hoc half-day or custom closure
-    if (override) {
+    let isAvailable = true;
+    let unavailableReason: string | undefined = undefined;
+
+    // A. Check if slot exceeds business closing time
+    if (candidateEnd > endMinutes) {
+      isAvailable = false;
+      unavailableReason = `Exceeds closing time (${daySchedule.close}). Service duration is ${duration} mins.`;
+    }
+
+    // B. Check holiday / ad-hoc half-day or custom closure
+    if (isAvailable && override) {
       if (override.type === 'HALF_DAY_MORNING') {
         const morningCutoff = override.customEndTime ? timeStringToMinutes(override.customEndTime) : 780; // 13:00
         if (currentStart < morningCutoff) {
-          currentStart += slotInterval;
-          continue;
+          isAvailable = false;
+          unavailableReason = `Morning slots closed for holiday (${override.reason || 'Holiday'}). Available from ${minutesToTimeString(morningCutoff)}.`;
         }
       } else if (override.type === 'HALF_DAY_AFTERNOON') {
         const afternoonCutoff = override.customStartTime ? timeStringToMinutes(override.customStartTime) : 780; // 13:00
         if (candidateEnd > afternoonCutoff) {
-          currentStart += slotInterval;
-          continue;
+          isAvailable = false;
+          unavailableReason = `Afternoon slots closed for holiday (${override.reason || 'Holiday'}). Available before ${minutesToTimeString(afternoonCutoff)}.`;
         }
       } else if (override.type === 'CUSTOM_HOURS' && override.customStartTime && override.customEndTime) {
         const blockStart = timeStringToMinutes(override.customStartTime);
         const blockEnd = timeStringToMinutes(override.customEndTime);
         if (currentStart < blockEnd && candidateEnd > blockStart) {
-          currentStart += slotInterval;
-          continue;
+          isAvailable = false;
+          unavailableReason = `Closed for temporary closure (${override.customStartTime} - ${override.customEndTime}: ${override.reason || 'Holiday'}).`;
         }
       }
     }
 
-    // Check if slot overlaps with break
-    let overlapsWithBreak = false;
+    // C. Check if slot overlaps with scheduled lunch or prayer break
     if (
+      isAvailable &&
       (daySchedule as any).hasBreak &&
       (daySchedule as any).breakStart &&
       (daySchedule as any).breakEnd
@@ -321,45 +326,75 @@ export function generateSlotsForDate(
       const breakEndMin = timeStringToMinutes((daySchedule as any).breakEnd);
 
       if (currentStart < breakEndMin && candidateEnd > breakStartMin) {
-        overlapsWithBreak = true;
+        isAvailable = false;
+        unavailableReason = `Overlaps with lunch / prayer break (${(daySchedule as any).breakStart} - ${(daySchedule as any).breakEnd}). Service requires ${duration} continuous mins.`;
       }
     }
 
-    if (overlapsWithBreak) {
-      currentStart += slotInterval;
-      continue;
-    }
-
-    const startTimeStr = minutesToTimeString(currentStart);
-    const endTimeStr = minutesToTimeString(candidateEnd);
-    const timeSlotStr = `${startTimeStr} - ${endTimeStr}`;
-
-    // Collect all bookings that overlap with any slice in [currentStart, candidateEnd)
+    // D. Collect all bookings and check bay capacity across all 30-minute slices
     const overlappingBookingsMap = new Map<string, Booking>();
+    const sliceDetails: TimeSlotSliceDetail[] = [];
     let maxSliceBookedCount = 0;
     let hasFullSlice = false;
+    const fullSlices: { start: string; end: string; booked: number; capacity: number }[] = [];
 
     for (let sliceStart = currentStart; sliceStart < candidateEnd; sliceStart += slotInterval) {
-      const sliceEnd = sliceStart + slotInterval;
+      const sliceEnd = Math.min(sliceStart + slotInterval, candidateEnd);
       const sliceOverlapping = activeBookings.filter((b) => isBookingOverlapping(b, sliceStart, sliceEnd));
+      const sliceBooked = sliceOverlapping.length;
+      const sliceFull = sliceBooked >= capacity;
 
-      if (sliceOverlapping.length > maxSliceBookedCount) {
-        maxSliceBookedCount = sliceOverlapping.length;
+      if (sliceBooked > maxSliceBookedCount) {
+        maxSliceBookedCount = sliceBooked;
       }
-
-      if (sliceOverlapping.length >= capacity) {
+      if (sliceFull) {
         hasFullSlice = true;
+        fullSlices.push({
+          start: minutesToTimeString(sliceStart),
+          end: minutesToTimeString(sliceEnd),
+          booked: sliceBooked,
+          capacity,
+        });
       }
+
+      sliceDetails.push({
+        startTime: minutesToTimeString(sliceStart),
+        endTime: minutesToTimeString(sliceEnd),
+        bookedCount: sliceBooked,
+        capacity,
+        isFull: sliceFull,
+      });
 
       sliceOverlapping.forEach((b) => overlappingBookingsMap.set(b.id, b));
     }
 
-    // A slot is available if:
-    // 1. Every 30-min slice has remaining bay capacity
-    // 2. If it's today, the slot start time is in the future
-    let isAvailable = !hasFullSlice;
+    // E. If any 30-min slice is at or over capacity, slot is unavailable
+    if (hasFullSlice && isAvailable) {
+      isAvailable = false;
+      if (sliceDetails.length > 1) {
+        // Multi-slot service (e.g. 60 min, 90 min)
+        const firstSliceFull = sliceDetails[0].isFull;
+        const laterSlicesFull = sliceDetails.slice(1).some((s) => s.isFull);
+
+        if (!firstSliceFull && laterSlicesFull) {
+          const fullLater = fullSlices.map((fs) => `${fs.start} - ${fs.end}`).join(', ');
+          unavailableReason = `Next slot (${fullLater}) is fully booked (${fullSlices[0].booked}/${capacity} bays) for this ${duration}-min service.`;
+        } else if (firstSliceFull && !laterSlicesFull) {
+          unavailableReason = `Starting slot (${sliceDetails[0].startTime} - ${sliceDetails[0].endTime}) is fully booked (${sliceDetails[0].bookedCount}/${capacity} bays).`;
+        } else {
+          unavailableReason = `Multiple slots are fully booked during this ${duration}-min window (${capacity}/${capacity} bays).`;
+        }
+      } else {
+        unavailableReason = `Fully booked (${maxSliceBookedCount}/${capacity} bays occupied).`;
+      }
+    }
+
+    // F. If it's today, check if start time has already passed (Brunei time)
     if (isToday && currentStart <= currentTotalMinutes) {
       isAvailable = false;
+      if (!unavailableReason) {
+        unavailableReason = 'Appointment time has already passed.';
+      }
     }
 
     const overlappingBookingsList = Array.from(overlappingBookingsMap.values());
@@ -368,9 +403,12 @@ export function generateSlotsForDate(
       timeSlot: timeSlotStr,
       startTime: startTimeStr,
       endTime: endTimeStr,
+      durationMinutes: duration,
       capacity,
       bookedCount: maxSliceBookedCount,
       isAvailable,
+      unavailableReason,
+      sliceDetails,
       bookings: overlappingBookingsList.map((b) => ({
         id: b.id,
         customerName: b.customerName,

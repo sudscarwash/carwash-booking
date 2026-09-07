@@ -13,17 +13,8 @@ import { TermsAndConditionsContent } from '../components/TermsAndConditionsConte
 import { FEATURES } from '../config/features.js';
 import { useModalBack, useTabBack } from '../utils/useBackHandler.js';
 import { Search, Calendar, Clock, MapPin, History, CheckCircle, AlertTriangle, X, ChevronRight, ChevronLeft, ChevronDown, Sliders, Info, Sparkles, Navigation, User, Edit3, Check, Instagram, Landmark, Lock, Key, FileText, Maximize2, Filter, Star, DoorClosed } from 'lucide-react';
-import { CarWash, Booking, BookingStatus } from '../types.js';
+import { CarWash, Booking, BookingStatus, TimeSlotItem } from '../types.js';
 import autoshineLogo from '../assets/images/autoshine_logo.jpg';
-
-interface TimeSlotItem {
-  timeSlot: string;
-  startTime: string;
-  endTime: string;
-  capacity: number;
-  bookedCount: number;
-  isAvailable: boolean;
-}
 
 const getTodayDateString = () => {
   const d = new Date();
@@ -452,27 +443,40 @@ export const CustomerDashboard: React.FC = () => {
     }
   }, [search, userLat, userLng, radiusKm, viewAllLocations]);
 
-  // Load available slots dynamically when location or date selection changes
+  // Helper to extract duration from a slot string (e.g. "14:00 - 15:00" -> 60)
+  const parseDurationFromSlot = (slotStr?: string) => {
+    if (!slotStr || !slotStr.includes(' - ')) return 30;
+    const [start, end] = slotStr.split(' - ');
+    const [sh, sm] = start.split(':').map(Number);
+    const [eh, em] = end.split(':').map(Number);
+    const diff = (eh * 60 + em) - (sh * 60 + sm);
+    return diff > 0 ? diff : 30;
+  };
+
+  // Load available slots dynamically when location, date, or service selection changes
   useEffect(() => {
     if (selectedLocation && bookingDate) {
-      fetchAvailableSlots(selectedLocation.id, bookingDate, setAvailableSlots);
+      const duration = selectedService?.duration || 30;
+      fetchAvailableSlots(selectedLocation.id, bookingDate, setAvailableSlots, duration);
     }
-  }, [selectedLocation, bookingDate]);
+  }, [selectedLocation, bookingDate, selectedService]);
 
   // Load slots for reschedule when reschedule date changes
   useEffect(() => {
     if (reschedulingBooking && rescheduleDate) {
-      fetchAvailableSlots(reschedulingBooking.carWashId, rescheduleDate, setRescheduleSlots);
+      const duration = parseDurationFromSlot(reschedulingBooking.timeSlot);
+      fetchAvailableSlots(reschedulingBooking.carWashId, rescheduleDate, setRescheduleSlots, duration);
     }
   }, [reschedulingBooking, rescheduleDate]);
 
   const fetchAvailableSlots = async (
     carWashId: string,
     date: string,
-    setSlotsFn: React.Dispatch<React.SetStateAction<TimeSlotItem[]>>
+    setSlotsFn: React.Dispatch<React.SetStateAction<TimeSlotItem[]>>,
+    duration: number = 30
   ) => {
     try {
-      const res = await fetch(`/api/bookings/available-slots?carWashId=${carWashId}&date=${date}`);
+      const res = await fetch(`/api/bookings/available-slots?carWashId=${carWashId}&date=${date}&duration=${duration}`);
       if (res.ok) {
         const slots = await res.json();
         setSlotsFn(slots);
@@ -1997,7 +2001,7 @@ export const CustomerDashboard: React.FC = () => {
               )}
             </div>
 
-            {/* Slots section */}
+              {/* Slots section */}
             <div className="space-y-3">
               <label className="block text-xs font-black text-slate-700 uppercase tracking-wider flex justify-between items-center">
                 <span>2. Choose Available Appointment Time Slot</span>
@@ -2006,39 +2010,99 @@ export const CustomerDashboard: React.FC = () => {
                 </span>
               </label>
 
+              {(() => {
+                const baseStep = selectedLocation?.slotDuration || 30;
+                return selectedService && selectedService.duration > baseStep ? (
+                  <div className="p-2.5 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-between text-xs text-indigo-900">
+                    <span className="font-bold flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-indigo-500 shrink-0" />
+                      {selectedService.name}: {selectedService.duration} mins ({Math.ceil(selectedService.duration / baseStep)} slots)
+                    </span>
+                    <span className="text-[10px] font-medium text-indigo-600 bg-white px-1.5 py-0.5 rounded border border-indigo-200/60">
+                      Continuous bay check
+                    </span>
+                  </div>
+                ) : null;
+              })()}
+
               {availableSlots.length === 0 ? (
                 <div className="bg-slate-50 border border-dashed border-slate-200 rounded-xl p-8 text-center text-xs text-slate-500">
                   <Clock className="h-6 w-6 mx-auto mb-1 text-slate-400" />
                   Closed or no slots remaining on this day.
                 </div>
               ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-80 overflow-y-auto pr-1">
                   {availableSlots.map((slot) => {
                     const isSelected = selectedSlot === slot.timeSlot;
+                    const isMultiSlot = slot.sliceDetails && slot.sliceDetails.length > 1;
+
                     return (
                       <button
                         type="button"
                         key={slot.timeSlot}
                         disabled={!slot.isAvailable}
                         onClick={() => {
-                          setSelectedSlot(slot.timeSlot);
-                          setShowFullScreenDate(false);
-                          setTimeout(() => {
-                            document.getElementById('booking-checkout')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                          }, 250);
+                          if (slot.isAvailable) {
+                            setSelectedSlot(slot.timeSlot);
+                            setShowFullScreenDate(false);
+                            setTimeout(() => {
+                              document.getElementById('booking-checkout')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }, 250);
+                          }
                         }}
-                        className={`p-3.5 rounded-xl text-xs font-bold border transition-all text-center flex flex-col items-center justify-center gap-1 cursor-pointer min-h-[50px] ${
+                        className={`p-3 rounded-xl text-xs font-bold border transition-all text-left flex flex-col justify-between gap-1 min-h-[58px] ${
                           isSelected
-                            ? 'bg-sky-600 text-white border-sky-600 ring-2 ring-sky-100 shadow-md scale-102'
+                            ? 'bg-sky-600 text-white border-sky-600 ring-2 ring-sky-100 shadow-md scale-101 cursor-pointer'
                             : slot.isAvailable
-                            ? 'bg-white text-slate-700 border-slate-200 hover:border-sky-300'
-                            : 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed line-through'
+                            ? 'bg-white text-slate-700 border-slate-200 hover:border-sky-300 hover:bg-sky-50/30 cursor-pointer shadow-2xs'
+                            : 'bg-slate-50 text-slate-400 border-slate-100 cursor-not-allowed opacity-80'
                         }`}
                       >
-                        <span className="text-sm font-black">{slot.timeSlot}</span>
-                        <span className={`text-[9px] ${isSelected ? 'text-sky-100' : slot.isAvailable ? 'text-sky-600 font-bold' : 'text-slate-300'}`}>
-                          {slot.isAvailable ? 'Available' : 'Fully Booked'}
+                        <div className="flex items-center justify-between w-full">
+                          <span className={`text-sm font-black font-mono ${!slot.isAvailable ? 'line-through text-slate-400' : ''}`}>
+                            {slot.timeSlot}
+                          </span>
+                          {slot.durationMinutes && slot.durationMinutes > 30 && (
+                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                              isSelected ? 'bg-sky-500 text-white' : 'bg-indigo-50 text-indigo-700 border border-indigo-100'
+                            }`}>
+                              {slot.durationMinutes}m
+                            </span>
+                          )}
+                        </div>
+
+                        <span className={`text-[10px] line-clamp-1 ${
+                          isSelected
+                            ? 'text-sky-100'
+                            : slot.isAvailable
+                            ? 'text-emerald-700 font-extrabold'
+                            : 'text-rose-600 font-bold'
+                        }`}>
+                          {slot.isAvailable 
+                            ? `Available (${slot.capacity - slot.bookedCount}/${slot.capacity} bay${slot.capacity > 1 ? 's' : ''} free)` 
+                            : slot.unavailableReason 
+                            ? slot.unavailableReason 
+                            : 'Unavailable'}
                         </span>
+
+                        {isMultiSlot && slot.sliceDetails && (
+                          <div className="w-full pt-1 border-t border-slate-100 mt-0.5 flex items-center gap-1 flex-wrap">
+                            {slot.sliceDetails.map((slice) => (
+                              <span
+                                key={slice.startTime}
+                                className={`text-[9px] font-mono px-1 rounded ${
+                                  isSelected
+                                    ? 'bg-sky-700/50 text-sky-100'
+                                    : slice.isFull
+                                    ? 'bg-rose-100 text-rose-700 font-bold'
+                                    : 'bg-slate-100 text-slate-600'
+                                }`}
+                              >
+                                {slice.startTime}: {slice.isFull ? '✕' : '✓'}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </button>
                     );
                   })}
@@ -2146,7 +2210,7 @@ export const CustomerDashboard: React.FC = () => {
                     return <p className="text-xs text-slate-400 italic">No slots available on this day.</p>;
                   })()
                 ) : (
-                  <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto pr-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
                     {rescheduleSlots.map((slot) => {
                       const isSelected = selectedRescheduleSlot === slot.timeSlot;
                       return (
@@ -2155,16 +2219,29 @@ export const CustomerDashboard: React.FC = () => {
                           key={slot.timeSlot}
                           disabled={!slot.isAvailable}
                           onClick={() => setSelectedRescheduleSlot(slot.timeSlot)}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold border text-center cursor-pointer ${
+                          className={`p-2.5 rounded-xl text-xs font-semibold border text-left flex flex-col justify-between gap-1 transition-all cursor-pointer ${
                             isSelected
-                              ? 'bg-sky-600 text-white'
+                              ? 'bg-sky-600 text-white border-sky-600 ring-2 ring-sky-100 shadow-sm'
                               : slot.isAvailable
-                              ? 'bg-white border-slate-200 text-slate-700 hover:border-sky-400'
-                              : 'bg-slate-50 text-slate-300 cursor-not-allowed'
+                              ? 'bg-white border-slate-200 text-slate-700 hover:border-sky-400 hover:bg-sky-50/30'
+                              : 'bg-slate-50 text-slate-400 border-slate-100 cursor-not-allowed opacity-75'
                           }`}
                           id={`reschedule-slot-${slot.timeSlot.replace(/ /g, '')}`}
+                          title={slot.unavailableReason || undefined}
                         >
-                          {slot.timeSlot.split(' - ')[0]}
+                          <div className="flex items-center justify-between w-full">
+                            <span className="font-bold font-mono text-xs">{slot.timeSlot}</span>
+                            {slot.durationMinutes && slot.durationMinutes > 30 && (
+                              <span className={`text-[9px] px-1 rounded ${isSelected ? 'bg-sky-500 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                                {slot.durationMinutes}m
+                              </span>
+                            )}
+                          </div>
+                          <span className={`text-[10px] line-clamp-1 ${
+                            isSelected ? 'text-sky-100' : slot.isAvailable ? 'text-emerald-600 font-medium' : 'text-rose-600'
+                          }`}>
+                            {slot.isAvailable ? `Available (${slot.capacity - slot.bookedCount} free)` : slot.unavailableReason || 'Unavailable'}
+                          </span>
                         </button>
                       );
                     })}

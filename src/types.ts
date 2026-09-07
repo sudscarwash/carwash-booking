@@ -225,3 +225,24 @@ export interface ReviewSummary {
   ratingCounts: { [stars: number]: number };
 }
 
+export interface TimeSlotSliceDetail {
+  startTime: string;
+  endTime: string;
+  bookedCount: number;
+  capacity: number;
+  isFull: boolean;
+}
+
+export interface TimeSlotItem {
+  timeSlot: string;
+  startTime: string;
+  endTime: string;
+  durationMinutes?: number;
+  capacity: number;
+  bookedCount: number;
+  isAvailable: boolean;
+  unavailableReason?: string;
+  sliceDetails?: TimeSlotSliceDetail[];
+  bookings?: { id: string; customerName: string; status: BookingStatus }[];
+}
+

@@ -952,9 +952,27 @@ async function executeSeedFirestore() {
       createdAt: timestamp,
     },
     {
+      id: 'usr_admin_bn',
+      email: 'admin@autoshinebn.com',
+      name: 'System Admin (BN)',
+      role: Role.ADMIN,
+      isActive: true,
+      passwordHash: bcrypt.hashSync('admin123', salt),
+      createdAt: timestamp,
+    },
+    {
       id: 'usr_owner',
       email: 'owner@carwash.com',
       name: 'Jack Owner',
+      role: Role.OWNER,
+      isActive: true,
+      passwordHash: bcrypt.hashSync('owner123', salt),
+      createdAt: timestamp,
+    },
+    {
+      id: 'usr_owner_bn',
+      email: 'owner@autoshinebn.com',
+      name: 'Jack Owner (BN)',
       role: Role.OWNER,
       isActive: true,
       passwordHash: bcrypt.hashSync('owner123', salt),
@@ -970,12 +988,31 @@ async function executeSeedFirestore() {
       createdAt: timestamp,
     },
     {
+      id: 'usr_customer_bn',
+      email: 'customer@autoshinebn.com',
+      name: 'Alex Customer (BN)',
+      role: Role.CUSTOMER,
+      isActive: true,
+      passwordHash: bcrypt.hashSync('customer123', salt),
+      createdAt: timestamp,
+    },
+    {
       id: 'usr_employee',
       email: 'employee@carwash.com',
       name: 'Sam Employee',
       role: Role.EMPLOYEE,
       isActive: true,
-      businessId: 'cw_downtown',
+      businessId: 'cw_brunei',
+      passwordHash: bcrypt.hashSync('employee123', salt),
+      createdAt: timestamp,
+    },
+    {
+      id: 'usr_employee_bn',
+      email: 'employee@autoshinebn.com',
+      name: 'Sam Employee (BN)',
+      role: Role.EMPLOYEE,
+      isActive: true,
+      businessId: 'cw_brunei',
       passwordHash: bcrypt.hashSync('employee123', salt),
       createdAt: timestamp,
     },
@@ -987,15 +1024,25 @@ async function executeSeedFirestore() {
       isActive: true,
       passwordHash: bcrypt.hashSync('special123', salt),
       createdAt: timestamp,
+    },
+    {
+      id: 'usr_special_bn',
+      email: 'special@autoshinebn.com',
+      name: 'Sarah Special (BN)',
+      role: Role.SPECIAL,
+      isActive: true,
+      passwordHash: bcrypt.hashSync('special123', salt),
+      createdAt: timestamp,
     }
   ];
 
   try {
     for (const u of users) {
       await runQueryRun(`
-        INSERT OR IGNORE INTO users (id, email, name, role, isActive, businessId, passwordHash, createdAt)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT OR IGNORE INTO users (id, email, name, role, isActive, businessId, passwordHash, createdAt, isEmailVerified)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
       `, [u.id, u.email, u.name, u.role, u.isActive ? 1 : 0, u.businessId || null, u.passwordHash, u.createdAt]);
+      await runQueryRun(`UPDATE users SET passwordHash = ?, isActive = 1, isEmailVerified = 1 WHERE LOWER(email) = ?`, [u.passwordHash, u.email.toLowerCase()]);
     }
     // Automatically promote owner email if it exists
     await runQueryRun("UPDATE users SET role = ? WHERE LOWER(email) = 'qawi459@gmail.com'", [Role.ADMIN]);

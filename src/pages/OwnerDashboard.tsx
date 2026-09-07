@@ -1380,9 +1380,13 @@ export const OwnerDashboard: React.FC = () => {
   }, [selectedBusiness, showManualBookingModal]);
 
   // Fetch available slots for manual booking date
+  const mbTotalDuration = mbSelectedItems.length > 0
+    ? mbSelectedItems.filter((i) => i.type !== 'product').reduce((sum, item) => sum + (Number(item.duration) || 30), 0) || 30
+    : 30;
+
   useEffect(() => {
     if (selectedBusiness && mbDate) {
-      fetch(`/api/bookings/available-slots?carWashId=${selectedBusiness.id}&date=${mbDate}`)
+      fetch(`/api/bookings/available-slots?carWashId=${selectedBusiness.id}&date=${mbDate}&duration=${mbTotalDuration}`)
         .then((res) => res.json())
         .then((data) => {
           if (Array.isArray(data)) {
@@ -1394,7 +1398,7 @@ export const OwnerDashboard: React.FC = () => {
         })
         .catch((err) => console.warn('Could not fetch slots for manual booking:', err));
     }
-  }, [selectedBusiness, mbDate]);
+  }, [selectedBusiness, mbDate, mbTotalDuration]);
 
   const handleManualBookingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -3713,10 +3717,8 @@ export const OwnerDashboard: React.FC = () => {
                         onChange={(e) => setEditDuration(parseInt(e.target.value))}
                         className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium bg-white"
                       >
-                        <option value="30">30 mins (Standard Half-Hour Grid)</option>
-                        <option value="15">15 mins</option>
-                        <option value="45">45 mins</option>
-                        <option value="60">60 mins</option>
+                        <option value="30">30 mins (Standard Half-Hour Grid • Recommended)</option>
+                        <option value="60">60 mins (1 Hour • Hourly Grid)</option>
                       </select>
                       <p className="text-[10px] text-slate-400 mt-1">Defines the atomic time grid for customer booking slots.</p>
                     </div>
@@ -3735,6 +3737,25 @@ export const OwnerDashboard: React.FC = () => {
                       />
                       <p className="text-[10px] text-slate-400 mt-1">Max concurrent vehicle bookings allowed per time slot.</p>
                     </div>
+                  </div>
+
+                  {/* Operational Guide Card for Owner */}
+                  <div className="bg-sky-50/70 border border-sky-150 rounded-xl p-3.5 space-y-2 text-xs text-sky-950">
+                    <div className="font-bold text-sky-900 flex items-center gap-1.5 text-xs">
+                      <Sparkles className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                      <span>How Slot Interval & Bay Capacity Work Together</span>
+                    </div>
+                    <ul className="list-disc list-inside space-y-1 text-[11px] text-slate-600 leading-relaxed">
+                      <li>
+                        <strong>Base Grid ({editDuration || 30} mins):</strong> Slots are offered at fixed {editDuration || 30}-min start times (e.g. 08:00, 08:30, 09:00).
+                      </li>
+                      <li>
+                        <strong>Bay Capacity ({editCapacity || 2} bays):</strong> Each {editDuration || 30}-min window allows up to {editCapacity || 2} simultaneous vehicles.
+                      </li>
+                      <li>
+                        <strong>Multi-Slot Services (e.g. 60 mins):</strong> A 1-hour service reserves 2 consecutive {editDuration || 30}-min intervals. Customers cannot book if a subsequent interval is full, or if it crosses into closing time or scheduled lunch/prayer breaks.
+                      </li>
+                    </ul>
                   </div>
 
                   <div className="space-y-3">
@@ -3895,7 +3916,7 @@ export const OwnerDashboard: React.FC = () => {
                                       <span>{svc.duration} min duration</span>
                                       <span>•</span>
                                       <span className="font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">
-                                        {svc.slotsRequired === 0 ? '0 Bay Slots (Takes No Capacity)' : `${svc.slotsRequired || 1} Bay Slot(s)`}
+                                        {svc.slotsRequired === 0 ? '0 Slots (Retail / Flex)' : `Takes 1 Bay • ${svc.slotsRequired || Math.ceil((svc.duration || 30) / 30)} slot(s)`}
                                       </span>
                                     </span>
                                   ) : (
@@ -4065,25 +4086,26 @@ export const OwnerDashboard: React.FC = () => {
                           </select>
                         </div>
 
-                        {/* Bay Slots Capacity Required */}
+                        {/* Auto-Calculated Bay Reservation */}
                         <div className="sm:col-span-6">
                           <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5">
-                            Bay Slots Capacity
+                            Bay Reservation (Auto-Calculated)
                           </label>
-                          <select
-                            disabled={newServiceType === 'product'}
-                            value={newServiceType === 'product' ? 0 : newServiceSlotsRequired}
-                            onChange={(e) => setNewServiceSlotsRequired(parseInt(e.target.value, 10))}
-                            className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs bg-white text-slate-700 disabled:bg-slate-50 disabled:text-slate-400 font-medium"
-                          >
-                            <option value={0}>0 Slots (0 Bay Capacity • Retail / Non-slot)</option>
-                            <option value={1}>1 Slot (Takes 1 x 30m window)</option>
-                            <option value={2}>2 Slots (Takes 2 x 30m = 1.0 hr window)</option>
-                            <option value={3}>3 Slots (Takes 3 x 30m = 1.5 hrs window)</option>
-                            <option value={4}>4 Slots (Takes 4 x 30m = 2.0 hrs window)</option>
-                            <option value={5}>5 Slots (Takes 5 x 30m = 2.5 hrs window)</option>
-                            <option value={6}>6 Slots (Takes 6 x 30m = 3.0 hrs window)</option>
-                          </select>
+                          <div className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs bg-slate-50/90 text-slate-700 font-medium flex items-center justify-between">
+                            <span className="font-semibold text-slate-800">
+                              {newServiceType === 'product' || newServiceDuration === '0'
+                                ? '⚡ 0 Slots • Retail Product (No bay time)'
+                                : `⏱️ ${Math.max(1, Math.round(parseInt(newServiceDuration || '30', 10) / 30))} slot(s) in 1 bay (${newServiceDuration} mins)`}
+                            </span>
+                            <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100 shrink-0">
+                              {newServiceType === 'product' || newServiceDuration === '0' ? 'No Bay' : 'Takes 1 Bay'}
+                            </span>
+                          </div>
+                          <p className="text-[9px] text-slate-400 mt-1">
+                            {newServiceType === 'product' || newServiceDuration === '0'
+                              ? 'Instant retail product. Customers do not take up wash bay capacity.'
+                              : `Automatically calculated from duration. Reserves 1 wash bay for ${Math.max(1, Math.round(parseInt(newServiceDuration || '30', 10) / 30))} consecutive 30-min window(s).`}
+                          </p>
                         </div>
 
                         {/* Availability Toggle */}
@@ -4129,7 +4151,7 @@ export const OwnerDashboard: React.FC = () => {
                             type: newServiceType,
                             vehicleType: newServiceVehicleType,
                             isAvailable: newServiceIsAvailable,
-                            slotsRequired: newServiceType === 'product' ? 0 : newServiceSlotsRequired,
+                            slotsRequired: newServiceType === 'product' || durNum === 0 ? 0 : Math.max(1, Math.round(durNum / 30)),
                           };
 
                           const updatedList = [...editServices, newSvc];
@@ -4425,7 +4447,7 @@ export const OwnerDashboard: React.FC = () => {
                         )}
                       </div>
                       <span className="text-[10px] text-slate-400 block mt-0.5 font-mono">
-                        {svc.duration ? `${svc.duration} mins` : 'N/A'} • {svc.slotsRequired === 0 ? '0 Bay Slots (Flex)' : `${svc.slotsRequired || 1} Bay Slot(s)`}
+                        {svc.duration ? `${svc.duration} mins` : 'N/A'} • {svc.slotsRequired === 0 ? '0 Slots (Retail)' : `Takes 1 Bay • ${svc.slotsRequired || Math.ceil((svc.duration || 30) / 30)} slot(s)`}
                       </span>
                     </div>
                     <span className="font-black text-xs text-emerald-400 bg-emerald-950/60 border border-emerald-800/40 px-2 py-1 rounded-lg shrink-0 font-mono">
