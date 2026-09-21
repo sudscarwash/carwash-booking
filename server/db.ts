@@ -196,6 +196,12 @@ function convertQueryToPg(sql: string): string {
     ownerreplyat: 'owner_reply_at',
     ownerReplyBy: 'owner_reply_by',
     ownerreplyby: 'owner_reply_by',
+    ownerNavigationEnabled: 'owner_navigation_enabled',
+    ownernavigationenabled: 'owner_navigation_enabled',
+    ownerQrCodeEnabled: 'owner_qr_code_enabled',
+    ownerqrcodeenabled: 'owner_qr_code_enabled',
+    adminOtpRequired: 'admin_otp_required',
+    adminotprequired: 'admin_otp_required',
   };
 
   // Perform whole-word replacements to avoid matching partial strings
@@ -379,8 +385,47 @@ const mapUser = (row: any): UserWithPassword => {
   };
 };
 
+export const generateSlug = (name: string): string => {
+  return (name || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '') || 'wash';
+};
+
+/**
+ * Generates a unique vanity slug for a car wash.
+ * If "speedy-wash" already exists, it checks and creates "speedy-wash-2", "speedy-wash-3", etc.
+ */
+export async function getUniqueSlug(baseName: string, currentCarWashId?: string): Promise<string> {
+  const baseSlug = generateSlug(baseName) || 'wash';
+  let candidate = baseSlug;
+  let counter = 1;
+  while (true) {
+    let existing;
+    if (currentCarWashId) {
+      existing = await runQueryOne(
+        'SELECT id FROM car_washes WHERE LOWER(slug) = ? AND id != ?',
+        [candidate.toLowerCase(), currentCarWashId]
+      );
+    } else {
+      existing = await runQueryOne(
+        'SELECT id FROM car_washes WHERE LOWER(slug) = ?',
+        [candidate.toLowerCase()]
+      );
+    }
+    if (!existing) {
+      return candidate;
+    }
+    counter++;
+    candidate = `${baseSlug}-${counter}`;
+  }
+}
+
 const mapCarWash = (row: any): CarWash => {
   if (!row) return row;
+  const rawSlug = row.slug !== undefined ? row.slug : (row.slug ?? undefined);
+  const slug = rawSlug || generateSlug(row.name || 'wash');
   const customPaymentsJson = row.customPaymentsJson ?? row.custom_payments_json ?? row.custompaymentsjson;
   let parsedCustom = [];
   try {
@@ -411,11 +456,18 @@ const mapCarWash = (row: any): CarWash => {
   const isActiveVal = row.isActive !== undefined ? row.isActive : (row.is_active !== undefined ? row.is_active : row.isactive);
   const bibdEnabledVal = row.bibdEnabled !== undefined ? row.bibdEnabled : (row.bibd_enabled !== undefined ? row.bibd_enabled : row.bibdenabled);
   const baiduriEnabledVal = row.baiduriEnabled !== undefined ? row.baiduriEnabled : (row.baiduri_enabled !== undefined ? row.baiduri_enabled : row.baidurienabled);
+  const ownerNavVal = row.ownerNavigationEnabled !== undefined 
+    ? row.ownerNavigationEnabled 
+    : (row.owner_navigation_enabled !== undefined ? row.owner_navigation_enabled : row.ownernavigationenabled);
+  const ownerQrVal = row.ownerQrCodeEnabled !== undefined
+    ? row.ownerQrCodeEnabled
+    : (row.owner_qr_code_enabled !== undefined ? row.owner_qr_code_enabled : row.ownerqrcodeenabled);
   const openingHours = row.openingHours ?? row.opening_hours ?? row.openinghours;
 
   return {
     id: row.id,
     name: row.name,
+    slug,
     description: row.description ?? undefined,
     locationLat: Number(row.locationLat ?? row.location_lat ?? row.locationlat),
     locationLng: Number(row.locationLng ?? row.location_lng ?? row.locationlng),
@@ -425,6 +477,8 @@ const mapCarWash = (row: any): CarWash => {
     capacityPerSlot: Number(row.capacityPerSlot ?? row.capacity_per_slot ?? row.capacityperslot),
     ownerId: row.ownerId ?? row.owner_id ?? row.ownerid,
     isActive: isActiveVal === 1 || isActiveVal === true || isActiveVal === '1',
+    ownerNavigationEnabled: ownerNavVal !== undefined ? (ownerNavVal === 1 || ownerNavVal === true || ownerNavVal === '1') : true,
+    ownerQrCodeEnabled: ownerQrVal !== undefined ? (ownerQrVal === 1 || ownerQrVal === true || ownerQrVal === '1') : false,
     createdAt: row.createdAt ?? row.created_at ?? row.createdat,
     phone: row.phone ?? undefined,
     instagram: row.instagram ?? undefined,
@@ -670,6 +724,7 @@ async function executeSeedFirestore() {
     'ALTER TABLE users ADD COLUMN passwordHash TEXT',
     'ALTER TABLE users ADD COLUMN createdAt TEXT',
     'ALTER TABLE car_washes ADD COLUMN isActive INTEGER DEFAULT 1',
+    'ALTER TABLE car_washes ADD COLUMN slug TEXT',
     'ALTER TABLE car_washes ADD COLUMN description TEXT',
     'ALTER TABLE car_washes ADD COLUMN locationLat REAL DEFAULT 4.8917',
     'ALTER TABLE car_washes ADD COLUMN locationLng REAL DEFAULT 114.9401',
@@ -698,6 +753,8 @@ async function executeSeedFirestore() {
     'ALTER TABLE car_washes ADD COLUMN paymentPolicy TEXT DEFAULT \'PRE_PAYMENT\'',
     'ALTER TABLE car_washes ADD COLUMN servicesJson TEXT',
     'ALTER TABLE car_washes ADD COLUMN scheduleOverridesJson TEXT',
+    'ALTER TABLE car_washes ADD COLUMN ownerNavigationEnabled INTEGER DEFAULT 1',
+    'ALTER TABLE car_washes ADD COLUMN ownerQrCodeEnabled INTEGER DEFAULT 0',
     'ALTER TABLE bookings ADD COLUMN carWashId TEXT',
     'ALTER TABLE bookings ADD COLUMN customerId TEXT',
     'ALTER TABLE bookings ADD COLUMN customerName TEXT',
@@ -722,11 +779,13 @@ async function executeSeedFirestore() {
     'ALTER TABLE bookings ADD COLUMN price REAL DEFAULT 0',
     'ALTER TABLE platform_info ADD COLUMN companyName TEXT',
     'ALTER TABLE platform_info ADD COLUMN description TEXT',
+    'ALTER TABLE platform_info ADD COLUMN adminOtpRequired INTEGER DEFAULT 1',
   ];
 
   // Try renaming un-underscored Postgres columns if present from legacy schemas
   if (usePostgres) {
     const renameQueries = [
+      'ALTER TABLE platform_info RENAME COLUMN adminotprequired TO admin_otp_required',
       'ALTER TABLE bookings RENAME COLUMN carwashid TO car_wash_id',
       'ALTER TABLE bookings RENAME COLUMN customerid TO customer_id',
       'ALTER TABLE bookings RENAME COLUMN customername TO customer_name',
@@ -907,6 +966,114 @@ async function executeSeedFirestore() {
     // Normalize all car wash payment policies to PAY_ON_SITE & clean up legacy dev asset paths
     await runQueryRun("UPDATE car_washes SET paymentPolicy = 'PAY_ON_SITE'");
     await runQueryRun("UPDATE car_washes SET logoUrl = NULL WHERE logoUrl LIKE '/src/assets/%'");
+    await runQueryRun("UPDATE car_washes SET slug = 'brunei-royal-auto-spa' WHERE id = 'cw_brunei' AND (slug IS NULL OR slug = '')");
+
+    const defaultBruneiServices = [
+      {
+        id: 'srv_express_wash',
+        name: 'Express Jet Wash & Towel Dry',
+        price: 10.00,
+        duration: 20,
+        type: 'service',
+        description: 'Fast exterior water jet foam rinse with soft microfiber hand dry. Ideal for a quick clean on the go.',
+        isPopular: false
+      },
+      {
+        id: 'srv_deluxe_wash',
+        name: 'Deluxe Foam Wash, Wax & Tyre Shine',
+        price: 25.00,
+        duration: 60,
+        type: 'service',
+        description: 'Full exterior foam wash, spray wax protection, deep interior vacuum, dashboard wipe, and premium tyre shine.',
+        isPopular: true
+      },
+      {
+        id: 'srv_ceramic_detail',
+        name: 'Premium Ceramic Coating & Deep Detailing',
+        price: 45.00,
+        duration: 90,
+        type: 'service',
+        description: 'Ultimate hand wash detailing with clay bar decontamination, hydrophobic ceramic spray sealant, and engine bay wipe.',
+        isPopular: false
+      },
+      {
+        id: 'addon_headlight',
+        name: 'Headlight Polish & Lens Restoration',
+        price: 15.00,
+        duration: 15,
+        type: 'addon',
+        description: 'Professional headlight lens clarity restoration removing yellowing, cloudiness and hazing.',
+        isPopular: false
+      },
+      {
+        id: 'addon_tyre',
+        name: 'Tyre Shine & Hydrophobic Rim Coating',
+        price: 5.00,
+        duration: 10,
+        type: 'addon',
+        description: 'Deep glossy tyre dressing and protective hydrophobic rim shine coat.',
+        isPopular: false
+      },
+      {
+        id: 'addon_windscreen',
+        name: 'Windscreen Rain-Repellent Treatment',
+        price: 8.00,
+        duration: 10,
+        type: 'addon',
+        description: 'Hydrophobic glass coating that repels rain drops and improves driving visibility in heavy downpours.',
+        isPopular: false
+      },
+      {
+        id: 'addon_steam',
+        name: 'Interior Steam Sanitization & Deodorizer',
+        price: 12.00,
+        duration: 20,
+        type: 'addon',
+        description: 'High-temperature steam treatment targeting AC vents, seats and carpets to eliminate bacteria and odors.',
+        isPopular: false
+      },
+      {
+        id: 'addon_engine',
+        name: 'Engine Bay Degreasing & Dressing',
+        price: 20.00,
+        duration: 25,
+        type: 'addon',
+        description: 'Safe engine compartment degreasing and protective rubber/plastic dressing for a show-room shine.',
+        isPopular: false
+      },
+      {
+        id: 'prod_microfiber',
+        name: 'Microfiber Detailing Towel Pack (3-pc)',
+        price: 6.00,
+        duration: 0,
+        type: 'product',
+        description: 'Ultra-soft 400GSM plush microfiber towels for scratch-free drying and interior wiping.',
+        isPopular: false
+      },
+      {
+        id: 'prod_shampoo',
+        name: 'PH-Neutral Auto Wash Shampoo 500ml',
+        price: 12.00,
+        duration: 0,
+        type: 'product',
+        description: 'Concentrated high-foaming car wash soap safe for wax and ceramic coatings.',
+        isPopular: false
+      },
+      {
+        id: 'prod_ceramic_spray',
+        name: 'Hydrophobic Ceramic Guard Spray 300ml',
+        price: 18.00,
+        duration: 0,
+        type: 'product',
+        description: 'Easy spray-on ceramic sealant providing 3 months of gloss and extreme water beading.',
+        isPopular: false
+      }
+    ];
+
+    await runQueryRun(
+      "UPDATE car_washes SET servicesJson = ? WHERE id = 'cw_brunei' AND (servicesJson IS NULL OR servicesJson = '' OR servicesJson = '[]')",
+      [JSON.stringify(defaultBruneiServices)]
+    );
   } catch (err) {
     console.error('Error ensuring Brunei location is seeded:', err);
   }
@@ -1464,18 +1631,49 @@ export async function getCarWashById(id: string): Promise<CarWash | null> {
   }
 }
 
+export async function getCarWashByIdOrSlug(identifier: string): Promise<CarWash | null> {
+  try {
+    if (!identifier) return null;
+    const clean = identifier.trim().toLowerCase();
+
+    // 1. Try by exact ID
+    let row = await runQueryOne('SELECT * FROM car_washes WHERE id = ?', [identifier]);
+    if (row) return mapCarWash(row);
+
+    // 2. Try by exact slug
+    row = await runQueryOne('SELECT * FROM car_washes WHERE LOWER(slug) = ?', [clean]);
+    if (row) return mapCarWash(row);
+
+    // 3. Fallback: match by slugified name from all records
+    const all = await getCarWashes();
+    const found = all.find((w) => 
+      w.id.toLowerCase() === clean || 
+      (w.slug && w.slug.toLowerCase() === clean) || 
+      generateSlug(w.name).toLowerCase() === clean
+    );
+    return found || null;
+  } catch (error) {
+    console.error('Database getCarWashByIdOrSlug Error:', error);
+    return null;
+  }
+}
+
 export async function createCarWash(carWash: CarWash): Promise<void> {
   try {
+    const slug = await getUniqueSlug(carWash.slug || carWash.name, carWash.id);
     const servicesStr = carWash.services ? JSON.stringify(carWash.services) : (carWash.servicesJson || '[]');
     const customPaymentsStr = carWash.customPaymentsJson || null;
+    const ownerNavVal = carWash.ownerNavigationEnabled !== undefined ? (carWash.ownerNavigationEnabled ? 1 : 0) : 1;
+    const ownerQrVal = carWash.ownerQrCodeEnabled !== undefined ? (carWash.ownerQrCodeEnabled ? 1 : 0) : 0;
     await runQueryRun(`
       INSERT INTO car_washes (
-        id, name, description, locationLat, locationLng, address, openingHours, slotDuration, capacityPerSlot, ownerId, isActive, createdAt, phone, instagram, paymentPolicy, logoUrl, bibdAccountName, bibdAccountNo, bibdEnabled, baiduriAccountName, baiduriAccountNo, baiduriEnabled, bibdQrImageUrl, baiduriQrImageUrl, customPaymentsJson, servicesJson
+        id, name, slug, description, locationLat, locationLng, address, openingHours, slotDuration, capacityPerSlot, ownerId, isActive, createdAt, phone, instagram, paymentPolicy, logoUrl, bibdAccountName, bibdAccountNo, bibdEnabled, baiduriAccountName, baiduriAccountNo, baiduriEnabled, bibdQrImageUrl, baiduriQrImageUrl, customPaymentsJson, servicesJson, ownerNavigationEnabled, ownerQrCodeEnabled
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       carWash.id,
       carWash.name,
+      slug,
       carWash.description || null,
       carWash.locationLat,
       carWash.locationLng,
@@ -1500,6 +1698,8 @@ export async function createCarWash(carWash: CarWash): Promise<void> {
       carWash.baiduriQrImageUrl || null,
       customPaymentsStr,
       servicesStr,
+      ownerNavVal,
+      ownerQrVal,
     ]);
   } catch (error) {
     console.error('Database createCarWash Error:', error);
@@ -1514,6 +1714,11 @@ export async function updateCarWash(id: string, data: Partial<CarWash>): Promise
     Object.entries(data).forEach(([key, val]) => {
       if (val === undefined) return;
 
+      if (key === 'slug') {
+        const cleanSlug = generateSlug(String(val));
+        columnMap.set('slug', cleanSlug);
+        return;
+      }
       if (key === 'customPaymentMethods') {
         return;
       }
@@ -1541,7 +1746,7 @@ export async function updateCarWash(id: string, data: Partial<CarWash>): Promise
         columnMap.set('scheduleOverridesJson', typeof val === 'string' ? val : JSON.stringify(val));
         return;
       }
-      if (key === 'isActive' || key === 'bibdEnabled' || key === 'baiduriEnabled') {
+      if (key === 'isActive' || key === 'bibdEnabled' || key === 'baiduriEnabled' || key === 'ownerNavigationEnabled' || key === 'ownerQrCodeEnabled') {
         columnMap.set(key, val ? 1 : 0);
         return;
       }
@@ -1580,6 +1785,7 @@ export async function updateCarWash(id: string, data: Partial<CarWash>): Promise
           'ALTER TABLE car_washes ADD COLUMN logo_url TEXT',
           'ALTER TABLE car_washes ADD COLUMN phone TEXT',
           'ALTER TABLE car_washes ADD COLUMN instagram TEXT',
+          'ALTER TABLE car_washes ADD COLUMN owner_navigation_enabled INTEGER DEFAULT 1',
         ];
         for (const colSql of fixCols) {
           try { await pgPool!.query(colSql); } catch (e) {}
@@ -2250,6 +2456,7 @@ export async function getPlatformInfo(): Promise<PlatformInfo> {
   try {
     const row = await runQueryOne('SELECT * FROM platform_info WHERE id = ?', ['autoshine_info']);
     if (row) {
+      const rawOtpVal = row.adminOtpRequired !== undefined ? row.adminOtpRequired : (row.admin_otp_required !== undefined ? row.admin_otp_required : row.adminotprequired);
       return {
         email: row.email ?? 'info@autoshinebn.com',
         contact: row.contact ?? '+673 8974459',
@@ -2258,6 +2465,7 @@ export async function getPlatformInfo(): Promise<PlatformInfo> {
         companyName: row.companyName ?? row.company_name ?? 'AUTOSHINE BN',
         description: row.description ?? "Brunei's premier car wash & auto detailing digital booking platform.",
         updatedAt: row.updatedAt ?? row.updated_at ?? new Date().toISOString(),
+        adminOtpRequired: rawOtpVal !== undefined ? (rawOtpVal === 1 || rawOtpVal === true || rawOtpVal === '1') : true,
       };
     }
   } catch (error) {
@@ -2272,6 +2480,7 @@ export async function getPlatformInfo(): Promise<PlatformInfo> {
     companyName: 'AUTOSHINE BN',
     description: "Brunei's premier car wash & auto detailing digital booking platform.",
     updatedAt: new Date().toISOString(),
+    adminOtpRequired: true,
   };
 }
 
@@ -2286,12 +2495,13 @@ export async function updatePlatformInfo(data: Partial<PlatformInfo>): Promise<P
       companyName: data.companyName !== undefined ? data.companyName.trim() : current.companyName,
       description: data.description !== undefined ? data.description.trim() : current.description,
       updatedAt: new Date().toISOString(),
+      adminOtpRequired: data.adminOtpRequired !== undefined ? !!data.adminOtpRequired : (current.adminOtpRequired ?? true),
     };
 
     if (usePostgres) {
       await runQueryRun(`
-        INSERT INTO platform_info (id, email, contact, whatsapp, address, company_name, description, updated_at)
-        VALUES ('autoshine_info', ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO platform_info (id, email, contact, whatsapp, address, company_name, description, updated_at, admin_otp_required)
+        VALUES ('autoshine_info', ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (id) DO UPDATE SET
           email = EXCLUDED.email,
           contact = EXCLUDED.contact,
@@ -2299,7 +2509,8 @@ export async function updatePlatformInfo(data: Partial<PlatformInfo>): Promise<P
           address = EXCLUDED.address,
           company_name = EXCLUDED.company_name,
           description = EXCLUDED.description,
-          updated_at = EXCLUDED.updated_at
+          updated_at = EXCLUDED.updated_at,
+          admin_otp_required = EXCLUDED.admin_otp_required
       `, [
         updated.email,
         updated.contact,
@@ -2307,12 +2518,13 @@ export async function updatePlatformInfo(data: Partial<PlatformInfo>): Promise<P
         updated.address,
         updated.companyName || 'Autoshine BN',
         updated.description || '',
-        updated.updatedAt
+        updated.updatedAt,
+        updated.adminOtpRequired ? 1 : 0
       ]);
     } else {
       await runQueryRun(`
-        INSERT INTO platform_info (id, email, contact, whatsapp, address, companyName, description, updatedAt)
-        VALUES ('autoshine_info', ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO platform_info (id, email, contact, whatsapp, address, companyName, description, updatedAt, adminOtpRequired)
+        VALUES ('autoshine_info', ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           email = excluded.email,
           contact = excluded.contact,
@@ -2320,7 +2532,8 @@ export async function updatePlatformInfo(data: Partial<PlatformInfo>): Promise<P
           address = excluded.address,
           companyName = excluded.companyName,
           description = excluded.description,
-          updatedAt = excluded.updatedAt
+          updatedAt = excluded.updatedAt,
+          adminOtpRequired = excluded.adminOtpRequired
       `, [
         updated.email,
         updated.contact,
@@ -2328,7 +2541,8 @@ export async function updatePlatformInfo(data: Partial<PlatformInfo>): Promise<P
         updated.address,
         updated.companyName || 'Autoshine BN',
         updated.description || '',
-        updated.updatedAt
+        updated.updatedAt,
+        updated.adminOtpRequired ? 1 : 0
       ]);
     }
 

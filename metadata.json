@@ -1,6 +1,6 @@
 {
-  "name": "Production Car Wash Booking system (for supabase) - ",
-  "description": "Autoshine BN - Premium Car Wash & Auto Detailing Booking Platform in Brunei",
+  "name": "Development Car Wash Booking system (for supabase)",
+  "description": "Full-stack car wash booking system with real-time bay scheduling, customer QR code generator, and direct station booking pages.",
   "requestFramePermissions": [
     "geolocation"
   ],

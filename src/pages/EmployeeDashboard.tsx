@@ -9,7 +9,8 @@ import { BookingStatus, Booking, CarWash, WashService } from '../types.js';
 import {
   Briefcase as BriefcaseIcon, Calendar as CalendarIcon, Clock as ClockIcon, Check as CheckIcon, ChevronRight as ChevronRightIcon,
   CheckCircle as CheckCircleIcon, Info as InfoIcon, MapPin as MapPinIcon, CalendarDays, ChevronLeft, ChevronRight, Plus,
-  Sparkles, Phone, Car, User as UserIcon, X, CheckCheck, Pencil, MessageCircle, CreditCard
+  Sparkles, Phone, Car, User as UserIcon, X, CheckCheck, Pencil, MessageCircle, CreditCard,
+  Search, Filter
 } from 'lucide-react';
 import { EditBookingModal } from '../components/EditBookingModal.js';
 import { ServicePickerModal } from '../components/ServicePickerModal.js';
@@ -210,6 +211,55 @@ export const EmployeeDashboard: React.FC = () => {
   // Employees can view and manage bookings for their assigned business
   const myLocation = locations.find((loc) => loc.id === user?.businessId);
   const filteredBookings = bookings.filter((b) => b.carWashId === user?.businessId);
+
+  const [queueStatusFilter, setQueueStatusFilter] = useState<'ACTIVE' | 'IN_PROGRESS' | 'PENDING' | 'COMPLETED' | 'ALL'>('ACTIVE');
+  const [queueSearch, setQueueSearch] = useState('');
+
+  const queueCounts = useMemo(() => {
+    let inProgress = 0;
+    let pending = 0;
+    let completed = 0;
+    filteredBookings.forEach((b) => {
+      if (b.status === BookingStatus.IN_PROGRESS) inProgress++;
+      else if (b.status === BookingStatus.PENDING) pending++;
+      else if (b.status === BookingStatus.COMPLETED) completed++;
+    });
+    return {
+      active: inProgress + pending,
+      inProgress,
+      pending,
+      completed,
+      all: filteredBookings.length
+    };
+  }, [filteredBookings]);
+
+  const displayedQueueBookings = useMemo(() => {
+    return filteredBookings.filter((b) => {
+      if (queueStatusFilter === 'ACTIVE') {
+        if (b.status !== BookingStatus.IN_PROGRESS && b.status !== BookingStatus.PENDING) return false;
+      } else if (queueStatusFilter === 'IN_PROGRESS') {
+        if (b.status !== BookingStatus.IN_PROGRESS) return false;
+      } else if (queueStatusFilter === 'PENDING') {
+        if (b.status !== BookingStatus.PENDING) return false;
+      } else if (queueStatusFilter === 'COMPLETED') {
+        if (b.status !== BookingStatus.COMPLETED) return false;
+      }
+
+      if (queueSearch.trim()) {
+        const q = queueSearch.toLowerCase().trim();
+        const matchesName = (b.customerName || '').toLowerCase().includes(q);
+        const matchesVehicle = (b.vehicleInfo || '').toLowerCase().includes(q);
+        const matchesPhone = (b.customerPhone || '').toLowerCase().includes(q);
+        const matchesService = (b.serviceName || '').toLowerCase().includes(q);
+        const matchesId = (b.id || '').toLowerCase().includes(q);
+        if (!matchesName && !matchesVehicle && !matchesPhone && !matchesService && !matchesId) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [filteredBookings, queueStatusFilter, queueSearch]);
 
   const myLocationPaymentMethods = useMemo(() => {
     if (!myLocation) return [];
@@ -467,194 +517,398 @@ export const EmployeeDashboard: React.FC = () => {
       <div className="space-y-6">
         {activeTab === 'queue' && (
           <div className="space-y-6 animate-fade-in">
-            <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
-              <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-6">
-                <h2 className="text-base sm:text-lg font-bold text-slate-800 flex items-center gap-2">
-                  <ClockIcon className="h-5 w-5 text-amber-500" />
-                  Active Wash Queue ({filteredBookings.length})
-                </h2>
-                <span className="text-xs text-slate-500 font-bold">Real-time update</span>
+            <div className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl p-3.5 sm:p-6 shadow-sm">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100 mb-4 sm:mb-6">
+                <div>
+                  <h2 className="text-base sm:text-lg font-bold text-slate-800 flex items-center gap-2">
+                    <ClockIcon className="h-5 w-5 text-amber-500 shrink-0" />
+                    <span>Wash Queue</span>
+                    <span className="text-xs bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full font-mono">
+                      {displayedQueueBookings.length}
+                    </span>
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-0.5">Manage live vehicle washing, queue status, and customer payments</p>
+                </div>
+                
+                {/* Search Bar for Mobile & Desktop */}
+                <div className="relative w-full sm:w-64">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    value={queueSearch}
+                    onChange={(e) => setQueueSearch(e.target.value)}
+                    placeholder="Search plate, customer, phone..."
+                    className="w-full pl-9 pr-7 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all"
+                  />
+                  {queueSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setQueueSearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
 
-              {filteredBookings.length === 0 ? (
-                <div className="text-center py-16 text-slate-400">
-                  <CheckCircleIcon className="h-10 w-10 text-emerald-200 mx-auto mb-2 animate-bounce" />
-                  <p className="font-semibold text-sm text-slate-600">All clean! Queue is currently empty.</p>
-                  <p className="text-xs text-slate-400 mt-1">New customer slot bookings will show up here automatically.</p>
+              {/* Filter Tabs for Queue Status */}
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-3 mb-4 -mx-1 px-1">
+                <button
+                  type="button"
+                  onClick={() => setQueueStatusFilter('ACTIVE')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
+                    queueStatusFilter === 'ACTIVE'
+                      ? 'bg-amber-500 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  <span>⚡ Active Wash & Queue</span>
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                    queueStatusFilter === 'ACTIVE' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
+                  }`}>
+                    {queueCounts.active}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setQueueStatusFilter('IN_PROGRESS')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
+                    queueStatusFilter === 'IN_PROGRESS'
+                      ? 'bg-sky-600 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  <span className="inline-block w-2 h-2 rounded-full bg-sky-400 animate-ping" />
+                  <span>In Bay ({queueCounts.inProgress})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setQueueStatusFilter('PENDING')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
+                    queueStatusFilter === 'PENDING'
+                      ? 'bg-amber-600 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  <span>Waiting ({queueCounts.pending})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setQueueStatusFilter('COMPLETED')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
+                    queueStatusFilter === 'COMPLETED'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  <span>Done ({queueCounts.completed})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setQueueStatusFilter('ALL')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                    queueStatusFilter === 'ALL'
+                      ? 'bg-slate-800 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  <span>All Records ({queueCounts.all})</span>
+                </button>
+              </div>
+
+              {displayedQueueBookings.length === 0 ? (
+                <div className="text-center py-12 text-slate-400 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+                  <CheckCircleIcon className="h-9 w-9 text-emerald-300 mx-auto mb-2 animate-bounce" />
+                  <p className="font-semibold text-sm text-slate-600">No bookings match this filter.</p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    {queueSearch ? `No results found for "${queueSearch}"` : 'Bookings will update automatically in real-time.'}
+                  </p>
+                  {queueSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setQueueSearch('')}
+                      className="mt-3 text-xs font-bold text-amber-600 hover:underline"
+                    >
+                      Clear Search
+                    </button>
+                  )}
                 </div>
               ) : (
-                <div className="space-y-4">
-                  {filteredBookings.map((bk) => (
+                <div className="space-y-3.5">
+                  {displayedQueueBookings.map((bk) => (
                     <div
                       key={bk.id}
-                      className="bg-white border border-slate-150 rounded-2xl p-4 hover:border-slate-300 hover:shadow-xs transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                      className={`bg-white border rounded-2xl p-3.5 sm:p-5 transition-all shadow-xs ${
+                        bk.status === BookingStatus.IN_PROGRESS
+                          ? 'border-sky-300 ring-1 ring-sky-200/60 bg-gradient-to-br from-white to-sky-50/30'
+                          : bk.status === BookingStatus.PENDING
+                          ? 'border-amber-200 hover:border-amber-300'
+                          : 'border-slate-200 hover:border-slate-300'
+                      }`}
                       id={`emp-queue-card-${bk.id}`}
                     >
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] bg-amber-50 border border-amber-100 text-amber-800 font-bold px-1.5 py-0.5 rounded font-mono uppercase">
-                            ID: {bk.id}
+                      {/* Top Header: Time Slot, Status Badge, Booking Source, Booking ID */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-100">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="inline-flex items-center gap-1 text-xs font-black text-slate-800 bg-slate-100 px-2 py-0.5 rounded-md font-mono">
+                            <ClockIcon className="w-3 h-3 text-slate-500" />
+                            <span>{bk.timeSlot}</span>
                           </span>
-                          <span className="text-slate-400">|</span>
-                          <span className="text-xs font-bold text-slate-500 font-mono">
-                            {bk.date} @ {bk.timeSlot}
+                          <span className="text-[11px] font-bold text-slate-400 font-mono">
+                            {bk.date}
                           </span>
                           {bk.bookingSource && (
-                            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 border border-slate-200">
-                              {bk.bookingSource === 'WALK_IN' ? '🚗 Walk-In' : bk.bookingSource === 'PHONE' ? '📞 Phone' : '🌐 App'}
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                              {bk.bookingSource === 'WALK_IN' ? '🚗 Walk-In' : bk.bookingSource === 'PHONE' ? '📞 Phone' : '🌐 Online'}
                             </span>
                           )}
                         </div>
 
-                        <div className="text-left space-y-1">
-                          <strong className="text-slate-800 text-sm sm:text-base block">{bk.customerName}</strong>
+                        <div className="flex items-center gap-2">
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-[11px] uppercase tracking-wide border ${
+                            bk.status === BookingStatus.COMPLETED
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                              : bk.status === BookingStatus.IN_PROGRESS
+                              ? 'bg-sky-50 text-sky-800 border-sky-200 animate-pulse'
+                              : bk.status === BookingStatus.PENDING
+                              ? 'bg-amber-50 text-amber-800 border-amber-200'
+                              : bk.status === BookingStatus.REJECTED
+                              ? 'bg-rose-50 text-rose-800 border-rose-200'
+                              : 'bg-slate-50 text-slate-600 border-slate-200'
+                          }`}>
+                            {bk.status === BookingStatus.IN_PROGRESS && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-ping inline-block" />
+                            )}
+                            {bk.status === BookingStatus.COMPLETED ? 'Done' : bk.status === BookingStatus.IN_PROGRESS ? 'In Bay' : bk.status}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-mono">#{bk.id}</span>
+                        </div>
+                      </div>
 
-                          {/* Customer Phone Number with Icon & Label */}
-                          {bk.customerPhone && bk.customerPhone.trim() !== '' && bk.customerPhone.trim().toUpperCase() !== 'NA' && bk.customerPhone.trim().toUpperCase() !== 'N/A' ? (
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="inline-flex items-center gap-1 text-xs text-slate-700 font-mono font-bold bg-slate-50 px-2 py-0.5 rounded-lg border border-slate-200">
-                                <Phone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                                <span className="text-[10px] text-slate-400 font-sans uppercase font-bold">Phone:</span>
-                                <a href={`tel:${bk.customerPhone}`} className="hover:text-amber-600 hover:underline">{bk.customerPhone}</a>
+                      {/* Middle Body: Vehicle info, Customer & Contacts, Services, Notes */}
+                      <div className="py-3 space-y-2.5">
+                        {/* Plate & Customer Row */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {bk.vehicleInfo ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-900 text-amber-300 font-mono font-black text-xs sm:text-sm rounded-lg shadow-2xs tracking-wider border border-slate-700">
+                                <Car className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                <span>{bk.vehicleInfo}</span>
                               </span>
-                              <button
-                                type="button"
-                                onClick={() => openWhatsAppCustomer(bk.customerPhone, bk.customerName, bk.date, bk.timeSlot, bk.serviceName)}
-                                className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-[10px] font-bold border border-emerald-200 cursor-pointer shadow-2xs"
-                                title="Send WhatsApp Message"
-                              >
-                                <MessageCircle className="w-3 h-3 fill-emerald-600" />
-                                <span>WhatsApp</span>
-                              </button>
-                            </div>
-                          ) : (
-                            <span className="text-slate-400 text-[10px] italic flex items-center gap-1">
-                              <Phone className="w-3 h-3 text-slate-300" />
-                              <span>No phone recorded</span>
-                            </span>
-                          )}
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 text-slate-600 font-mono font-bold text-xs rounded-lg">
+                                <Car className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                <span>Vehicle N/A</span>
+                              </span>
+                            )}
+                            <strong className="text-slate-900 text-sm sm:text-base">{bk.customerName}</strong>
+                          </div>
 
-                          {bk.vehicleInfo && (
-                            <div className="flex items-center gap-1.5 text-xs text-slate-600 font-semibold">
-                              <Car className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                              <span>Vehicle: <strong>{bk.vehicleInfo}</strong></span>
-                            </div>
-                          )}
+                          {/* Contact buttons */}
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {bk.customerPhone && bk.customerPhone.trim() !== '' && bk.customerPhone.trim().toUpperCase() !== 'NA' && bk.customerPhone.trim().toUpperCase() !== 'N/A' ? (
+                              <>
+                                <a
+                                  href={`tel:${bk.customerPhone}`}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-xs font-bold transition-colors font-mono"
+                                  title="Call Customer"
+                                >
+                                  <Phone className="w-3.5 h-3.5 text-emerald-600" />
+                                  <span>{bk.customerPhone}</span>
+                                </a>
+                                <button
+                                  type="button"
+                                  onClick={() => openWhatsAppCustomer(bk.customerPhone, bk.customerName, bk.date, bk.timeSlot, bk.serviceName)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold transition-colors cursor-pointer shadow-2xs"
+                                  title="Send WhatsApp Message"
+                                >
+                                  <MessageCircle className="w-3.5 h-3.5 fill-emerald-600" />
+                                  <span>WhatsApp</span>
+                                </button>
+                              </>
+                            ) : (
+                              <span className="text-slate-400 text-[11px] italic flex items-center gap-1">
+                                <Phone className="w-3 h-3 text-slate-300" />
+                                <span>No phone recorded</span>
+                              </span>
+                            )}
+                          </div>
+                        </div>
 
-                          {bk.paymentBank && bk.paymentBank.trim().length > 0 && bk.paymentBank.toUpperCase() !== 'CASH' ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] bg-sky-50 border border-sky-200/80 text-sky-800 font-extrabold px-2 py-0.5 rounded-lg mt-1 font-mono">
-                              <span>📱</span> Pay on Site ({bk.paymentBank}){bk.txnReference ? ` • #${bk.txnReference}` : ''}
+                        {/* Service Item & Pricing Bar */}
+                        <div className="flex items-center justify-between gap-2 bg-slate-50 border border-slate-150 rounded-xl px-3 py-2 text-xs sm:text-sm">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
+                            <span className="font-bold text-slate-800 truncate">
+                              {bk.serviceName || 'Standard Car Wash & Vacuum'}
                             </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-[10px] bg-emerald-50 border border-emerald-200/80 text-emerald-800 font-extrabold px-2 py-0.5 rounded-lg mt-1 font-mono">
-                              <span>💵</span> Pay on Site (Cash)
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="font-mono font-black text-slate-900 text-xs sm:text-sm">
+                              ${Number(bk.price || 15).toFixed(2)}
                             </span>
-                          )}
+                            {bk.paymentBank && bk.paymentBank.trim().length > 0 && bk.paymentBank.toUpperCase() !== 'CASH' ? (
+                              <span className="text-[10px] bg-sky-50 border border-sky-200 text-sky-800 font-extrabold px-1.5 py-0.5 rounded font-mono">
+                                📱 {bk.paymentBank}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] bg-emerald-50 border border-emerald-200 text-emerald-800 font-extrabold px-1.5 py-0.5 rounded font-mono">
+                                💵 Cash
+                              </span>
+                            )}
+                          </div>
                         </div>
 
                         {bk.notes && (
-                          <div className="text-xs text-slate-500 bg-slate-50 border border-slate-100 px-3 py-2 rounded-xl max-w-md text-left">
-                            <span className="font-bold text-[9px] text-slate-400 block uppercase">Notes / Vehicle Specs:</span>
+                          <div className="text-xs text-slate-600 bg-amber-50/50 border border-amber-100/80 px-3 py-2 rounded-xl text-left">
+                            <span className="font-bold text-[10px] text-amber-800 block uppercase tracking-wide">Customer Notes / Requests:</span>
                             {bk.notes}
                           </div>
                         )}
                       </div>
 
-                      <div className="flex flex-col sm:items-end justify-center gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-50">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full font-bold text-xs uppercase border ${
-                          bk.status === BookingStatus.COMPLETED
-                            ? 'bg-emerald-50 text-emerald-800 border-emerald-100'
-                            : bk.status === BookingStatus.IN_PROGRESS
-                            ? 'bg-sky-50 text-sky-800 border-sky-100 animate-pulse'
-                            : bk.status === BookingStatus.PENDING
-                            ? 'bg-amber-50 text-amber-800 border-amber-100'
-                            : bk.status === BookingStatus.REJECTED
-                            ? 'bg-rose-50 text-rose-800 border-rose-100'
-                            : 'bg-slate-50 text-slate-600 border-slate-100'
-                        }`}>
-                          {bk.status}
-                        </span>
+                      {/* Bottom Action Section: Mobile-First Thumb Friendly Buttons */}
+                      <div className="pt-3 border-t border-slate-100 flex flex-col gap-2">
+                        {bk.status === BookingStatus.PENDING && (
+                          <>
+                            {/* Primary Full-width Mobile CTA */}
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateStatus(bk.id, BookingStatus.IN_PROGRESS)}
+                              disabled={updatingId === bk.id}
+                              className="w-full min-h-[44px] py-2.5 px-4 bg-sky-600 hover:bg-sky-500 active:scale-[0.99] text-white font-bold text-sm rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+                              id={`emp-start-${bk.id}`}
+                            >
+                              <ClockIcon className="w-4 h-4" />
+                              <span>Start Wash (Move into Bay)</span>
+                              <ChevronRightIcon className="w-4 h-4" />
+                            </button>
 
-                        <div className="flex flex-wrap items-center gap-2 justify-end">
-                          <button
-                            onClick={() => {
-                              setEditingBooking(bk);
-                              setShowEditBookingModal(true);
-                            }}
-                            className="px-2.5 py-1.5 border border-indigo-200 text-indigo-700 hover:bg-indigo-50 font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
-                            title="Edit Services, Add-ons & Price"
-                          >
-                            <Pencil className="h-3.5 w-3.5 text-indigo-600" />
-                            <span>Edit Services / Extras</span>
-                          </button>
-
-                          {bk.status === BookingStatus.PENDING && (
-                            <>
+                            {/* Secondary Actions Row */}
+                            <div className="flex items-center gap-2 flex-wrap justify-between pt-1">
                               <button
-                                onClick={() => handleUpdateStatus(bk.id, BookingStatus.IN_PROGRESS)}
-                                disabled={updatingId === bk.id}
-                                className="px-3.5 py-1.5 bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs rounded-xl shadow-xs transition-colors flex items-center gap-1 cursor-pointer"
-                                id={`emp-start-${bk.id}`}
-                              >
-                                Start Wash <ChevronRightIcon className="h-3 w-3" />
-                              </button>
-                              <button
-                                onClick={() => handleUpdateStatus(bk.id, BookingStatus.CANCELLED)}
-                                disabled={updatingId === bk.id}
-                                className="px-2.5 py-1.5 border border-rose-250 text-rose-600 hover:bg-rose-50 font-bold text-xs rounded-xl transition-all cursor-pointer"
-                                title="Cancel booking"
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                onClick={() => handleUpdateStatus(bk.id, BookingStatus.REJECTED)}
-                                disabled={updatingId === bk.id}
-                                className="px-2.5 py-1.5 border border-slate-200 text-slate-600 hover:bg-slate-50 font-bold text-xs rounded-xl transition-all cursor-pointer"
-                                title="Reject booking"
-                              >
-                                Reject
-                              </button>
-                            </>
-                          )}
-
-                          {bk.status === BookingStatus.IN_PROGRESS && (
-                            <>
-                              <button
+                                type="button"
                                 onClick={() => {
-                                  setSettlementBooking(bk);
-                                  setShowSettlementModal(true);
+                                  setEditingBooking(bk);
+                                  setShowEditBookingModal(true);
                                 }}
-                                disabled={updatingId === bk.id}
-                                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-xs transition-colors flex items-center gap-1 cursor-pointer animate-pulse"
-                                id={`emp-complete-${bk.id}`}
+                                className="px-3 py-2 border border-indigo-200 text-indigo-700 hover:bg-indigo-50 font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                                title="Edit Services, Add-ons & Price"
                               >
-                                <CheckIcon className="h-3.5 w-3.5" /> Finish & Done
+                                <Pencil className="h-3.5 w-3.5 text-indigo-600" />
+                                <span>Edit Service / Price</span>
                               </button>
+
+                              <div className="flex items-center gap-1.5 ml-auto">
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateStatus(bk.id, BookingStatus.CANCELLED)}
+                                  disabled={updatingId === bk.id}
+                                  className="px-3 py-2 border border-rose-200 text-rose-600 hover:bg-rose-50 font-bold text-xs rounded-xl transition-all cursor-pointer"
+                                  title="Cancel booking"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateStatus(bk.id, BookingStatus.REJECTED)}
+                                  disabled={updatingId === bk.id}
+                                  className="px-3 py-2 border border-slate-200 text-slate-600 hover:bg-slate-50 font-bold text-xs rounded-xl transition-all cursor-pointer"
+                                  title="Reject booking"
+                                >
+                                  Reject
+                                </button>
+                              </div>
+                            </div>
+                          </>
+                        )}
+
+                        {bk.status === BookingStatus.IN_PROGRESS && (
+                          <>
+                            {/* Primary Complete CTA */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSettlementBooking(bk);
+                                setShowSettlementModal(true);
+                              }}
+                              disabled={updatingId === bk.id}
+                              className="w-full min-h-[44px] py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.99] text-white font-bold text-sm rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+                              id={`emp-complete-${bk.id}`}
+                            >
+                              <CheckIcon className="h-4 w-4" />
+                              <span>Complete Wash & Settle Payment (${Number(bk.price || 15).toFixed(2)})</span>
+                            </button>
+
+                            {/* Secondary Actions Row */}
+                            <div className="flex items-center gap-2 flex-wrap justify-between pt-1">
                               <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingBooking(bk);
+                                  setShowEditBookingModal(true);
+                                }}
+                                className="px-3 py-2 border border-indigo-200 text-indigo-700 hover:bg-indigo-50 font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                                title="Edit Services, Add-ons & Price"
+                              >
+                                <Pencil className="h-3.5 w-3.5 text-indigo-600" />
+                                <span>Edit Service / Price</span>
+                              </button>
+
+                              <button
+                                type="button"
                                 onClick={() => handleUpdateStatus(bk.id, BookingStatus.CANCELLED)}
                                 disabled={updatingId === bk.id}
-                                className="px-2.5 py-1.5 border border-rose-250 text-rose-600 hover:bg-rose-50 font-bold text-xs rounded-xl transition-all cursor-pointer"
+                                className="px-3 py-2 border border-rose-200 text-rose-600 hover:bg-rose-50 font-bold text-xs rounded-xl transition-all cursor-pointer ml-auto"
                                 title="Cancel mid-wash"
                               >
                                 Cancel
                               </button>
-                            </>
-                          )}
+                            </div>
+                          </>
+                        )}
 
-                          {(bk.status === BookingStatus.COMPLETED || bk.status === BookingStatus.CANCELLED || bk.status === BookingStatus.REJECTED) && (
+                        {(bk.status === BookingStatus.COMPLETED || bk.status === BookingStatus.CANCELLED || bk.status === BookingStatus.REJECTED) && (
+                          <div className="flex items-center justify-between gap-2 py-1">
+                            <span className="text-xs font-mono text-slate-500 font-semibold flex items-center gap-1.5">
+                              {bk.status === BookingStatus.COMPLETED ? (
+                                <>
+                                  <CheckCheck className="w-4 h-4 text-emerald-600" />
+                                  <span>Wash completed & settled</span>
+                                </>
+                              ) : (
+                                <span className="text-slate-400 italic">No further actions required</span>
+                              )}
+                            </span>
                             <div className="flex items-center gap-2">
-                              <span className="text-[11px] font-mono text-slate-400 italic">No actions pending</span>
                               <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingBooking(bk);
+                                  setShowEditBookingModal(true);
+                                }}
+                                className="px-2.5 py-1.5 border border-slate-200 text-slate-600 hover:bg-slate-50 font-bold text-xs rounded-lg transition-all cursor-pointer"
+                                title="View/Edit Details"
+                              >
+                                View Details
+                              </button>
+                              <button
+                                type="button"
                                 onClick={() => handleUpdateStatus(bk.id, BookingStatus.PENDING)}
                                 disabled={updatingId === bk.id}
-                                className="px-2 py-0.5 text-slate-500 hover:text-indigo-600 border border-slate-200 hover:border-indigo-100 bg-white hover:bg-indigo-50 rounded-lg text-[10px] font-bold font-mono transition-all cursor-pointer"
+                                className="px-2.5 py-1.5 text-slate-500 hover:text-indigo-600 border border-slate-200 hover:border-indigo-200 bg-white hover:bg-indigo-50 rounded-lg text-xs font-bold font-mono transition-all cursor-pointer"
                                 title="Revert status to Pending"
                               >
                                 Revert
                               </button>
                             </div>
-                          )}
-                        </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -1272,34 +1526,34 @@ export const EmployeeDashboard: React.FC = () => {
 
               {/* Service Selection & Custom Price */}
               <div className="col-span-full space-y-2">
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider">
                     Selected Services & Products ({mbSelectedItems.length})
                   </label>
                   <button
                     type="button"
                     onClick={() => setShowServicePickerModal(true)}
-                    className="text-xs font-black text-amber-800 hover:text-amber-950 bg-amber-50 hover:bg-amber-100 px-3 py-1.5 rounded-xl border border-amber-200 transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                    className="w-full sm:w-auto text-xs font-black text-amber-900 bg-amber-100 hover:bg-amber-200 px-3.5 py-2 rounded-xl border border-amber-300 transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs min-h-[38px]"
                   >
-                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                    <span>+ Tick & Choose Services (Multi-Select)</span>
+                    <Sparkles className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                    <span>Tick & Choose Services (Multi-Select)</span>
                   </button>
                 </div>
 
                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
                   {mbSelectedItems.length === 0 ? (
                     <div className="text-center py-3 text-xs text-slate-400 font-medium">
-                      No services selected yet. Click "+ Tick & Choose Services" above.
+                      No services selected yet. Click "Tick & Choose Services" above.
                     </div>
                   ) : (
-                    <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
                       {mbSelectedItems.map((item, idx) => (
                         <div
                           key={`${item.id}_${idx}`}
-                          className="flex items-center justify-between bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-2xs text-xs"
+                          className="flex flex-col sm:flex-row sm:items-center justify-between bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs gap-1.5 text-xs"
                         >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase ${
+                          <div className="flex items-start gap-2 min-w-0">
+                            <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase shrink-0 mt-0.5 ${
                               item.type === 'product'
                                 ? 'bg-emerald-100 text-emerald-800'
                                 : item.type === 'addon'
@@ -1308,9 +1562,11 @@ export const EmployeeDashboard: React.FC = () => {
                             }`}>
                               {item.type === 'product' ? 'Product' : item.type === 'addon' ? 'Add-on' : 'Main'}
                             </span>
-                            <span className="font-extrabold text-slate-800 truncate">{item.name}</span>
+                            <span className="font-extrabold text-slate-800 text-xs sm:text-sm leading-snug break-words whitespace-normal">
+                              {item.name}
+                            </span>
                           </div>
-                          <span className="font-mono font-black text-slate-900 shrink-0 ml-2">
+                          <span className="font-mono font-black text-slate-900 shrink-0 self-end sm:self-center ml-2">
                             BND ${(Number(item.price) || 0).toFixed(2)}
                           </span>
                         </div>

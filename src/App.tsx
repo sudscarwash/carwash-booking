@@ -13,14 +13,16 @@ import { AdminDashboard } from './pages/AdminDashboard.js';
 import { SpecialUserDashboard } from './pages/SpecialUserDashboard.js';
 import { ErrorBoundary } from './components/ErrorBoundary.js';
 import { TermsAndConditionsContent } from './components/TermsAndConditionsContent.js';
-import { Role } from './types.js';
+import { PublicOperatorView } from './components/PublicOperatorView.js';
+import { BookingFlowModal } from './components/BookingFlowModal.js';
+import { Role, CarWash } from './types.js';
 import { isValidEmail } from './lib/validation.js';
 import { useModalBack } from './utils/useBackHandler.js';
-import { Lock, Mail, UserPlus, LogIn, Sparkles, Compass, Sliders, Briefcase, Shield, Check, Info, X, AlertTriangle, LogOut, Eye, EyeOff, Building, Phone, MapPin } from 'lucide-react';
+import { Lock, Mail, UserPlus, LogIn, Sparkles, Compass, Sliders, Briefcase, Shield, ShieldAlert, KeyRound, Check, Info, X, AlertTriangle, LogOut, Eye, EyeOff, Building, Phone, MapPin } from 'lucide-react';
 import autoshineLogo from './assets/images/autoshine_logo.jpg';
 
 const MainAppContent: React.FC = () => {
-  const { user, loading, login, register, verifyRegistrationOtp, resendRegistrationOtp, notification, clearNotification, forgotPassword, resetPassword, showNotification, platformInfo } = useApp();
+  const { user, loading, login, verifyAdminOtp, resendAdminOtp, register, verifyRegistrationOtp, resendRegistrationOtp, notification, clearNotification, forgotPassword, resetPassword, showNotification, platformInfo, locations, createBooking } = useApp();
 
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isRegisterMode, setIsRegisterMode] = useState(() => window.location.pathname === '/register');
@@ -29,7 +31,106 @@ const MainAppContent: React.FC = () => {
   const [isRegisterOtpMode, setIsRegisterOtpMode] = useState(false);
   const [pendingRegisterEmail, setPendingRegisterEmail] = useState('');
   const [registerOtpCode, setRegisterOtpCode] = useState('');
+  const [isAdminOtpMode, setIsAdminOtpMode] = useState(false);
+  const [pendingAdminEmail, setPendingAdminEmail] = useState('');
+  const [adminOtpCode, setAdminOtpCode] = useState('');
+  const [adminOtpDevCode, setAdminOtpDevCode] = useState<string | null>(null);
   const [showExitConfirmModal, setShowExitConfirmModal] = useState(false);
+
+  const isDevMode = import.meta.env.DEV || window.location.hostname === 'localhost' || window.location.hostname.includes('127.0.0.1');
+
+  // Direct QR Code / Operator Vanity URL State
+  const [publicOperatorSlug, setPublicOperatorSlug] = useState<string | null>(() => {
+    const path = window.location.pathname;
+    const match = path.match(/^\/(?:wash|book|operator)\/([^/?#]+)/i);
+    if (match) return decodeURIComponent(match[1]);
+    const searchParams = new URLSearchParams(window.location.search);
+    return searchParams.get('wash') || searchParams.get('operator') || searchParams.get('carwash') || null;
+  });
+  const [showAuthModalForOperator, setShowAuthModalForOperator] = useState(false);
+  const [fetchedOperatorCarWash, setFetchedOperatorCarWash] = useState<CarWash | null>(null);
+  const [bookingLocationForPublicView, setBookingLocationForPublicView] = useState<CarWash | null>(null);
+  const [preselectedServiceId, setPreselectedServiceId] = useState<string | null>(null);
+
+  // Matched Car Wash for direct booking
+  const publicCarWash = React.useMemo(() => {
+    if (!publicOperatorSlug || !locations || locations.length === 0) return null;
+    const clean = publicOperatorSlug.toLowerCase().trim();
+    return (
+      locations.find(
+        (l) =>
+          l.id.toLowerCase() === clean ||
+          (l.slug && l.slug.toLowerCase() === clean) ||
+          (l.name && l.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') === clean)
+      ) || null
+    );
+  }, [publicOperatorSlug, locations]);
+
+  // If station not yet in locations state, fetch directly from API endpoint
+  React.useEffect(() => {
+    if (!publicOperatorSlug) {
+      setFetchedOperatorCarWash(null);
+      return;
+    }
+    const clean = publicOperatorSlug.toLowerCase().trim();
+    if (publicCarWash) {
+      setFetchedOperatorCarWash(publicCarWash);
+      return;
+    }
+
+    let isSubscribed = true;
+    fetch(`/api/car-washes/by-slug/${encodeURIComponent(clean)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (isSubscribed) {
+          if (data && data.id) {
+            setFetchedOperatorCarWash(data);
+          } else {
+            showNotification('Car wash location not found.', 'error');
+            setPublicOperatorSlug(null);
+            const targetPath = user
+              ? (user.role === Role.ADMIN ? '/admin' : user.role === Role.OWNER ? '/owner' : user.role === Role.SPECIAL ? '/special' : '/customer')
+              : '/login';
+            window.history.replaceState({ path: targetPath }, '', targetPath);
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn('Could not fetch station by slug:', err);
+        if (isSubscribed) {
+          setPublicOperatorSlug(null);
+          const targetPath = user ? '/customer' : '/login';
+          window.history.replaceState({ path: targetPath }, '', targetPath);
+        }
+      });
+
+    return () => {
+      isSubscribed = false;
+    };
+  }, [publicOperatorSlug, publicCarWash, user]);
+
+  const activeCarWash = publicCarWash || fetchedOperatorCarWash;
+  const isPublicWashAllowed = Boolean(activeCarWash && activeCarWash.ownerQrCodeEnabled === true && activeCarWash.isActive !== false);
+
+  // If visitor arrives via direct /wash/ URL but QR booking access is disabled or inactive, redirect to login / dashboard
+  React.useEffect(() => {
+    if (!publicOperatorSlug) return;
+
+    if (activeCarWash) {
+      if (activeCarWash.ownerQrCodeEnabled !== true || activeCarWash.isActive === false) {
+        showNotification(
+          `The booking page for "${activeCarWash.name}" is currently private or awaiting activation.`,
+          'error'
+        );
+        setPublicOperatorSlug(null);
+        setFetchedOperatorCarWash(null);
+        const targetPath = user
+          ? (user.role === Role.ADMIN ? '/admin' : user.role === Role.OWNER ? '/owner' : user.role === Role.SPECIAL ? '/special' : '/customer')
+          : '/login';
+        window.history.replaceState({ path: targetPath }, '', targetPath);
+      }
+    }
+  }, [publicOperatorSlug, activeCarWash, user]);
 
   // Track if we are navigating back from an auth sub-view
   const currentAuthModeRef = React.useRef<'login' | 'register' | 'forgot' | 'reset'>('login');
@@ -56,6 +157,21 @@ const MainAppContent: React.FC = () => {
 
   // Sync route on login / role change / auth mode change
   React.useEffect(() => {
+    const path = window.location.pathname;
+    const isOperatorPath = /^\/(?:wash|book|operator)\//i.test(path);
+
+    if (isOperatorPath) {
+      const match = path.match(/^\/(?:wash|book|operator)\/([^/?#]+)/i);
+      if (match) {
+        setPublicOperatorSlug(decodeURIComponent(match[1]));
+      }
+      return;
+    }
+
+    if (publicOperatorSlug) {
+      return;
+    }
+
     if (user) {
       let targetPath = '/customer';
       if (user.role === Role.ADMIN) targetPath = '/admin';
@@ -67,7 +183,6 @@ const MainAppContent: React.FC = () => {
         window.history.replaceState({ path: targetPath }, '', targetPath);
       }
     } else {
-      const path = window.location.pathname;
       if (path === '/register') {
         setIsRegisterMode(true);
         setIsForgotMode(false);
@@ -89,7 +204,7 @@ const MainAppContent: React.FC = () => {
         }
       }
     }
-  }, [user]);
+  }, [user, publicOperatorSlug]);
 
   // Mobile Back button / browser popstate listener
   React.useEffect(() => {
@@ -98,6 +213,15 @@ const MainAppContent: React.FC = () => {
 
       const path = window.location.pathname;
       const prevMode = currentAuthModeRef.current;
+      const isOperatorPath = /^\/(?:wash|book|operator)\//i.test(path);
+
+      if (isOperatorPath) {
+        const match = path.match(/^\/(?:wash|book|operator)\/([^/?#]+)/i);
+        setPublicOperatorSlug(match ? decodeURIComponent(match[1]) : null);
+        return;
+      } else if (publicOperatorSlug) {
+        setPublicOperatorSlug(null);
+      }
 
       if (!user) {
         // If navigating back from a sub-screen (register, forgot, reset) to login, smoothly switch to login without trapping
@@ -160,6 +284,21 @@ const MainAppContent: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showResetPassword, setShowResetPassword] = useState(false);
 
+  // If visitor logs in while showAuthModalForOperator was open, return to operator view and open booking flow
+  React.useEffect(() => {
+    if (user && showAuthModalForOperator) {
+      setShowAuthModalForOperator(false);
+      const pendingSvc = sessionStorage.getItem('pending_service_id');
+      if (pendingSvc) {
+        setPreselectedServiceId(pendingSvc);
+        sessionStorage.removeItem('pending_service_id');
+      }
+      if (activeCarWash) {
+        setBookingLocationForPublicView(activeCarWash);
+      }
+    }
+  }, [user, showAuthModalForOperator, activeCarWash]);
+
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password || (isRegisterMode && !name)) return;
@@ -212,9 +351,17 @@ const MainAppContent: React.FC = () => {
       }
     } else {
       const res = await login(email, password);
-      if (typeof res === 'object' && res.requireOtp) {
-        setIsRegisterOtpMode(true);
-        setPendingRegisterEmail(res.email);
+      if (typeof res === 'object') {
+        if (res.requireAdminOtp) {
+          setIsAdminOtpMode(true);
+          setPendingAdminEmail(res.email);
+          setAdminOtpDevCode(res.sandboxCode || null);
+          setAdminOtpCode(res.sandboxCode || '');
+        } else if (res.requireOtp) {
+          setIsRegisterOtpMode(true);
+          setPendingRegisterEmail(res.email);
+          setRegisterOtpCode('');
+        }
       }
     }
     setAuthLoading(false);
@@ -242,6 +389,34 @@ const MainAppContent: React.FC = () => {
     if (!pendingRegisterEmail) return;
     setAuthLoading(true);
     await resendRegistrationOtp(pendingRegisterEmail);
+    setAuthLoading(false);
+  };
+
+  const handleVerifyAdminOtpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pendingAdminEmail || !adminOtpCode) return;
+
+    setAuthLoading(true);
+    const success = await verifyAdminOtp(pendingAdminEmail, adminOtpCode.trim());
+    if (success) {
+      setIsAdminOtpMode(false);
+      setPendingAdminEmail('');
+      setAdminOtpCode('');
+      setAdminOtpDevCode(null);
+      setEmail('');
+      setPassword('');
+    }
+    setAuthLoading(false);
+  };
+
+  const handleResendAdminOtpSubmit = async () => {
+    if (!pendingAdminEmail) return;
+    setAuthLoading(true);
+    const res = await resendAdminOtp(pendingAdminEmail);
+    if (res?.sandboxCode) {
+      setAdminOtpDevCode(res.sandboxCode);
+      setAdminOtpCode(res.sandboxCode);
+    }
     setAuthLoading(false);
   };
 
@@ -318,9 +493,16 @@ const MainAppContent: React.FC = () => {
     setPassword(quickPass);
     try {
       const res = await login(quickEmail, quickPass);
-      if (typeof res === 'object' && res?.requireOtp) {
-        setIsRegisterOtpMode(true);
-        setPendingRegisterEmail(res.email);
+      if (typeof res === 'object') {
+        if (res.requireAdminOtp) {
+          setIsAdminOtpMode(true);
+          setPendingAdminEmail(res.email);
+          setAdminOtpDevCode(res.sandboxCode || null);
+          setAdminOtpCode(res.sandboxCode || '');
+        } else if (res.requireOtp) {
+          setIsRegisterOtpMode(true);
+          setPendingRegisterEmail(res.email);
+        }
       }
     } catch (err) {
       console.error('Quick login error:', err);
@@ -354,6 +536,61 @@ const MainAppContent: React.FC = () => {
           Starting Booking Platform...
         </p>
       </div>
+    );
+  }
+
+  // If visitor arrives via direct operator QR code or link and is allowed and not in auth modal, render rich public operator schedule
+  if (activeCarWash && isPublicWashAllowed && !showAuthModalForOperator) {
+    return (
+      <>
+        <PublicOperatorView
+          carWash={activeCarWash}
+          currentUser={user}
+          onSelectBook={(serviceId) => {
+            if (!user) {
+              sessionStorage.setItem('pending_operator_redirect', activeCarWash.slug || activeCarWash.id);
+              if (serviceId) {
+                sessionStorage.setItem('pending_service_id', serviceId);
+              }
+              setShowAuthModalForOperator(true);
+            } else {
+              setPreselectedServiceId(serviceId || null);
+              setBookingLocationForPublicView(activeCarWash);
+            }
+          }}
+          onBrowseAll={() => {
+            setPublicOperatorSlug(null);
+            setShowAuthModalForOperator(false);
+            const target = user ? (user.role === Role.OWNER ? '/owner' : '/customer') : '/login';
+            window.history.replaceState({ path: target }, '', target);
+          }}
+          onLoginClick={() => {
+            sessionStorage.setItem('pending_operator_redirect', activeCarWash.slug || activeCarWash.id);
+            setShowAuthModalForOperator(true);
+          }}
+          isAuthenticated={!!user}
+        />
+
+        {/* In-view booking flow for authenticated users */}
+        {bookingLocationForPublicView && (
+          <BookingFlowModal
+            location={bookingLocationForPublicView}
+            isOpen={!!bookingLocationForPublicView}
+            onClose={() => {
+              setBookingLocationForPublicView(null);
+              setPreselectedServiceId(null);
+            }}
+            user={user}
+            initialServiceId={preselectedServiceId || undefined}
+            createBooking={createBooking}
+            onBookingSuccess={() => {
+              showNotification('Booking confirmed successfully!', 'success');
+              setBookingLocationForPublicView(null);
+              setPreselectedServiceId(null);
+            }}
+          />
+        )}
+      </>
     );
   }
 
@@ -404,8 +641,122 @@ const MainAppContent: React.FC = () => {
           </div>
 
           <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md px-4">
+            {publicCarWash && showAuthModalForOperator && (
+              <div className="mb-4 bg-sky-50 border border-sky-200 rounded-2xl p-4 flex items-center justify-between gap-3 shadow-xs animate-fade-in">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-sky-600 text-white font-black flex items-center justify-center text-xs shrink-0 shadow-xs">
+                    {publicCarWash.name.slice(0, 2).toUpperCase()}
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-sky-950 block">Reserving at {publicCarWash.name}</span>
+                    <span className="text-[11px] text-sky-700">Sign in to proceed directly to time slot selection.</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAuthModalForOperator(false)}
+                  className="text-xs font-bold text-sky-700 hover:text-sky-900 bg-white px-2.5 py-1.5 rounded-lg border border-sky-200 shadow-2xs shrink-0 cursor-pointer"
+                >
+                  Back
+                </button>
+              </div>
+            )}
+
             <div className="bg-white py-8 px-4 border border-slate-200 rounded-3xl shadow-xl sm:px-10">
-              {isRegisterOtpMode ? (
+              {isAdminOtpMode ? (
+                <div>
+                  <div className="flex items-center gap-2.5 mb-3">
+                    <div className="p-2.5 bg-rose-100 rounded-xl text-rose-700 shadow-2xs">
+                      <ShieldAlert className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-800">Admin 2FA Security Passkey</h3>
+                      <p className="text-xs text-slate-500">
+                        Two-factor code dispatched to <strong className="text-rose-950 font-mono">{pendingAdminEmail}</strong>
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Dev / Sandbox Helper Notice */}
+                  {isDevMode && (
+                    <>
+                      <div className="my-3 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs">
+                        <div className="flex items-center gap-2">
+                          <KeyRound className="h-4 w-4 text-amber-700 shrink-0" />
+                          <span>
+                            Testing Passkey: <strong className="font-mono text-sm tracking-wider text-amber-950">123456</strong>
+                            {adminOtpDevCode && adminOtpDevCode !== '123456' && (
+                              <span className="text-slate-500 text-[11px] ml-1">(or {adminOtpDevCode})</span>
+                            )}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setAdminOtpCode('123456')}
+                          className="px-2.5 py-1 bg-white hover:bg-amber-100 text-amber-800 rounded-lg font-bold border border-amber-300 text-[11px] cursor-pointer shadow-2xs self-start sm:self-auto"
+                        >
+                          Fill 123456
+                        </button>
+                      </div>
+
+                      <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl mb-4 text-[11px] text-slate-600 leading-relaxed">
+                        <span className="font-semibold text-slate-800">Quick Testing:</span> The code <code className="bg-rose-100 text-rose-800 font-mono px-1 py-0.5 rounded font-bold">123456</code> is active in <code className="bg-slate-200 px-1 py-0.5 rounded text-[10px] text-slate-800">server.ts</code> as <code className="text-slate-800 font-mono font-bold">TEST_MASTER_OTP</code> for rapid dev testing. Generated codes are also delivered via email and recorded in Supabase <code className="bg-slate-200 px-1 py-0.5 rounded text-[10px] text-slate-800">audit_logs</code>.
+                      </div>
+                    </>
+                  )}
+
+                  <form onSubmit={handleVerifyAdminOtpSubmit} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                        6-Digit Security Passkey
+                      </label>
+                      <input
+                        type="text"
+                        maxLength={6}
+                        placeholder="••••••"
+                        value={adminOtpCode}
+                        onChange={(e) => setAdminOtpCode(e.target.value.replace(/\D/g, ''))}
+                        className="w-full px-3 py-3 border border-rose-200 focus:border-rose-500 focus:ring-2 focus:ring-rose-100 rounded-xl outline-none text-slate-900 text-lg transition-all text-center tracking-widest font-mono font-black shadow-inner"
+                        required
+                        autoFocus
+                        id="admin-otp-input"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={authLoading}
+                      className="w-full py-3 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer mt-4"
+                      id="admin-otp-submit-btn"
+                    >
+                      {authLoading ? 'Verifying Security Passkey...' : 'Verify Passkey & Access Command Center'}
+                    </button>
+
+                    <div className="flex justify-between items-center pt-3 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={handleResendAdminOtpSubmit}
+                        disabled={authLoading}
+                        className="text-xs text-slate-600 hover:text-slate-900 font-bold font-sans cursor-pointer flex items-center gap-1"
+                      >
+                        Resend Passkey
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsAdminOtpMode(false);
+                          setPendingAdminEmail('');
+                          setAdminOtpCode('');
+                          setAdminOtpDevCode(null);
+                        }}
+                        className="text-xs text-rose-600 hover:text-rose-500 font-bold font-sans cursor-pointer"
+                      >
+                        Cancel & Switch Account
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              ) : isRegisterOtpMode ? (
                 <div>
                   <div className="flex items-center gap-2.5 mb-2">
                     <div className="p-2 bg-sky-100 rounded-xl text-sky-700">
@@ -417,7 +768,23 @@ const MainAppContent: React.FC = () => {
                     </div>
                   </div>
 
-                  <form onSubmit={handleVerifyRegistrationOtpSubmit} className="space-y-4 mt-4">
+                  {isDevMode && (
+                    <div className="my-3 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs">
+                      <div className="flex items-center gap-2">
+                        <KeyRound className="h-4 w-4 text-amber-700 shrink-0" />
+                        <span>Testing Passkey: <strong className="font-mono text-sm tracking-wider text-amber-950">123456</strong></span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setRegisterOtpCode('123456')}
+                        className="px-2.5 py-1 bg-white hover:bg-amber-100 text-amber-800 rounded-lg font-bold border border-amber-300 text-[11px] cursor-pointer shadow-2xs self-start sm:self-auto"
+                      >
+                        Fill 123456
+                      </button>
+                    </div>
+                  )}
+
+                  <form onSubmit={handleVerifyRegistrationOtpSubmit} className="space-y-4 mt-2">
                     <div>
                       <label className="block text-xs font-bold text-slate-700 uppercase mb-1">6-Digit Verification OTP Code</label>
                       <input

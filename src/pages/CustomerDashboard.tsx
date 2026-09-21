@@ -67,6 +67,31 @@ export const CustomerDashboard: React.FC = () => {
     setCurrentPage(1);
   }, [search, itemsPerPage, locationAlphabetFilter]);
   const [selectedLocation, setSelectedLocation] = useState<CarWash | null>(null);
+
+  // 🚀 Deep-link & QR code direct operator booking support
+  useEffect(() => {
+    if (!locations || locations.length === 0) return;
+
+    const path = window.location.pathname;
+    const match = path.match(/^\/(?:wash|book|operator)\/([^/?#]+)/i);
+    const searchParams = new URLSearchParams(window.location.search);
+    const slugFromQuery = searchParams.get('wash') || searchParams.get('operator') || searchParams.get('carwash');
+    const targetSlug = match ? decodeURIComponent(match[1]) : (slugFromQuery || sessionStorage.getItem('pending_operator_redirect'));
+
+    if (targetSlug) {
+      const clean = targetSlug.toLowerCase().trim();
+      const matched = locations.find((l) => 
+        l.id.toLowerCase() === clean || 
+        (l.slug && l.slug.toLowerCase() === clean) ||
+        (l.name && l.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') === clean)
+      );
+
+      if (matched) {
+        setSelectedLocation(matched);
+        sessionStorage.removeItem('pending_operator_redirect');
+      }
+    }
+  }, [locations]);
   const [mapPreviewLocation, setMapPreviewLocation] = useState<CarWash | null>(null);
   const [bookingDate, setBookingDate] = useState(() => {
     return getTodayDateString();
@@ -1150,7 +1175,12 @@ export const CustomerDashboard: React.FC = () => {
             <BookingFlowModal
               location={selectedLocation}
               isOpen={!!selectedLocation}
-              onClose={() => setSelectedLocation(null)}
+              onClose={() => {
+                setSelectedLocation(null);
+                if (window.location.pathname.startsWith('/wash/') || window.location.pathname.startsWith('/book/') || window.location.pathname.startsWith('/operator/')) {
+                  window.history.replaceState({ path: '/customer' }, '', '/customer');
+                }
+              }}
               user={user}
               createBooking={createBooking}
               onBookingSuccess={(bookingData) => {

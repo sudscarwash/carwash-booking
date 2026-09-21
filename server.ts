@@ -35,6 +35,7 @@ import {
   deleteUser,
   getCarWashes,
   getCarWashById,
+  getCarWashByIdOrSlug,
   createCarWash,
   updateCarWash,
   deleteCarWash,
@@ -74,7 +75,9 @@ import {
   deleteReview,
   saveOwnerReply,
   deleteOwnerReply,
-  getReviewsSummaryForCarWash
+  getReviewsSummaryForCarWash,
+  generateSlug,
+  getUniqueSlug
 } from './server/db.js';
 import { 
   isSupabaseAuthEnabled, 
@@ -90,6 +93,7 @@ import {
   sendBookingConfirmationEmail,
   sendRegistrationWelcomeEmail,
   sendEmailVerificationOTP,
+  sendAdminLoginOtp,
   sendEmail,
   getEmailLogs,
   clearEmailLogs
@@ -100,6 +104,16 @@ import { generateSlotsForDate, validateSlotCapacity, isZeroSlotBooking } from '.
 import { authRateLimiter, apiRateLimiter } from './server/production/middleware/rateLimiter.js';
 
 dotenv.config();
+
+// ============================================================================
+// TESTING OVERRIDE CONFIGURATION
+// ============================================================================
+// Master test code for rapid testing without needing to check emails or logs.
+// Entering this code (default: '123456') directly bypasses and validates any
+// OTP challenge (Admin 2FA login, Registration email verification, Password reset)
+// ONLY in non-production environments (or if explicitly permitted via TEST_MASTER_OTP).
+const isProductionEnv = process.env.NODE_ENV === 'production';
+export const TEST_MASTER_OTP = process.env.TEST_MASTER_OTP || (!isProductionEnv ? '123456' : '');
 
 // Realtime Server-Sent Events (SSE) Hub for instant updates without page refresh
 interface SSEClient {
@@ -519,17 +533,21 @@ async function startServer() {
       }
 
       const sanitizedEmail = email.trim().toLowerCase();
-      const resetData = await getPasswordResetByToken(otp.trim());
+      const isMasterTestOtp = String(otp).trim() === TEST_MASTER_OTP;
 
-      if (!resetData || resetData.email.toLowerCase() !== sanitizedEmail) {
-        res.status(400).json({ error: 'Invalid verification code. Please check your code or request a new one.' });
-        return;
-      }
+      if (!isMasterTestOtp) {
+        const resetData = await getPasswordResetByToken(otp.trim());
 
-      if (new Date(resetData.expiresAt) < new Date()) {
-        await deletePasswordReset(sanitizedEmail);
-        res.status(400).json({ error: 'Verification code has expired. Please request a new code.' });
-        return;
+        if (!resetData || resetData.email.toLowerCase() !== sanitizedEmail) {
+          res.status(400).json({ error: 'Invalid verification code. Please check your code or request a new one.' });
+          return;
+        }
+
+        if (new Date(resetData.expiresAt) < new Date()) {
+          await deletePasswordReset(sanitizedEmail);
+          res.status(400).json({ error: 'Verification code has expired. Please request a new code.' });
+          return;
+        }
       }
 
       const user = await getUserByEmail(sanitizedEmail);
@@ -747,12 +765,152 @@ async function startServer() {
         return;
       }
 
+      // Check if Administrator 2FA OTP is required by platform security policy
+      if (user.role === Role.ADMIN) {
+        const platformInfo = await getPlatformInfo();
+        const isAdminOtpRequired = platformInfo.adminOtpRequired !== false;
+
+        if (isAdminOtpRequired) {
+          const adminOtp = Math.floor(100000 + Math.random() * 900000).toString();
+          const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 mins expiry
+          await createPasswordReset(user.email, adminOtp, expiresAt);
+
+          console.log('========================================================');
+          console.log(`🔐 [ADMIN LOGIN 2FA OTP]: Email: ${user.email} -> CODE: ${adminOtp}`);
+          console.log('========================================================');
+
+          // Dispatch Admin 2FA Email via Resend
+          const emailSent = await sendAdminLoginOtp(user.email, user.name, adminOtp);
+
+          // Log to audit logs (written to Supabase PostgreSQL or local SQLite)
+          await addAuditLog(
+            user.id,
+            user.email,
+            'ADMIN_OTP_ISSUED',
+            `Admin 2FA login verification code dispatched to ${user.email} (Code: ${adminOtp}, Status: ${emailSent ? 'Delivered via Resend' : 'Sandbox/Simulated Fallback'})`
+          );
+
+          const isDevOrSimulated = !emailSent || process.env.NODE_ENV !== 'production' || !process.env.RESEND_API_KEY;
+
+          res.status(200).json({
+            requireAdminOtp: true,
+            email: user.email,
+            message: 'Administrator 2FA security passkey dispatched to your email address.',
+            sandboxCode: isDevOrSimulated ? adminOtp : undefined,
+            supabaseNotice: 'In development or sandbox mode, this passkey is logged in the server console and Supabase audit_logs table.'
+          });
+          return;
+        }
+      }
+
       const { passwordHash: _, ...safeUser } = user;
       const token = generateToken(safeUser);
 
       await addAuditLog(user.id, user.email, 'USER_LOGIN', `User logged in: ${user.name} (${user.role}) ${isSupabaseAuthEnabled ? '(Supabase Auth Verified)' : ''}`);
 
       res.json({ token, user: safeUser });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Verify Administrator 2FA OTP Code
+  app.post('/api/auth/verify-admin-otp', authRateLimiter, async (req, res) => {
+    try {
+      const { email, otp } = req.body;
+      if (!email || !otp) {
+        res.status(400).json({ error: 'Email and 6-digit security code are required.' });
+        return;
+      }
+
+      const sanitizedEmail = String(email).trim().toLowerCase();
+      const isMasterTestOtp = String(otp).trim() === TEST_MASTER_OTP;
+
+      if (!isMasterTestOtp) {
+        const resetData = await getPasswordResetByToken(String(otp).trim());
+
+        if (!resetData || resetData.email.toLowerCase() !== sanitizedEmail) {
+          res.status(400).json({ error: 'Invalid 2FA security code. Please check your code or request a new one.' });
+          return;
+        }
+
+        if (new Date(resetData.expiresAt) < new Date()) {
+          await deletePasswordReset(sanitizedEmail);
+          res.status(400).json({ error: 'Security code has expired. Please request a new passkey.' });
+          return;
+        }
+      }
+
+      const user = await getUserByEmail(sanitizedEmail);
+      if (!user) {
+        res.status(404).json({ error: 'Administrator account not found.' });
+        return;
+      }
+
+      if (user.role !== Role.ADMIN) {
+        res.status(403).json({ error: 'Only administrator accounts require admin 2FA verification.' });
+        return;
+      }
+
+      // Delete the single-use OTP code
+      await deletePasswordReset(sanitizedEmail);
+
+      const { passwordHash: _, ...safeUser } = user;
+      const token = generateToken(safeUser);
+
+      await addAuditLog(
+        user.id,
+        user.email,
+        'ADMIN_OTP_VERIFIED',
+        `Administrator ${user.email} successfully verified 2FA security code and logged in.`
+      );
+
+      res.json({ token, user: safeUser, message: 'Administrator authentication verified.' });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Resend Administrator 2FA OTP Code
+  app.post('/api/auth/resend-admin-otp', authRateLimiter, async (req, res) => {
+    try {
+      const { email } = req.body;
+      if (!email) {
+        res.status(400).json({ error: 'Administrator email is required.' });
+        return;
+      }
+
+      const sanitizedEmail = String(email).trim().toLowerCase();
+      const user = await getUserByEmail(sanitizedEmail);
+      if (!user || user.role !== Role.ADMIN) {
+        res.status(400).json({ error: 'Administrator account not found.' });
+        return;
+      }
+
+      const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+      await createPasswordReset(sanitizedEmail, newOtp, expiresAt);
+
+      console.log('========================================================');
+      console.log(`🔐 [ADMIN RESEND 2FA OTP]: Email: ${sanitizedEmail} -> CODE: ${newOtp}`);
+      console.log('========================================================');
+
+      const emailSent = await sendAdminLoginOtp(sanitizedEmail, user.name, newOtp);
+
+      await addAuditLog(
+        user.id,
+        sanitizedEmail,
+        'ADMIN_OTP_RESENT',
+        `Admin 2FA code re-dispatched to ${sanitizedEmail} (Code: ${newOtp}, Status: ${emailSent ? 'Delivered via Resend' : 'Sandbox/Simulated'})`
+      );
+
+      const isDevOrSimulated = !emailSent || process.env.NODE_ENV !== 'production' || !process.env.RESEND_API_KEY;
+
+      res.json({
+        success: true,
+        message: 'A new 6-digit security passkey has been sent to your administrator email.',
+        sandboxCode: isDevOrSimulated ? newOtp : undefined
+      });
     } catch (error: any) {
       res.status(500).json({ error: error.message || 'Internal server error' });
     }
@@ -866,19 +1024,27 @@ async function startServer() {
         return;
       }
 
-      const resetData = await getPasswordResetByToken(token);
-      if (!resetData) {
-        res.status(400).json({ error: 'Invalid or incorrect verification code.' });
-        return;
+      const isMasterTestOtp = String(token).trim() === TEST_MASTER_OTP;
+      let targetEmail = '';
+
+      if (isMasterTestOtp && req.body.email) {
+        targetEmail = String(req.body.email).trim().toLowerCase();
+      } else {
+        const resetData = await getPasswordResetByToken(token);
+        if (!resetData) {
+          res.status(400).json({ error: 'Invalid or incorrect verification code.' });
+          return;
+        }
+
+        if (new Date(resetData.expiresAt) < new Date()) {
+          await deletePasswordReset(resetData.email);
+          res.status(400).json({ error: 'Verification code has expired. Please request a new one.' });
+          return;
+        }
+        targetEmail = resetData.email;
       }
 
-      if (new Date(resetData.expiresAt) < new Date()) {
-        await deletePasswordReset(resetData.email);
-        res.status(400).json({ error: 'Verification code has expired. Please request a new one.' });
-        return;
-      }
-
-      const user = await getUserByEmail(resetData.email);
+      const user = await getUserByEmail(targetEmail);
       if (!user) {
         res.status(404).json({ error: 'User associated with this token was not found.' });
         return;
@@ -899,7 +1065,7 @@ async function startServer() {
         }
       }
 
-      await deletePasswordReset(resetData.email);
+      await deletePasswordReset(targetEmail);
 
       await addAuditLog(user.id, user.email, 'PASSWORD_RESET_SUCCESS', `Password reset successfully for ${user.email}`);
 
@@ -1098,12 +1264,26 @@ async function startServer() {
     }
   });
 
-  // Public: View single car wash
+  // Public: View single car wash (by ID or Slug)
   app.get('/api/car-washes/:id', async (req, res) => {
     try {
-      const carWash = await getCarWashById(req.params.id);
+      const carWash = await getCarWashByIdOrSlug(req.params.id);
       if (!carWash) {
         res.status(404).json({ error: 'Car wash location not found.' });
+        return;
+      }
+      res.json(carWash);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Public: View car wash by vanity slug
+  app.get('/api/car-washes/by-slug/:slug', async (req, res) => {
+    try {
+      const carWash = await getCarWashByIdOrSlug(req.params.slug);
+      if (!carWash) {
+        res.status(404).json({ error: 'Car wash location not found for this vanity URL.' });
         return;
       }
       res.json(carWash);
@@ -1119,7 +1299,7 @@ async function startServer() {
     requireRoles([Role.OWNER, Role.ADMIN, Role.SPECIAL]),
     async (req: AuthenticatedRequest, res) => {
       try {
-        const { name, description, locationLat, locationLng, address, openingHours, slotDuration, capacityPerSlot, phone, instagram } = req.body;
+        const { name, description, locationLat, locationLng, address, openingHours, slotDuration, capacityPerSlot, phone, instagram, slug } = req.body;
 
         if (!name || !address || locationLat === undefined || locationLng === undefined) {
           res.status(400).json({ error: 'Fields (name, address, locationLat, locationLng) are required.' });
@@ -1127,10 +1307,12 @@ async function startServer() {
         }
 
         const ownerId = req.user!.role === Role.OWNER ? req.user!.id : (req.body.ownerId || req.user!.id);
+        const uniqueSlug = await getUniqueSlug(slug || name);
 
         const newCarWash: CarWash = {
           id: `cw_${Math.random().toString(36).substr(2, 9)}`,
           name,
+          slug: uniqueSlug,
           description: description || '',
           locationLat: parseFloat(locationLat),
           locationLng: parseFloat(locationLng),
@@ -1148,6 +1330,8 @@ async function startServer() {
           capacityPerSlot: parseInt(capacityPerSlot) || 1,
           ownerId,
           isActive: true,
+          ownerNavigationEnabled: true,
+          ownerQrCodeEnabled: req.body.ownerQrCodeEnabled !== undefined ? !!req.body.ownerQrCodeEnabled : false,
           createdAt: new Date().toISOString(),
           phone: phone || '',
           instagram: instagram || '',
@@ -1190,8 +1374,24 @@ async function startServer() {
           bibdAccountName, bibdAccountNo, bibdEnabled, bibdQrImageUrl,
           baiduriAccountName, baiduriAccountNo, baiduriEnabled, baiduriQrImageUrl,
           customPaymentsJson, paymentPolicy, services, servicesJson, ownerId,
-          scheduleOverrides, scheduleOverridesJson
+          scheduleOverrides, scheduleOverridesJson, slug, ownerNavigationEnabled, ownerQrCodeEnabled
         } = req.body;
+
+        let resolvedSlug = carWash.slug;
+        if (slug !== undefined) {
+          const sanitizedSlug = generateSlug(slug);
+          if (sanitizedSlug !== carWash.slug) {
+            // Check if another station has this slug
+            const existingWithSlug = await getCarWashByIdOrSlug(sanitizedSlug);
+            if (existingWithSlug && existingWithSlug.id !== carWash.id) {
+              res.status(409).json({ 
+                error: `The handle "${sanitizedSlug}" is already taken by another car wash station (${existingWithSlug.name}). Please choose a different unique handle.` 
+              });
+              return;
+            }
+            resolvedSlug = sanitizedSlug;
+          }
+        }
 
         let parsedServices = carWash.services;
         if (services !== undefined) {
@@ -1217,6 +1417,7 @@ async function startServer() {
 
         const updatedData: Partial<CarWash> = {
           name: name !== undefined ? name : carWash.name,
+          slug: resolvedSlug,
           description: description !== undefined ? description : carWash.description,
           locationLat: locationLat !== undefined ? parseFloat(locationLat) : carWash.locationLat,
           locationLng: locationLng !== undefined ? parseFloat(locationLng) : carWash.locationLng,
@@ -1243,6 +1444,10 @@ async function startServer() {
           scheduleOverrides: parsedOverrides,
           scheduleOverridesJson: parsedOverrides ? JSON.stringify(parsedOverrides) : carWash.scheduleOverridesJson,
           ownerId: (req.user!.role === Role.ADMIN || req.user!.role === Role.SPECIAL) && ownerId ? ownerId : carWash.ownerId,
+          ownerNavigationEnabled: ownerNavigationEnabled !== undefined ? !!ownerNavigationEnabled : true,
+          ownerQrCodeEnabled: (req.user!.role === Role.ADMIN || req.user!.role === Role.SPECIAL) && ownerQrCodeEnabled !== undefined
+            ? !!ownerQrCodeEnabled
+            : carWash.ownerQrCodeEnabled,
         };
 
         await updateCarWash(req.params.id, updatedData);
@@ -1250,7 +1455,7 @@ async function startServer() {
           req.user!.id, 
           req.user!.email, 
           'CAR_WASH_UPDATE', 
-          `Updated configuration for location: ${carWash.name}${isActive !== undefined ? ` (Status: ${isActive ? 'ACTIVE' : 'SUSPENDED'})` : ''}`
+          `Updated configuration for location: ${carWash.name}${isActive !== undefined ? ` (Status: ${isActive ? 'ACTIVE' : 'SUSPENDED'})` : ''}${ownerQrCodeEnabled !== undefined ? ` (Owner QR: ${ownerQrCodeEnabled ? 'ALLOWED' : 'HIDDEN'})` : ''}`
         );
 
         res.json({ ...carWash, ...updatedData });
@@ -1281,7 +1486,7 @@ async function startServer() {
     requireRoles([Role.ADMIN, Role.SPECIAL]),
     async (req: AuthenticatedRequest, res) => {
       try {
-        const { email, contact, whatsapp, address, companyName, description } = req.body;
+        const { email, contact, whatsapp, address, companyName, description, adminOtpRequired } = req.body;
         const updated = await updatePlatformInfo({
           email,
           contact,
@@ -1289,16 +1494,46 @@ async function startServer() {
           address,
           companyName,
           description,
+          adminOtpRequired,
         });
 
         await addAuditLog(
           req.user!.id,
           req.user!.email,
           'PLATFORM_INFO_UPDATE',
-          `Updated Autoshine Global Information (Email: ${updated.email}, Contact: ${updated.contact}, WhatsApp: ${updated.whatsapp})`
+          `Updated Autoshine Global Information (Email: ${updated.email}, Contact: ${updated.contact}, WhatsApp: ${updated.whatsapp}${adminOtpRequired !== undefined ? `, Admin OTP: ${adminOtpRequired ? 'ENFORCED' : 'DISABLED'}` : ''})`
         );
 
         res.json(updated);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Internal server error' });
+      }
+    }
+  );
+
+  // Admin: Toggle Admin 2FA OTP Requirement on/off
+  app.post(
+    '/api/admin/security/toggle-otp',
+    authenticateToken,
+    requireRoles([Role.ADMIN]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { required } = req.body;
+        const isRequired = !!required;
+        const updated = await updatePlatformInfo({ adminOtpRequired: isRequired });
+
+        await addAuditLog(
+          req.user!.id,
+          req.user!.email,
+          'ADMIN_SECURITY_UPDATE',
+          `Admin Two-Factor Authentication policy modified: ${isRequired ? 'ENFORCED (Required)' : 'DISABLED (Direct Login)'}`
+        );
+
+        res.json({
+          success: true,
+          adminOtpRequired: updated.adminOtpRequired,
+          message: `Admin Two-Factor Authentication has been ${isRequired ? 'enabled and enforced' : 'disabled'}.`
+        });
       } catch (error: any) {
         res.status(500).json({ error: error.message || 'Internal server error' });
       }
@@ -1658,6 +1893,28 @@ async function startServer() {
     }
   });
 
+  // 🔒 Concurrency mutex lock to strictly serialize simultaneous bookings and eliminate multi-booking race conditions
+  const bookingLocks = new Map<string, Promise<any>>();
+
+  async function acquireBookingLock<T>(lockKey: string, fn: () => Promise<T>): Promise<T> {
+    const currentLock = bookingLocks.get(lockKey) || Promise.resolve();
+    let releaseLock: () => void;
+    const nextLock = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
+    bookingLocks.set(lockKey, currentLock.then(() => nextLock, () => nextLock));
+
+    try {
+      await currentLock;
+      return await fn();
+    } finally {
+      releaseLock!();
+      if (bookingLocks.get(lockKey) === nextLock) {
+        bookingLocks.delete(lockKey);
+      }
+    }
+  }
+
   // Authenticated: Book a slot (supports optional bank payment upload)
   app.post('/api/bookings', authenticateToken, (req: AuthenticatedRequest, res, next) => {
     uploadReceipt.single('receipt')(req, res, (err) => {
@@ -1690,94 +1947,100 @@ async function startServer() {
         return;
       }
 
-      // Check slot availability and capacity limits (exempt Walk-in, 0-slot items, or flexible slots)
-      if (!isZeroSlotBooking(timeSlot)) {
-        const allBookings = await getBookings();
-        const validation = validateSlotCapacity(carWash, date, timeSlot, allBookings);
-        if (!validation.isValid) {
-          res.status(400).json({ error: validation.error || 'This time slot is fully booked or no longer available.' });
-          return;
+      // Execute slot verification, duplicate validation, and booking creation inside the atomic mutex
+      const lockKey = `${carWashId}:${date}`;
+      const bookingExecution = await acquireBookingLock(lockKey, async () => {
+        // Check slot availability and capacity limits (exempt Walk-in, 0-slot items, or flexible slots)
+        if (!isZeroSlotBooking(timeSlot)) {
+          const allBookings = await getBookings();
+          const validation = validateSlotCapacity(carWash, date, timeSlot, allBookings);
+          if (!validation.isValid) {
+            return {
+              errorStatus: 400,
+              errorMessage: validation.error || 'This time slot is fully booked or no longer available.',
+            };
+          }
         }
-      }
 
-      // 🔒 Local Bank Payment Processing & Sanity Checks
-      let dbPaymentBank: string | undefined = undefined;
-      let dbTxnReference: string | undefined = undefined;
-      let dbReceiptFilename: string | undefined = undefined;
+        // 🔒 Local Bank Payment Processing & Sanity Checks
+        let dbPaymentBank: string | undefined = undefined;
+        let dbTxnReference: string | undefined = undefined;
+        let dbReceiptFilename: string | undefined = undefined;
 
-      /* Commented out upfront pre-payment restriction - all car washes use Pay at Counter on site
-      const policy: string = carWash.paymentPolicy || 'PAY_ON_SITE';
-      if (policy === 'PRE_PAYMENT' && !paymentBank && !txnReference && !req.file) {
-        res.status(400).json({ 
-          error: 'This business requires upfront pre-payment. Payment bank selection, reference number, and receipt screenshot are all required to book.' 
-        });
+        if (paymentBank || txnReference || req.file) {
+          if (!paymentBank || !txnReference || !req.file) {
+            return {
+              errorStatus: 400,
+              errorMessage: 'For bank transfers, payment bank, reference number, and receipt screenshot are all required.',
+            };
+          }
+
+          // Aggressively sanitize / trim the reference number to prevent bypass fraud (e.g. trailing/leading spaces)
+          const sanitizedRef = txnReference.toString().trim().toUpperCase();
+          if (sanitizedRef.length === 0) {
+            return {
+              errorStatus: 400,
+              errorMessage: 'Transaction reference number cannot be empty.',
+            };
+          }
+
+          // Explicitly query the database for duplicate transaction references BEFORE running creation scripts
+          const duplicateBooking = await getBookingByTxnRef(sanitizedRef);
+          if (duplicateBooking) {
+            return {
+              errorStatus: 400,
+              errorMessage: 'This bank transaction reference number has already been used. Duplicate submissions are not allowed.',
+            };
+          }
+
+          dbPaymentBank = paymentBank;
+          dbTxnReference = sanitizedRef;
+          dbReceiptFilename = req.file.filename;
+        }
+
+        // Fetch customer database record to get their stored phone number & vehicle
+        const dbUser = await getUserById(req.user!.id);
+        const rawPhone = (customerPhone || dbUser?.phone || '').trim();
+        const finalCustomerPhone = rawPhone && rawPhone.toUpperCase() !== 'NA' && rawPhone.toUpperCase() !== 'N/A' ? rawPhone : undefined;
+        const finalVehicleInfo = (vehicleInfo || '').trim() || undefined;
+
+        // If user provided a phone number and their profile didn't have one, update their profile
+        if (finalCustomerPhone && (!dbUser?.phone || dbUser.phone.toUpperCase() === 'NA')) {
+          await updateUser(req.user!.id, { phone: finalCustomerPhone }).catch(() => {});
+        }
+
+        const newBooking: Booking = {
+          id: `bk_${Math.random().toString(36).substr(2, 9)}`,
+          carWashId,
+          customerId: req.user!.id,
+          customerName: req.user!.name,
+          customerEmail: req.user!.email,
+          customerPhone: finalCustomerPhone,
+          vehicleInfo: finalVehicleInfo,
+          date,
+          timeSlot,
+          status: BookingStatus.PENDING,
+          notes: notes || '',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          paymentBank: dbPaymentBank,
+          txnReference: dbTxnReference,
+          receiptFilename: dbReceiptFilename,
+          serviceId: serviceId || undefined,
+          serviceName: serviceName || undefined,
+          price: price ? parseFloat(price) : undefined,
+        };
+
+        await createBooking(newBooking);
+        return { success: true, newBooking };
+      });
+
+      if ('errorStatus' in bookingExecution && bookingExecution.errorStatus) {
+        res.status(bookingExecution.errorStatus).json({ error: bookingExecution.errorMessage });
         return;
       }
-      */
 
-      if (paymentBank || txnReference || req.file) {
-        if (!paymentBank || !txnReference || !req.file) {
-          res.status(400).json({ 
-            error: 'For bank transfers, payment bank, reference number, and receipt screenshot are all required.' 
-          });
-          return;
-        }
-
-        // Aggressively sanitize / trim the reference number to prevent bypass fraud (e.g. trailing/leading spaces)
-        const sanitizedRef = txnReference.toString().trim().toUpperCase();
-        if (sanitizedRef.length === 0) {
-          res.status(400).json({ error: 'Transaction reference number cannot be empty.' });
-          return;
-        }
-
-        // Explicitly query the database for duplicate transaction references BEFORE running creation scripts
-        const duplicateBooking = await getBookingByTxnRef(sanitizedRef);
-        if (duplicateBooking) {
-          res.status(400).json({ 
-            error: 'This bank transaction reference number has already been used. Duplicate submissions are not allowed.' 
-          });
-          return;
-        }
-
-        dbPaymentBank = paymentBank;
-        dbTxnReference = sanitizedRef;
-        dbReceiptFilename = req.file.filename;
-      }
-
-      // Fetch customer database record to get their stored phone number & vehicle
-      const dbUser = await getUserById(req.user!.id);
-      const rawPhone = (customerPhone || dbUser?.phone || '').trim();
-      const finalCustomerPhone = rawPhone && rawPhone.toUpperCase() !== 'NA' && rawPhone.toUpperCase() !== 'N/A' ? rawPhone : undefined;
-      const finalVehicleInfo = (vehicleInfo || '').trim() || undefined;
-
-      // If user provided a phone number and their profile didn't have one, update their profile
-      if (finalCustomerPhone && (!dbUser?.phone || dbUser.phone.toUpperCase() === 'NA')) {
-        await updateUser(req.user!.id, { phone: finalCustomerPhone }).catch(() => {});
-      }
-
-      const newBooking: Booking = {
-        id: `bk_${Math.random().toString(36).substr(2, 9)}`,
-        carWashId,
-        customerId: req.user!.id,
-        customerName: req.user!.name,
-        customerEmail: req.user!.email,
-        customerPhone: finalCustomerPhone,
-        vehicleInfo: finalVehicleInfo,
-        date,
-        timeSlot,
-        status: BookingStatus.PENDING,
-        notes: notes || '',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        paymentBank: dbPaymentBank,
-        txnReference: dbTxnReference,
-        receiptFilename: dbReceiptFilename,
-        serviceId: serviceId || undefined,
-        serviceName: serviceName || undefined,
-        price: price ? parseFloat(price) : undefined,
-      };
-
-      await createBooking(newBooking);
+      const newBooking = (bookingExecution as any).newBooking;
 
       // Trigger in-app notification for the owner of the car wash
       if (carWash.ownerId) {
@@ -1835,7 +2098,7 @@ async function startServer() {
         req.user!.id,
         req.user!.email,
         'BOOKING_CREATE',
-        `Booked slot ${timeSlot} on ${date} at ${carWash.name}${dbTxnReference ? ` with bank payment ref: ${dbTxnReference}` : ''}`
+        `Booked slot ${timeSlot} on ${date} at ${carWash.name}${newBooking.txnReference ? ` with bank payment ref: ${newBooking.txnReference}` : ''}`
       );
 
       // Customer booking confirmation emails are currently removed/disabled per preference.
@@ -2693,6 +2956,8 @@ async function startServer() {
           capacityPerSlot: 2,
           ownerId: newOwner.id,
           isActive: true,
+          ownerNavigationEnabled: true,
+          ownerQrCodeEnabled: req.body.ownerQrCodeEnabled !== undefined ? !!req.body.ownerQrCodeEnabled : false,
           createdAt: new Date().toISOString(),
         };
 

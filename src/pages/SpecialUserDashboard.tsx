@@ -23,11 +23,17 @@ import {
   Star,
   Trash2,
   RefreshCw,
-  Filter
+  Filter,
+  Lock,
+  Unlock,
+  Sliders,
+  QrCode,
+  EyeOff,
 } from 'lucide-react';
 import { CarWash, Role, Review } from '../types.js';
 import { FEATURES } from '../config/features.js';
 import { useTabBack } from '../utils/useBackHandler.js';
+import { CarWashOperationsModal } from '../components/CarWashOperationsModal.js';
 
 // Quick Brunei location presets for rapid mapping
 const BRUNEI_PRESETS = [
@@ -119,6 +125,8 @@ export const SpecialUserDashboard: React.FC = () => {
   const [latInput, setLatInput] = useState<string>('4.8917');
   const [lngInput, setLngInput] = useState<string>('114.9401');
   const [businessDesc, setBusinessDesc] = useState('');
+  const [allowOwnerQrImmediately, setAllowOwnerQrImmediately] = useState<boolean>(false);
+  const [operationsModalCarWash, setOperationsModalCarWash] = useState<CarWash | null>(null);
   const [quickSearchQuery, setQuickSearchQuery] = useState('');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -250,7 +258,9 @@ export const SpecialUserDashboard: React.FC = () => {
             locationLng: businessLng,
             ownerId: selectedOnboardOwnerId,
             slotDuration: 30,
-            capacityPerSlot: 2
+            capacityPerSlot: 2,
+            ownerNavigationEnabled: true,
+            ownerQrCodeEnabled: allowOwnerQrImmediately,
           })
         });
         success = res.ok;
@@ -271,6 +281,8 @@ export const SpecialUserDashboard: React.FC = () => {
         businessLat,
         businessLng,
         businessDesc,
+        ownerNavigationEnabled: true,
+        ownerQrCodeEnabled: allowOwnerQrImmediately,
       };
       success = await createOwnerWithBusiness(data);
     }
@@ -529,6 +541,25 @@ export const SpecialUserDashboard: React.FC = () => {
                   </div>
                 </div>
 
+                {/* Owner QR Code Permission Configuration */}
+                <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-4 flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    id="allow-owner-qr-toggle"
+                    checked={allowOwnerQrImmediately}
+                    onChange={(e) => setAllowOwnerQrImmediately(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
+                  />
+                  <div>
+                    <label htmlFor="allow-owner-qr-toggle" className="text-xs font-bold text-slate-800 cursor-pointer block">
+                      Allow Owner QR Code Access Immediately
+                    </label>
+                    <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                      Default is unchecked: keeps the QR Code & printable poster hidden from the owner until verified, while the owner can immediately access and navigate all other operational tabs (Bookings, Calendar, Services, Operations).
+                    </p>
+                  </div>
+                </div>
+
                 <button
                   type="submit"
                   disabled={isSubmitting}
@@ -729,6 +760,18 @@ export const SpecialUserDashboard: React.FC = () => {
                       </div>
 
                       <div className="space-y-1.5 pt-2 border-t border-slate-200/60 text-xs">
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-500 font-medium">Owner QR Code:</span>
+                          <span
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase tracking-wider ${
+                              selectedWashObj.ownerQrCodeEnabled
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-amber-100 text-amber-800'
+                            }`}
+                          >
+                            {selectedWashObj.ownerQrCodeEnabled ? 'Allowed (Visible)' : 'Hidden'}
+                          </span>
+                        </div>
                         <div className="flex justify-between">
                           <span className="text-slate-500 font-medium">Owner Email:</span>
                           <span className="font-mono font-bold text-slate-800">{selectedWashObj.ownerEmail || 'N/A'}</span>
@@ -741,6 +784,54 @@ export const SpecialUserDashboard: React.FC = () => {
                           <span className="text-slate-500 font-medium">Current Lng:</span>
                           <span className="font-mono font-bold text-slate-800">{selectedWashObj.locationLng}</span>
                         </div>
+                      </div>
+
+                      {/* Owner QR Code Quick Toggle & Operations Button */}
+                      <div className="pt-2 border-t border-slate-200/60 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs text-slate-600 font-bold">Quick Toggle:</span>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const next = !selectedWashObj.ownerQrCodeEnabled;
+                              const success = await updateLocationConfig(selectedWashObj.id, {
+                                ownerNavigationEnabled: true,
+                                ownerQrCodeEnabled: next,
+                              });
+                              if (success) {
+                                showToast(`Owner QR Code ${next ? 'enabled' : 'hidden'} for "${selectedWashObj.name}"`);
+                              }
+                            }}
+                            className={`px-2.5 py-1 rounded-xl text-[11px] font-extrabold flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs ${
+                              selectedWashObj.ownerQrCodeEnabled
+                                ? 'bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300'
+                                : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300'
+                            }`}
+                            id="special-quick-toggle-owner-qr-btn"
+                          >
+                            {selectedWashObj.ownerQrCodeEnabled ? (
+                              <>
+                                <EyeOff className="w-3.5 h-3.5" />
+                                <span>Hide QR Code</span>
+                              </>
+                            ) : (
+                              <>
+                                <QrCode className="w-3.5 h-3.5" />
+                                <span>Allow QR Code</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setOperationsModalCarWash(selectedWashObj)}
+                          className="w-full py-2.5 px-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 rounded-xl text-xs font-extrabold flex items-center justify-center gap-2 cursor-pointer transition-colors"
+                          id="special-manage-operations-btn"
+                        >
+                          <Sliders className="w-4 h-4" />
+                          <span>Configure Operations, Services & Schedule</span>
+                        </button>
                       </div>
 
                       <a
@@ -1092,6 +1183,15 @@ export const SpecialUserDashboard: React.FC = () => {
           <strong>Special Partner Mapping Notice:</strong> Accurate GPS coordinates ensure customer distance calculations and nearest-facility maps work flawlessly across Brunei. Clicking directly on the interactive map sets exact pin locations with 6-digit decimal precision.
         </p>
       </div>
+
+      {/* Car Wash Operations & Services Management Modal */}
+      {operationsModalCarWash && (
+        <CarWashOperationsModal
+          carWash={operationsModalCarWash}
+          isOpen={!!operationsModalCarWash}
+          onClose={() => setOperationsModalCarWash(null)}
+        />
+      )}
     </div>
   );
 };

@@ -11,13 +11,14 @@ import {
   Clock, MapPin, BarChart3, ChevronRight, Edit2, Plus, Info, Briefcase, Trash2, Edit, Lock, Key,
   Phone, Car, User as UserIcon, Search, ChevronLeft, Filter, ShieldCheck, CheckCircle2, AlertCircle, CalendarDays, ChevronDown,
   FileText, Printer, Download, TrendingUp, PieChart, CreditCard, Package, FileSpreadsheet, Tag, Layers, RefreshCw, Bell, CheckCheck, MessageCircle, Mail, Save, Sparkles, Pencil, Upload,
-  Star, CornerDownRight, MessageSquare
+  Star, CornerDownRight, MessageSquare, QrCode, Eye
 } from 'lucide-react';
 import { BookingStatus, CarWash, Booking, WeeklySchedule, CustomPaymentMethod, WashService, Role, Review, ReviewSummary } from '../types.js';
 import { EditBookingModal } from '../components/EditBookingModal.js';
 import { ServicePickerModal } from '../components/ServicePickerModal.js';
 import { SettlementConfirmationModal } from '../components/SettlementConfirmationModal.js';
 import { TransferProviderSelector } from '../components/TransferProviderSelector.js';
+import { QRCodeManager } from '../components/QRCodeManager.js';
 import { FEATURES } from '../config/features.js';
 import { useModalBack, useTabBack } from '../utils/useBackHandler.js';
 
@@ -196,7 +197,16 @@ export const OwnerDashboard: React.FC = () => {
     return methods;
   }, [selectedBusiness]);
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'bookings' | 'customers' | 'calendar' | 'reviews' | 'settings'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'bookings' | 'customers' | 'calendar' | 'reviews' | 'qrcode' | 'settings'>('overview');
+  // QR Code access is controlled by Admin / Special User (hidden by default, all other navigation is always available)
+  const isOwnerQrCodeAllowed = selectedBusiness ? (selectedBusiness.ownerQrCodeEnabled === true) : false;
+
+  useEffect(() => {
+    if (!isOwnerQrCodeAllowed && activeTab === 'qrcode') {
+      setActiveTab('overview');
+    }
+  }, [isOwnerQrCodeAllowed, activeTab]);
+
   const [customerAlphabetFilter, setCustomerAlphabetFilter] = useState<string>('ALL');
   const [customerSearchQuery, setCustomerSearchQuery] = useState<string>('');
   const [isSeedingLedger, setIsSeedingLedger] = useState(false);
@@ -1965,7 +1975,7 @@ export const OwnerDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* Responsive Bottom Navigation Bar */}
+      {/* Responsive Bottom Navigation Bar - All operational tabs always accessible */}
       <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-150 shadow-[0_-8px_30px_rgba(0,0,0,0.06)] px-4 py-2 flex justify-around items-center md:sticky md:top-4 md:bottom-auto md:left-auto md:right-auto md:z-30 md:bg-slate-50/90 md:border md:border-slate-200/60 md:shadow-xs md:rounded-2xl md:py-2 md:px-3 md:w-max md:mx-auto md:mb-6 md:gap-1.5 animate-fade-in">
         <button
           type="button"
@@ -2036,6 +2046,23 @@ export const OwnerDashboard: React.FC = () => {
           </button>
         )}
 
+        {/* QR Code Tab - Only visible when permitted by Admin / Special User */}
+        {isOwnerQrCodeAllowed && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('qrcode')}
+            className={`flex flex-col md:flex-row items-center gap-1 md:gap-2 px-4 py-1.5 rounded-xl transition-all cursor-pointer ${
+              activeTab === 'qrcode'
+                ? 'text-indigo-600 font-bold bg-indigo-50/85'
+                : 'text-slate-400 font-medium hover:text-slate-600 hover:bg-slate-50'
+            }`}
+            id="owner-tab-qrcode"
+          >
+            <QrCode className="h-5 w-5 md:h-4 md:w-4" />
+            <span className="text-[10px] md:text-xs font-semibold">QR Code & Link</span>
+          </button>
+        )}
+
         <button
           type="button"
           onClick={() => setActiveTab('settings')}
@@ -2052,6 +2079,82 @@ export const OwnerDashboard: React.FC = () => {
 
       {activeTab === 'overview' && (
         <div className="space-y-6 animate-fade-in">
+          {/* Station Direct Link & Booking Quick Banner */}
+          {selectedBusiness && (
+            <div className={`rounded-3xl p-5 sm:p-6 shadow-sm border flex flex-col md:flex-row items-start md:items-center justify-between gap-4 relative overflow-hidden ${
+              isOwnerQrCodeAllowed
+                ? 'bg-gradient-to-r from-sky-950 via-slate-900 to-indigo-950 text-white border-sky-800/40'
+                : 'bg-slate-100 border-slate-200 text-slate-700'
+            }`}>
+              <div className="relative z-10 flex items-center gap-4">
+                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${
+                  isOwnerQrCodeAllowed
+                    ? 'bg-sky-500/20 border border-sky-400/30 text-sky-400'
+                    : 'bg-slate-200 border border-slate-300 text-slate-500'
+                }`}>
+                  {isOwnerQrCodeAllowed ? <QrCode className="w-6 h-6" /> : <Lock className="w-6 h-6" />}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className={`font-bold text-base ${isOwnerQrCodeAllowed ? 'text-white' : 'text-slate-900'}`}>
+                      {isOwnerQrCodeAllowed ? 'Direct Booking Link & QR Active' : 'Direct Booking Page & QR Restricted'}
+                    </h4>
+                    <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full border ${
+                      isOwnerQrCodeAllowed
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/30'
+                        : 'bg-amber-100 text-amber-800 border-amber-200'
+                    }`}>
+                      {isOwnerQrCodeAllowed ? 'Live' : 'Hidden from Public'}
+                    </span>
+                  </div>
+                  <p className={`text-xs mt-1 ${isOwnerQrCodeAllowed ? 'text-slate-300' : 'text-slate-500'}`}>
+                    {isOwnerQrCodeAllowed ? (
+                      <>
+                        Customers can book instantly without app download or login at <code className="bg-white/10 px-1.5 py-0.5 rounded text-sky-300 font-mono">/wash/{selectedBusiness.slug || selectedBusiness.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || selectedBusiness.id}</code>
+                      </>
+                    ) : (
+                      <>
+                        Direct public booking via <code className="bg-slate-200 px-1.5 py-0.5 rounded text-slate-700 font-mono">/wash/{selectedBusiness.slug || selectedBusiness.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || selectedBusiness.id}</code> and printable posters are currently hidden. Contact platform administration to activate.
+                      </>
+                    )}
+                  </p>
+                </div>
+              </div>
+              <div className="relative z-10 flex items-center gap-2.5 w-full md:w-auto">
+                {isOwnerQrCodeAllowed ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const slug = selectedBusiness.slug || selectedBusiness.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || selectedBusiness.id;
+                        window.history.pushState({ path: `/wash/${slug}` }, '', `/wash/${slug}`);
+                        window.dispatchEvent(new PopStateEvent('popstate'));
+                      }}
+                      className="flex-1 md:flex-initial px-4 py-2.5 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                      id="owner-preview-public-page-btn"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>Preview Page</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('qrcode')}
+                      className="flex-1 md:flex-initial px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                      id="owner-manage-qr-btn"
+                    >
+                      <QrCode className="w-3.5 h-3.5 text-sky-400" />
+                      <span>View Poster</span>
+                    </button>
+                  </>
+                ) : (
+                  <span className="text-xs text-slate-500 italic bg-white/70 px-3 py-1.5 rounded-lg border border-slate-200">
+                    Awaiting Admin / Special User Activation
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Analytics Bento Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
             <div className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-xs flex items-center gap-4">
@@ -3104,8 +3207,50 @@ export const OwnerDashboard: React.FC = () => {
         </div>
       )}
 
+      {activeTab === 'qrcode' && isOwnerQrCodeAllowed && (
+        <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
+          {selectedBusiness && (
+            <QRCodeManager
+              carWash={selectedBusiness}
+              onUpdateSlug={async (newSlug: string) => {
+                const success = await updateLocationConfig(selectedBusiness.id, {
+                  ...selectedBusiness,
+                  slug: newSlug,
+                });
+                if (success) {
+                  setSelectedBusiness({
+                    ...selectedBusiness,
+                    slug: newSlug,
+                  });
+                }
+                return success;
+              }}
+            />
+          )}
+        </div>
+      )}
+
       {activeTab === 'settings' && (
         <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
+          {selectedBusiness && isOwnerQrCodeAllowed && (
+            <QRCodeManager
+              carWash={selectedBusiness}
+              onUpdateSlug={async (newSlug: string) => {
+                const success = await updateLocationConfig(selectedBusiness.id, {
+                  ...selectedBusiness,
+                  slug: newSlug,
+                });
+                if (success) {
+                  setSelectedBusiness({
+                    ...selectedBusiness,
+                    slug: newSlug,
+                  });
+                }
+                return success;
+              }}
+            />
+          )}
+
           {selectedBusiness && (
             <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
               <div className="flex items-center justify-between pb-4 border-b border-slate-100">
@@ -6121,34 +6266,34 @@ export const OwnerDashboard: React.FC = () => {
 
               {/* Service Selection & Price */}
               <div className="col-span-full space-y-2">
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider">
                     Selected Services & Products ({mbSelectedItems.length})
                   </label>
                   <button
                     type="button"
                     onClick={() => setShowServicePickerModal(true)}
-                    className="text-xs font-black text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 px-3 py-1.5 rounded-xl border border-amber-200 transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                    className="w-full sm:w-auto text-xs font-black text-amber-900 bg-amber-100 hover:bg-amber-200 px-3.5 py-2 rounded-xl border border-amber-300 transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs min-h-[38px]"
                   >
-                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                    <span>+ Tick & Choose Services (Multi-Select)</span>
+                    <Sparkles className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                    <span>Tick & Choose Services (Multi-Select)</span>
                   </button>
                 </div>
 
                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
                   {mbSelectedItems.length === 0 ? (
                     <div className="text-center py-3 text-xs text-slate-400 font-medium">
-                      No services selected yet. Click "+ Tick & Choose Services" above.
+                      No services selected yet. Click "Tick & Choose Services" above.
                     </div>
                   ) : (
-                    <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
                       {mbSelectedItems.map((item, idx) => (
                         <div
                           key={`${item.id}_${idx}`}
-                          className="flex items-center justify-between bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-2xs text-xs"
+                          className="flex flex-col sm:flex-row sm:items-center justify-between bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs gap-1.5 text-xs"
                         >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase ${
+                          <div className="flex items-start gap-2 min-w-0">
+                            <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase shrink-0 mt-0.5 ${
                               item.type === 'product'
                                 ? 'bg-emerald-100 text-emerald-800'
                                 : item.type === 'addon'
@@ -6157,9 +6302,11 @@ export const OwnerDashboard: React.FC = () => {
                             }`}>
                               {item.type === 'product' ? 'Product' : item.type === 'addon' ? 'Add-on' : 'Main'}
                             </span>
-                            <span className="font-extrabold text-slate-800 truncate">{item.name}</span>
+                            <span className="font-extrabold text-slate-800 text-xs sm:text-sm leading-snug break-words whitespace-normal">
+                              {item.name}
+                            </span>
                           </div>
-                          <span className="font-mono font-black text-slate-900 shrink-0 ml-2">
+                          <span className="font-mono font-black text-slate-900 shrink-0 self-end sm:self-center ml-2">
                             BND ${(Number(item.price) || 0).toFixed(2)}
                           </span>
                         </div>

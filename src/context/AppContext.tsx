@@ -26,7 +26,10 @@ interface AppContextType {
   fetchAppNotifications: () => Promise<void>;
   markNotificationAsRead: (id: string) => Promise<void>;
   markAllNotificationsAsRead: () => Promise<void>;
-  login: (email: string, password: string) => Promise<boolean | { requireOtp: boolean; email: string; sandboxCode?: string }>;
+  login: (email: string, password: string) => Promise<boolean | { requireOtp?: boolean; requireAdminOtp?: boolean; email: string; sandboxCode?: string; message?: string }>;
+  verifyAdminOtp: (email: string, otp: string) => Promise<boolean>;
+  resendAdminOtp: (email: string) => Promise<{ success: boolean; sandboxCode?: string }>;
+  toggleAdminOtpPolicy: (required: boolean) => Promise<boolean>;
   register: (
     email: string,
     password: string,
@@ -288,13 +291,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const login = async (
     email: string,
     password: string
-  ): Promise<boolean | { requireOtp: boolean; email: string; sandboxCode?: string }> => {
+  ): Promise<boolean | { requireOtp?: boolean; requireAdminOtp?: boolean; email: string; sandboxCode?: string; message?: string }> => {
     try {
       setLoading(true);
       const data = await apiFetch('/api/auth/login', {
         method: 'POST',
         body: JSON.stringify({ email, password }),
       });
+
+      // Administrator 2FA OTP Challenge
+      if (data.requireAdminOtp) {
+        showNotification(data.message || 'Admin 2FA security passkey sent to your email.', 'info');
+        return {
+          requireAdminOtp: true,
+          email: data.email || email,
+          sandboxCode: data.sandboxCode,
+          message: data.message
+        };
+      }
+
       setUser(data.user);
       setToken(data.token);
       localStorage.setItem('cw_user', JSON.stringify(data.user));
@@ -302,6 +317,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       showNotification(`Welcome back, ${data.user.name}!`, 'success');
       return true;
     } catch (err: any) {
+      if (err.data?.requireAdminOtp) {
+        showNotification(err.message || 'Admin 2FA verification passkey required.', 'info');
+        return {
+          requireAdminOtp: true,
+          email: err.data.email || email,
+          sandboxCode: err.data.sandboxCode,
+          message: err.message
+        };
+      }
       if (err.data?.requireOtp) {
         showNotification(err.message || 'Please verify your email address before logging in.', 'error');
         return {
@@ -311,6 +335,65 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         };
       }
       showNotification(err.message, 'error');
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const verifyAdminOtp = async (email: string, otp: string): Promise<boolean> => {
+    try {
+      setLoading(true);
+      const data = await apiFetch('/api/auth/verify-admin-otp', {
+        method: 'POST',
+        body: JSON.stringify({ email, otp }),
+      });
+      setUser(data.user);
+      setToken(data.token);
+      localStorage.setItem('cw_user', JSON.stringify(data.user));
+      localStorage.setItem('cw_token', data.token);
+      showNotification(`Administrator authenticated successfully. Welcome, ${data.user.name}!`, 'success');
+      return true;
+    } catch (err: any) {
+      showNotification(err.message || 'Failed to verify admin 2FA security passkey.', 'error');
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resendAdminOtp = async (email: string): Promise<{ success: boolean; sandboxCode?: string }> => {
+    try {
+      setLoading(true);
+      const data = await apiFetch('/api/auth/resend-admin-otp', {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      });
+      showNotification(data.message || 'New 2FA security code sent to your email.', 'success');
+      return { success: true, sandboxCode: data.sandboxCode };
+    } catch (err: any) {
+      showNotification(err.message || 'Failed to resend admin security code.', 'error');
+      return { success: false };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleAdminOtpPolicy = async (required: boolean): Promise<boolean> => {
+    try {
+      setLoading(true);
+      const data = await apiFetch('/api/admin/security/toggle-otp', {
+        method: 'POST',
+        body: JSON.stringify({ required }),
+      });
+      if (data.success) {
+        setPlatformInfo(prev => prev ? { ...prev, adminOtpRequired: data.adminOtpRequired } : prev);
+        showNotification(data.message || 'Admin 2FA policy updated successfully.', 'success');
+        return true;
+      }
+      return false;
+    } catch (err: any) {
+      showNotification(err.message || 'Failed to toggle admin 2FA policy.', 'error');
       return false;
     } finally {
       setLoading(false);
@@ -1016,6 +1099,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         markNotificationAsRead,
         markAllNotificationsAsRead,
         login,
+        verifyAdminOtp,
+        resendAdminOtp,
+        toggleAdminOtpPolicy,
         register,
         verifyRegistrationOtp,
         resendRegistrationOtp,

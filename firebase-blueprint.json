@@ -32,6 +32,7 @@
         "capacityPerSlot": { "type": "number" },
         "ownerId": { "type": "string" },
         "isActive": { "type": "boolean" },
+        "ownerNavigationEnabled": { "type": "boolean" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "name", "locationLat", "locationLng", "address", "openingHours", "slotDuration", "capacityPerSlot", "ownerId", "isActive", "createdAt"]

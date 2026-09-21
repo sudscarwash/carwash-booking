@@ -38,6 +38,7 @@ interface BookingFlowModalProps {
   isOpen: boolean;
   onClose: () => void;
   user: User | null;
+  initialServiceId?: string;
   createBooking: (
     carWashId: string,
     date: string,
@@ -65,6 +66,7 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
   isOpen,
   onClose,
   user,
+  initialServiceId,
   createBooking,
   onBookingSuccess
 }) => {
@@ -196,18 +198,27 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
 
   const catalog = getCatalogForLocation(location);
 
-  // Auto-select first main service on modal open if nothing selected yet
+  // Auto-select initialServiceId or first main service on modal open
   useEffect(() => {
     if (isOpen && location) {
       const items = getCatalogForLocation(location);
-      if (selectedItems.length === 0 && items.length > 0) {
-        const firstWash = items.find((i: any) => !i.type || i.type === 'service') || items[0];
-        if (firstWash) {
-          setSelectedItems([firstWash]);
+      if (items.length > 0) {
+        if (initialServiceId) {
+          const match = items.find((i: any) => i.id === initialServiceId);
+          if (match) {
+            setSelectedItems([match]);
+            return;
+          }
+        }
+        if (selectedItems.length === 0) {
+          const firstWash = items.find((i: any) => !i.type || i.type === 'service') || items[0];
+          if (firstWash) {
+            setSelectedItems([firstWash]);
+          }
         }
       }
     }
-  }, [isOpen, location]);
+  }, [isOpen, location, initialServiceId]);
 
   // Computed summary for selected multi-items
   const totalSelectedPrice = selectedItems.reduce((sum, item) => sum + (Number(item.price) || 0), 0);

@@ -229,6 +229,44 @@ export async function sendPasswordResetOTP(email: string, name: string, code: st
 }
 
 /**
+ * Send a 6-digit OTP code for Administrator 2FA Login
+ */
+export async function sendAdminLoginOtp(email: string, name: string, code: string): Promise<boolean> {
+  const subject = `🔐 [Admin Security Alert] Verification Code: ${code} - Autoshine BN`;
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; border: 1px solid #fecaca; border-radius: 16px; background-color: #ffffff; color: #1e293b;">
+      <div style="text-align: center; margin-bottom: 24px;">
+        <div style="display: inline-block; background-color: #fef2f2; border: 1px solid #fee2e2; border-radius: 12px; padding: 10px 18px; margin-bottom: 8px;">
+          <span style="color: #dc2626; font-size: 13px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase;">ADMINISTRATOR TWO-FACTOR AUTHENTICATION</span>
+        </div>
+        <h1 style="color: #0f172a; margin: 8px 0 0 0; font-size: 26px; font-weight: 800; letter-spacing: -0.025em;">Autoshine BN Platform</h1>
+      </div>
+      <hr style="border: none; border-top: 1px solid #fee2e2; margin: 20px 0;" />
+      <h2 style="color: #991b1b; font-size: 20px; font-weight: 700; margin-top: 0; margin-bottom: 12px;">Admin Login Verification</h2>
+      <p style="font-size: 15px; line-height: 1.6; color: #334155;">Hello <strong>${name}</strong>,</p>
+      <p style="font-size: 15px; line-height: 1.6; color: #334155;">An administrative session was initiated for your administrator account (<code style="background-color: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-family: monospace;">${email}</code>). To protect platform security, please enter the following 6-digit one-time passkey:</p>
+      
+      <div style="background-color: #fff1f2; border: 2px dashed #f43f5e; padding: 24px; border-radius: 14px; text-align: center; margin: 24px 0;">
+        <span style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 40px; font-weight: 900; letter-spacing: 8px; color: #e11d48; display: block;">${code}</span>
+        <p style="color: #be123c; font-size: 12px; margin: 10px 0 0 0; font-weight: 600;">Valid for 10 minutes &bull; Single-use security token</p>
+      </div>
+
+      <div style="background-color: #f8fafc; border-left: 4px solid #ef4444; padding: 12px 16px; border-radius: 6px; margin: 20px 0;">
+        <p style="margin: 0; font-size: 13px; color: #475569; line-height: 1.5;">
+          <strong>Security Notice:</strong> Never share this code with anyone. Autoshine BN staff will never request your 2FA verification passkey. If you did not initiate this login attempt, please secure your administrative credentials immediately.
+        </p>
+      </div>
+
+      <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 24px 0;" />
+      <div style="text-align: center;">
+        <p style="color: #94a3b8; font-size: 11px; margin: 0;">&copy; ${new Date().getFullYear()} Autoshine BN Security Operations. All administrative logins are audited and logged.</p>
+      </div>
+    </div>
+  `;
+  return sendEmail(email, subject, html);
+}
+
+/**
  * Send Booking Confirmation Email
  */
 export async function sendBookingConfirmationEmail(options: {

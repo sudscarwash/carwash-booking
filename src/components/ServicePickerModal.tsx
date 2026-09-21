@@ -227,36 +227,37 @@ export const ServicePickerModal: React.FC<ServicePickerModalProps> = ({
 
                   {/* Content details */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 ${
-                          isProduct
-                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                            : isAddon
-                            ? 'bg-purple-100 text-purple-800 border border-purple-200'
-                            : 'bg-sky-100 text-sky-800 border border-sky-200'
-                        }`}>
-                          {isProduct ? 'Product' : isAddon ? 'Add-on' : 'Main Wash'}
-                        </span>
-                        <h4 className="text-xs sm:text-sm font-extrabold text-slate-900 truncate">
-                          {item.name}
-                        </h4>
-                      </div>
+                    {/* Top Row: Type Badge + Price */}
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <span className={`text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-wider ${
+                        isProduct
+                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                          : isAddon
+                          ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                          : 'bg-sky-100 text-sky-800 border border-sky-200'
+                      }`}>
+                        {isProduct ? 'Product' : isAddon ? 'Add-on' : 'Main Wash'}
+                      </span>
 
-                      <span className="text-xs sm:text-sm font-black text-slate-900 font-mono shrink-0">
+                      <span className="text-xs sm:text-sm font-black text-slate-900 font-mono">
                         BND ${(Number(item.price) || 0).toFixed(2)}
                       </span>
                     </div>
 
+                    {/* Full Name without Truncate */}
+                    <h4 className="text-xs sm:text-sm font-black text-slate-900 leading-snug break-words whitespace-normal">
+                      {item.name}
+                    </h4>
+
                     {item.description && (
-                      <p className="text-[11px] text-slate-500 mt-1 line-clamp-2 leading-relaxed">
+                      <p className="text-[11px] text-slate-500 mt-1 leading-relaxed break-words whitespace-normal">
                         {item.description}
                       </p>
                     )}
 
                     {item.duration > 0 && (
-                      <div className="mt-1.5 flex items-center gap-1 text-[10px] font-bold text-slate-400">
-                        <Clock className="w-3 h-3 text-slate-400" />
+                      <div className="mt-1.5 flex items-center gap-1.5 text-[10px] font-bold text-slate-400">
+                        <Clock className="w-3 h-3 text-slate-400 shrink-0" />
                         <span>Est. Duration: ~{item.duration} mins</span>
                       </div>
                     )}
@@ -268,12 +269,12 @@ export const ServicePickerModal: React.FC<ServicePickerModalProps> = ({
         </div>
 
         {/* Footer Summary & Confirm Button */}
-        <div className="shrink-0 p-4 border-t border-slate-200 bg-white flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg">
+        <div className="shrink-0 p-3.5 sm:p-4 border-t border-slate-200 bg-white flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shadow-lg">
           <div>
             <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider block">
               Selected Items Breakdown ({tempSelected.length})
             </span>
-            <div className="flex items-center gap-2 mt-0.5">
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
               <span className="text-base sm:text-lg font-black text-slate-900 font-mono">
                 BND ${totalAmount.toFixed(2)}
               </span>
@@ -289,7 +290,7 @@ export const ServicePickerModal: React.FC<ServicePickerModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-100 transition-all cursor-pointer"
+              className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-100 transition-all cursor-pointer min-h-[44px]"
             >
               Cancel
             </button>
@@ -299,7 +300,7 @@ export const ServicePickerModal: React.FC<ServicePickerModalProps> = ({
                 onConfirm(tempSelected);
                 onClose();
               }}
-              className="flex-1 sm:flex-none px-6 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-extrabold shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
+              className="flex-1 sm:flex-none px-6 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-extrabold shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 min-h-[44px]"
             >
               <Check className="w-4 h-4 text-emerald-400" />
               <span>Confirm ({tempSelected.length} Selected)</span>

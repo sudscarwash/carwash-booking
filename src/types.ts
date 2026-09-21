@@ -79,11 +79,13 @@ export interface PlatformInfo {
   companyName?: string;
   description?: string;
   updatedAt?: string;
+  adminOtpRequired?: boolean;
 }
 
 export interface CarWash {
   id: string;
   name: string;
+  slug?: string;
   description: string;
   locationLat: number;
   locationLng: number;
@@ -94,6 +96,8 @@ export interface CarWash {
   ownerId: string;
   ownerEmail?: string;
   isActive: boolean;
+  ownerNavigationEnabled?: boolean; // Legacy/full navigation access
+  ownerQrCodeEnabled?: boolean; // Controls whether QR Code poster & tab are visible to the owner (default: false / hidden)
   createdAt: string;
   phone?: string;
   instagram?: string;

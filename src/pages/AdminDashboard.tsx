@@ -12,10 +12,11 @@ import {
   Database, Mail, AlertTriangle, RefreshCw, Server, Send, Eye, Trash2, Terminal, Building, Phone, Star,
   Search, Filter
 } from 'lucide-react';
-import { Role, User, MapPreset, Review } from '../types.js';
+import { Role, User, MapPreset, Review, CarWash } from '../types.js';
 import { isValidEmail } from '../lib/validation.js';
 import { FEATURES } from '../config/features.js';
 import { useModalBack, useTabBack } from '../utils/useBackHandler.js';
+import { CarWashOperationsModal } from '../components/CarWashOperationsModal.js';
 
 export const AdminDashboard: React.FC = () => {
   const {
@@ -25,6 +26,7 @@ export const AdminDashboard: React.FC = () => {
     logs,
     platformInfo,
     updatePlatformInfo,
+    toggleAdminOtpPolicy,
     adminCreateUser,
     adminUpdateUser,
     createOwnerWithBusiness,
@@ -80,6 +82,8 @@ export const AdminDashboard: React.FC = () => {
   const [editLocSlotDuration, setEditLocSlotDuration] = useState(30);
   const [editLocCapacity, setEditLocCapacity] = useState(1);
   const [editLocIsActive, setEditLocIsActive] = useState(true);
+  const [editLocOwnerQr, setEditLocOwnerQr] = useState(false);
+  const [operationsModalCarWash, setOperationsModalCarWash] = useState<CarWash | null>(null);
   const [editLocPhone, setEditLocPhone] = useState('');
   const [editLocInstagram, setEditLocInstagram] = useState('');
   const [editLocOwnerId, setEditLocOwnerId] = useState('');
@@ -146,7 +150,9 @@ export const AdminDashboard: React.FC = () => {
   const [infoAddress, setInfoAddress] = useState('');
   const [infoCompanyName, setInfoCompanyName] = useState('Autoshine BN');
   const [infoDesc, setInfoDesc] = useState('');
+  const [infoAdminOtpRequired, setInfoAdminOtpRequired] = useState(true);
   const [infoSaving, setInfoSaving] = useState(false);
+  const [togglingOtp, setTogglingOtp] = useState(false);
 
   useEffect(() => {
     if (platformInfo) {
@@ -156,6 +162,7 @@ export const AdminDashboard: React.FC = () => {
       setInfoAddress(platformInfo.address || '');
       setInfoCompanyName(platformInfo.companyName || 'Autoshine BN');
       setInfoDesc(platformInfo.description || '');
+      setInfoAdminOtpRequired(platformInfo.adminOtpRequired !== false);
     }
   }, [platformInfo]);
 
@@ -169,8 +176,18 @@ export const AdminDashboard: React.FC = () => {
       address: infoAddress.trim(),
       companyName: infoCompanyName.trim(),
       description: infoDesc.trim(),
+      adminOtpRequired: infoAdminOtpRequired,
     });
     setInfoSaving(false);
+  };
+
+  const handleDirectToggleOtp = async (newValue: boolean) => {
+    setTogglingOtp(true);
+    const ok = await toggleAdminOtpPolicy(newValue);
+    if (ok) {
+      setInfoAdminOtpRequired(newValue);
+    }
+    setTogglingOtp(false);
   };
 
   // Email Sandbox & Log State
@@ -436,6 +453,7 @@ export const AdminDashboard: React.FC = () => {
     setEditLocSlotDuration(loc.slotDuration || 30);
     setEditLocCapacity(loc.capacityPerSlot || 1);
     setEditLocIsActive(loc.isActive);
+    setEditLocOwnerQr(loc.ownerQrCodeEnabled === true);
     setEditLocPhone(loc.phone || '');
     setEditLocInstagram(loc.instagram || '');
     setEditLocOwnerId(loc.ownerId || '');
@@ -455,6 +473,8 @@ export const AdminDashboard: React.FC = () => {
       slotDuration: editLocSlotDuration,
       capacityPerSlot: editLocCapacity,
       isActive: editLocIsActive,
+      ownerNavigationEnabled: true,
+      ownerQrCodeEnabled: editLocOwnerQr,
       phone: editLocPhone,
       instagram: editLocInstagram,
       ownerId: editLocOwnerId,
@@ -1240,8 +1260,33 @@ export const AdminDashboard: React.FC = () => {
                     }`}>
                       {loc.isActive ? 'Active (Live)' : 'Suspended (Hidden)'}
                     </span>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await updateLocationConfig(loc.id, {
+                          ownerNavigationEnabled: true,
+                          ownerQrCodeEnabled: !loc.ownerQrCodeEnabled,
+                        });
+                      }}
+                      className={`px-2 py-0.5 rounded-md text-[9px] font-extrabold uppercase tracking-wider cursor-pointer border transition-colors ${
+                        loc.ownerQrCodeEnabled
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                          : 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
+                      }`}
+                      title="Click to toggle Owner QR Code access (allowed or hidden)"
+                    >
+                      {loc.ownerQrCodeEnabled ? 'Owner QR: Allowed' : 'Owner QR: Hidden'}
+                    </button>
                   </div>
                   <div className="flex items-center gap-1.5 sm:gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setOperationsModalCarWash(loc)}
+                      className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 text-[10px] font-extrabold px-2.5 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                      title="Configure Facility Operations, Services Catalog & Schedule"
+                    >
+                      <Sliders className="h-3 w-3" /> Operations
+                    </button>
                     <button
                       onClick={async () => {
                         await updateLocationConfig(loc.id, { isActive: !loc.isActive });
@@ -1598,6 +1643,75 @@ export const AdminDashboard: React.FC = () => {
                     placeholder="Brunei's premier smart car wash & detailing booking platform."
                     className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium focus:ring-2 focus:ring-red-100 focus:border-red-500 outline-none"
                   />
+                </div>
+
+                {/* Administrator 2FA Security Enforcement Card */}
+                <div className="p-4 bg-rose-50/60 border border-rose-200 rounded-2xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 bg-rose-100 rounded-xl text-rose-700">
+                        <ShieldAlert className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs sm:text-sm font-bold text-slate-800">
+                          Administrator 2FA Security Enforcement
+                        </h4>
+                        <p className="text-[11px] text-slate-500">
+                          Require 6-digit email passkey verification on all administrator logins.
+                        </p>
+                      </div>
+                    </div>
+                    {infoAdminOtpRequired ? (
+                      <span className="text-[10px] font-bold uppercase bg-emerald-100 text-emerald-800 border border-emerald-300 px-2.5 py-1 rounded-xl flex items-center gap-1.5 shrink-0">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse"></span>
+                        Active &amp; Required
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-bold uppercase bg-amber-100 text-amber-800 border border-amber-300 px-2.5 py-1 rounded-xl flex items-center gap-1.5 shrink-0">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-600"></span>
+                        Disabled
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-2 border-t border-rose-100">
+                    <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={infoAdminOtpRequired}
+                        onChange={(e) => setInfoAdminOtpRequired(e.target.checked)}
+                        className="w-4 h-4 text-rose-600 rounded border-slate-300 focus:ring-rose-500 cursor-pointer"
+                        id="toggle-admin-otp-checkbox"
+                      />
+                      <span className="text-xs font-semibold text-slate-700">
+                        Enforce Email OTP challenge for Role.ADMIN
+                      </span>
+                    </label>
+
+                    <button
+                      type="button"
+                      disabled={togglingOtp}
+                      onClick={() => handleDirectToggleOtp(!infoAdminOtpRequired)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer flex items-center gap-1.5 ${
+                        infoAdminOtpRequired
+                          ? 'bg-amber-600 hover:bg-amber-500 text-white'
+                          : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                      }`}
+                      id="direct-toggle-admin-otp-btn"
+                    >
+                      {togglingOtp ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Key className="w-3.5 h-3.5" />
+                      )}
+                      <span>{infoAdminOtpRequired ? 'Switch to OFF' : 'Switch to ON'}</span>
+                    </button>
+                  </div>
+
+                  <div className="p-2.5 bg-white/80 border border-rose-100 rounded-xl text-[11px] text-slate-600 leading-relaxed">
+                    <p className="font-semibold text-slate-800 mb-0.5">Development &amp; Supabase Logging:</p>
+                    Passkeys are dispatched via email. In development or if email delivery fails, codes are immediately printed to the <strong>terminal console</strong> and saved to the Supabase database <code className="bg-slate-100 text-rose-700 px-1 py-0.5 rounded font-mono text-[10px]">audit_logs</code> table under the action <code className="bg-slate-100 text-rose-700 px-1 py-0.5 rounded font-mono text-[10px]">ADMIN_OTP_ISSUED</code>.
+                  </div>
                 </div>
 
                 <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-3">
@@ -2748,6 +2862,17 @@ export const AdminDashboard: React.FC = () => {
                     </select>
                   </div>
                   <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Owner QR Code Access</label>
+                    <select
+                      value={editLocOwnerQr ? 'allowed' : 'hidden'}
+                      onChange={(e) => setEditLocOwnerQr(e.target.value === 'allowed')}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-500"
+                    >
+                      <option value="allowed">Allowed (Visible in Dashboard)</option>
+                      <option value="hidden">Hidden (Restricted from Owner)</option>
+                    </select>
+                  </div>
+                  <div>
                     <label className="block text-xs font-semibold text-slate-600 mb-1">WhatsApp Phone Number</label>
                     <input
                       type="text"
@@ -2842,6 +2967,15 @@ export const AdminDashboard: React.FC = () => {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Car Wash Operations & Services Management Modal */}
+      {operationsModalCarWash && (
+        <CarWashOperationsModal
+          carWash={operationsModalCarWash}
+          isOpen={!!operationsModalCarWash}
+          onClose={() => setOperationsModalCarWash(null)}
+        />
       )}
     </div>
   );
