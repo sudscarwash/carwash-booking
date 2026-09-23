@@ -703,7 +703,7 @@ export const OwnerDashboard: React.FC = () => {
   const [logSearch, setLogSearch] = useState<string>('');
 
   // 📊 Accounting & Revenue Ledger States
-  const [accountingTimeframe, setAccountingTimeframe] = useState<'WEEKLY' | 'MONTHLY'>('WEEKLY');
+  const [accountingTimeframe, setAccountingTimeframe] = useState<'WEEKLY' | 'MONTHLY' | 'ALL'>('WEEKLY');
   const [accountingStatusFilter, setAccountingStatusFilter] = useState<'COMPLETED_ONLY' | 'ALL'>('COMPLETED_ONLY');
   const [accountingCategoryFilter, setAccountingCategoryFilter] = useState<'ALL' | 'SERVICES' | 'PRODUCTS'>('ALL');
   const [accountingSearch, setAccountingSearch] = useState<string>('');
@@ -2810,33 +2810,6 @@ export const OwnerDashboard: React.FC = () => {
                                 >
                                   {bk.status}
                                 </span>
-                                {bk.proximityStatus && bk.status === BookingStatus.PENDING && (
-                                  <span
-                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black border shadow-2xs ${
-                                      bk.proximityStatus === 'ARRIVED'
-                                        ? 'bg-emerald-600 text-white border-emerald-700 animate-pulse'
-                                        : 'bg-sky-100 text-sky-800 border-sky-300'
-                                    }`}
-                                    title={
-                                      bk.proximityStatus === 'ARRIVED'
-                                        ? 'Customer is at the station bay (< 100m away)'
-                                        : `Approx ${
-                                            (bk.proximityDistanceKm ?? 0) < 1
-                                              ? `${Math.round((bk.proximityDistanceKm ?? 0) * 1000)} meters`
-                                              : `${bk.proximityDistanceKm ?? 0} km`
-                                          } away (~${bk.proximityEtaMinutes || 0} mins drive time)`
-                                    }
-                                  >
-                                    <Car className="w-2.5 h-2.5" />
-                                    <span>
-                                      {bk.proximityStatus === 'ARRIVED'
-                                        ? '📍 At Bay (<100m)'
-                                        : (bk.proximityDistanceKm ?? 0) < 1
-                                        ? `~${Math.round((bk.proximityDistanceKm ?? 0) * 1000)}m (${bk.proximityEtaMinutes || 0}m)`
-                                        : `~${bk.proximityDistanceKm || 0}km (${bk.proximityEtaMinutes || 0}m)`}
-                                    </span>
-                                  </span>
-                                )}
                               </div>
                             </td>
                             <td className="p-3">
@@ -2945,35 +2918,6 @@ export const OwnerDashboard: React.FC = () => {
                             >
                               {bk.status}
                             </span>
-                            {bk.proximityStatus && bk.status === BookingStatus.PENDING && (
-                              <div className="mt-1">
-                                <span
-                                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-black border shadow-2xs ${
-                                    bk.proximityStatus === 'ARRIVED'
-                                      ? 'bg-emerald-600 text-white border-emerald-700 animate-pulse'
-                                      : 'bg-sky-100 text-sky-800 border-sky-300'
-                                  }`}
-                                  title={
-                                    bk.proximityStatus === 'ARRIVED'
-                                      ? 'Customer is at the station bay (< 100m away)'
-                                      : `Approx ${
-                                          (bk.proximityDistanceKm ?? 0) < 1
-                                            ? `${Math.round((bk.proximityDistanceKm ?? 0) * 1000)} meters`
-                                            : `${bk.proximityDistanceKm ?? 0} km`
-                                        } away (~${bk.proximityEtaMinutes || 0} mins drive time)`
-                                  }
-                                >
-                                  <Car className="w-2.5 h-2.5" />
-                                  <span>
-                                    {bk.proximityStatus === 'ARRIVED'
-                                      ? '📍 At Bay (<100m)'
-                                      : (bk.proximityDistanceKm ?? 0) < 1
-                                      ? `~${Math.round((bk.proximityDistanceKm ?? 0) * 1000)}m (${bk.proximityEtaMinutes || 0}m)`
-                                      : `~${bk.proximityDistanceKm || 0}km (${bk.proximityEtaMinutes || 0}m)`}
-                                  </span>
-                                </span>
-                              </div>
-                            )}
                           </div>
                         </div>
 
@@ -4780,25 +4724,6 @@ export const OwnerDashboard: React.FC = () => {
                           {bk.date} @ {bk.timeSlot.split(' - ')[0]}
                         </span>
 
-                        {/* 🚗 Live Proximity Badge (Distance / Arrived at Bay) */}
-                        {bk.proximityStatus && bk.status === BookingStatus.PENDING && (
-                          <span
-                            className={`px-2 py-0.5 text-[10px] font-black rounded-full border flex items-center gap-1 shadow-2xs ${
-                              bk.proximityStatus === 'ARRIVED'
-                                ? 'bg-emerald-600 text-white border-emerald-700 animate-pulse'
-                                : 'bg-sky-100 text-sky-800 border-sky-300'
-                            }`}
-                            title={bk.proximityStatus === 'ARRIVED' ? 'Customer has arrived at the station premises' : `Approx ${bk.proximityDistanceKm || 0} km away`}
-                          >
-                            <Car className="w-3 h-3" />
-                            <span>
-                              {bk.proximityStatus === 'ARRIVED'
-                                ? '📍 At Bay'
-                                : `~${bk.proximityDistanceKm || 0}km (${bk.proximityEtaMinutes || 0}m)`}
-                            </span>
-                          </span>
-                        )}
-
                         <span className={`px-2 py-0.5 text-[10px] font-extrabold rounded-full border uppercase ${
                           bk.status === BookingStatus.COMPLETED
                             ? 'bg-emerald-50 text-emerald-800 border-emerald-100'
@@ -4860,25 +4785,6 @@ export const OwnerDashboard: React.FC = () => {
                     <div className="flex flex-wrap items-center justify-end gap-2 pt-1 text-xs">
                       {bk.status === BookingStatus.PENDING && (
                         <>
-                          {/* 🚗 Ask Customer ETA / Proximity Ping Button */}
-                          <button
-                            type="button"
-                            disabled={requestingEtaBookingId === bk.id}
-                            onClick={async () => {
-                              setRequestingEtaBookingId(bk.id);
-                              try {
-                                await requestBookingEta(bk.id);
-                              } finally {
-                                setRequestingEtaBookingId(null);
-                              }
-                            }}
-                            className="bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 font-bold px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
-                            title="Ping customer phone/tab to request their arrival status & ETA"
-                          >
-                            <Car className={`w-3.5 h-3.5 ${requestingEtaBookingId === bk.id ? 'animate-bounce' : ''}`} />
-                            <span>{requestingEtaBookingId === bk.id ? 'Pinging...' : 'Ask ETA 🚗'}</span>
-                          </button>
-
                           <button
                             onClick={() => handleStatusChange(bk.id, BookingStatus.IN_PROGRESS)}
                             className="bg-sky-600 hover:bg-sky-500 text-white font-bold px-3 py-1.5 rounded-lg transition-colors cursor-pointer"

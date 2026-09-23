@@ -704,35 +704,6 @@ export const EmployeeDashboard: React.FC = () => {
                         </div>
 
                         <div className="flex items-center gap-2">
-                          {/* 🚗 Live Proximity Badge (Distance / Arrived at Bay) */}
-                          {bk.proximityStatus && bk.status === BookingStatus.PENDING && (
-                            <span
-                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black border shadow-2xs ${
-                                bk.proximityStatus === 'ARRIVED'
-                                  ? 'bg-emerald-600 text-white border-emerald-700 animate-pulse'
-                                  : 'bg-sky-100 text-sky-800 border-sky-300'
-                              }`}
-                              title={
-                                bk.proximityStatus === 'ARRIVED'
-                                  ? 'Customer is at the station bay (< 100m away)'
-                                  : `Approx ${
-                                      (bk.proximityDistanceKm ?? 0) < 1
-                                        ? `${Math.round((bk.proximityDistanceKm ?? 0) * 1000)} meters`
-                                        : `${bk.proximityDistanceKm ?? 0} km`
-                                    } away (~${bk.proximityEtaMinutes || 0} mins drive time)`
-                              }
-                            >
-                              <Car className="w-3 h-3" />
-                              <span>
-                                {bk.proximityStatus === 'ARRIVED'
-                                  ? '📍 At Bay (<100m)'
-                                  : (bk.proximityDistanceKm ?? 0) < 1
-                                  ? `~${Math.round((bk.proximityDistanceKm ?? 0) * 1000)}m (${bk.proximityEtaMinutes || 0}m)`
-                                  : `~${bk.proximityDistanceKm || 0}km (${bk.proximityEtaMinutes || 0}m)`}
-                              </span>
-                            </span>
-                          )}
-
                           <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-[11px] uppercase tracking-wide border ${
                             bk.status === BookingStatus.COMPLETED
                               ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
@@ -855,25 +826,6 @@ export const EmployeeDashboard: React.FC = () => {
                             {/* Secondary Actions Row */}
                             <div className="flex items-center gap-2 flex-wrap justify-between pt-1">
                               <div className="flex items-center gap-2 flex-wrap">
-                                {/* 🚗 Ask Customer ETA / Proximity Ping Button */}
-                                <button
-                                  type="button"
-                                  disabled={requestingEtaBookingId === bk.id}
-                                  onClick={async () => {
-                                    setRequestingEtaBookingId(bk.id);
-                                    try {
-                                      await requestBookingEta(bk.id);
-                                    } finally {
-                                      setRequestingEtaBookingId(null);
-                                    }
-                                  }}
-                                  className="px-3 py-2 border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100 font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
-                                  title="Ping customer phone/tab to request arrival ETA & distance"
-                                >
-                                  <Car className={`h-3.5 w-3.5 text-sky-600 ${requestingEtaBookingId === bk.id ? 'animate-bounce' : ''}`} />
-                                  <span>{requestingEtaBookingId === bk.id ? 'Pinging...' : 'Ask ETA 🚗'}</span>
-                                </button>
-
                                 <button
                                   type="button"
                                   onClick={() => {

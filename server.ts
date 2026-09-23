@@ -2615,37 +2615,13 @@ async function startServer() {
         },
       });
 
-      // Also create an in-app notification for the station owner
-      if (carWash.ownerId) {
-        try {
-          const notifMsg = proximityStatus === 'ARRIVED'
-            ? `📍 ${booking.customerName} has arrived at the station / waiting at bay (<100m away)!`
-            : `🚗 ${booking.customerName} is on the way (${(distanceKm * 1000) < 1000 ? `~${Math.round(distanceKm * 1000)}m away` : `~${distanceKm} km away`} • ~${etaMinutes} mins ETA).`;
-
-          await createNotification({
-            id: `notif_${Math.random().toString(36).substr(2, 9)}`,
-            userId: carWash.ownerId,
-            title: proximityStatus === 'ARRIVED' ? 'Customer Arrived! 📍' : 'Customer En Route 🚗',
-            message: notifMsg,
-            type: 'STATUS_CHANGE',
-            bookingId: booking.id,
-            isRead: false,
-            createdAt: new Date().toISOString(),
-          });
-        } catch (notifErr) {
-          console.error('Failed to notify owner of proximity:', notifErr);
-        }
-      }
-
       res.json({
         success: true,
         proximityStatus,
         proximityDistanceKm: distanceKm,
         proximityEtaMinutes: etaMinutes,
         isArrived: proximityStatus === 'ARRIVED',
-        message: proximityStatus === 'ARRIVED'
-          ? `You have arrived at ${carWash.name}! The wash team has been notified.`
-          : `Station notified! You are ~${distanceKm} km away (~${etaMinutes} mins ETA).`,
+        message: 'Status updated.',
       });
     } catch (error: any) {
       res.status(500).json({ error: error.message || 'Internal server error' });
@@ -2668,38 +2644,9 @@ async function startServer() {
         const carWash = await getCarWashById(booking.carWashId);
         const stationName = carWash ? carWash.name : 'The car wash';
 
-        // Notify customer via in-app notification
-        if (booking.customerId) {
-          await createNotification({
-            id: `notif_${Math.random().toString(36).substr(2, 9)}`,
-            userId: booking.customerId,
-            title: '🚗 Station Asking for Arrival ETA!',
-            message: `${stationName} is preparing for your booking (${booking.timeSlot}). Tap to share your arrival status.`,
-            type: 'STATUS_CHANGE',
-            bookingId: booking.id,
-            isRead: false,
-            createdAt: new Date().toISOString(),
-          });
-        }
-
-        // Broadcast realtime push event so customer phone / tab receives instant chime and alert
-        broadcastRealtimeEvent({
-          type: 'ETA_REQUESTED',
-          bookingId: booking.id,
-          carWashId: booking.carWashId,
-          data: {
-            bookingId: booking.id,
-            customerId: booking.customerId,
-            customerName: booking.customerName,
-            stationName,
-            timeSlot: booking.timeSlot,
-            date: booking.date,
-          },
-        });
-
         res.json({
           success: true,
-          message: `Sent arrival request ping to ${booking.customerName}!`,
+          message: `Request received.`,
         });
       } catch (error: any) {
         res.status(500).json({ error: error.message || 'Failed to send ETA request ping.' });

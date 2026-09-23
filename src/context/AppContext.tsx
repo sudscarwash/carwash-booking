@@ -773,44 +773,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               }
             } else if (payload.type === 'PROXIMITY_UPDATED') {
               fetchBookings(true);
-              fetchAppNotifications();
-
-              // Only notify station staff/owners when a customer is arriving or en route
-              const isStationStaff = (user?.role === Role.OWNER || user?.role === Role.EMPLOYEE || user?.role === Role.ADMIN) &&
-                (!payload.carWashId || (user?.role === Role.EMPLOYEE ? user?.businessId === payload.carWashId : true));
-
-              if (isStationStaff) {
-                const pData = payload.data || {};
-                const isArrived = pData.proximityStatus === 'ARRIVED';
-                const pTitle = isArrived ? '📍 Customer Arrived at Bay!' : '🚗 Customer En Route';
-                const pBody = isArrived
-                  ? `${pData.customerName || 'Customer'} is at the station bay (<100m away).`
-                  : `${pData.customerName || 'Customer'} is ${(pData.proximityDistanceKm ?? 0) < 1 ? `~${Math.round((pData.proximityDistanceKm ?? 0) * 1000)}m` : `~${pData.proximityDistanceKm || 0} km`} away (~${pData.proximityEtaMinutes || 0} mins ETA).`;
-
-                showDeviceNotification({
-                  title: pTitle,
-                  body: pBody,
-                  sound: isArrived ? 'booking' : 'status',
-                  tag: `proximity-${payload.bookingId || Date.now()}`,
-                  url: payload.bookingId ? `/?bookingId=${encodeURIComponent(payload.bookingId)}` : '/',
-                });
-
-                flashTabTitle(isArrived ? `📍 Customer Arrived!` : `🚗 Customer En Route`);
-              }
-            } else if (payload.type === 'ETA_REQUESTED') {
-              fetchAppNotifications();
-              const eData = payload.data || {};
-              // Alert customer if this ETA request ping is directed to them
-              if (user?.role === Role.CUSTOMER && (!eData.customerId || eData.customerId === user?.id)) {
-                showDeviceNotification({
-                  title: '🚗 Station Asking for Arrival ETA!',
-                  body: `${eData.stationName || 'Car wash'} is preparing for your slot (${eData.timeSlot || ''}). Tap to check in!`,
-                  sound: 'status',
-                  tag: `eta-req-${payload.bookingId || Date.now()}`,
-                  url: payload.bookingId ? `/?bookingId=${encodeURIComponent(payload.bookingId)}` : '/',
-                });
-                flashTabTitle(`🚗 Station Asking for Arrival ETA!`);
-              }
             } else if (payload.type === 'NOTIFICATION_CREATED') {
               fetchAppNotifications();
             }
