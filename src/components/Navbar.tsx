@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext.js';
-import { LogOut, Shield, User as UserIcon, Calendar, Compass, Sliders, Briefcase, Sparkles, Key, Lock, X, ChevronDown, Bell, CheckCheck, Clock, MessageSquare } from 'lucide-react';
+import { LogOut, Shield, User as UserIcon, Calendar, Compass, Sliders, Briefcase, Sparkles, Key, Lock, X, ChevronDown, Bell, CheckCheck, Clock, MessageSquare, Smartphone, Volume2, Check } from 'lucide-react';
 import { Role } from '../types.js';
 import autoshineLogo from '../assets/images/autoshine_logo.jpg';
 
@@ -15,7 +15,18 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
-  const { user, logout, changePassword, appNotifications, unreadNotificationCount, markNotificationAsRead, markAllNotificationsAsRead } = useApp();
+  const {
+    user,
+    logout,
+    changePassword,
+    appNotifications,
+    unreadNotificationCount,
+    markNotificationAsRead,
+    markAllNotificationsAsRead,
+    deviceNotificationPermission,
+    requestDeviceNotificationPermission,
+    testDeviceNotification,
+  } = useApp();
 
   // Profile dropdown state
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -191,6 +202,15 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
                               key={n.id}
                               onClick={() => {
                                 if (!n.isRead) markNotificationAsRead(n.id);
+                                setIsNotifOpen(false);
+                                if (n.bookingId) {
+                                  // Dispatch global event for instant in-page tab switch & scroll
+                                  window.dispatchEvent(new CustomEvent('autoshine:navigate-booking', { detail: { bookingId: n.bookingId } }));
+                                  // Also update URL query without page reload
+                                  const url = new URL(window.location.href);
+                                  url.searchParams.set('bookingId', n.bookingId);
+                                  window.history.pushState({}, '', url.toString());
+                                }
                               }}
                               className={`p-3.5 text-left transition-colors cursor-pointer hover:bg-slate-50 flex gap-3 items-start ${
                                 !n.isRead ? 'bg-sky-50/40' : 'bg-white'
@@ -213,6 +233,40 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
                               </div>
                             </div>
                           ))
+                        )}
+                      </div>
+
+                      {/* Device Pop-up Notification Controls */}
+                      <div className="p-3 bg-slate-50 border-t border-slate-100 flex flex-col gap-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 text-xs text-slate-700 font-semibold">
+                            <Smartphone className="h-4 w-4 text-sky-600 shrink-0" />
+                            <span>Phone / Device Pop-ups</span>
+                          </div>
+                          {deviceNotificationPermission === 'granted' ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                              <Check className="h-3 w-3" /> Enabled
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => requestDeviceNotificationPermission()}
+                              className="px-2.5 py-1 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-[11px] font-bold cursor-pointer transition-colors shadow-2xs"
+                            >
+                              Enable Pop-ups
+                            </button>
+                          )}
+                        </div>
+
+                        {deviceNotificationPermission === 'granted' && (
+                          <button
+                            type="button"
+                            onClick={() => testDeviceNotification()}
+                            className="w-full py-1 px-2 text-[11px] text-slate-600 hover:text-sky-700 hover:bg-white rounded-lg border border-slate-200 font-medium flex items-center justify-center gap-1.5 cursor-pointer transition-all shadow-2xs"
+                          >
+                            <Volume2 className="h-3.5 w-3.5 text-sky-600" />
+                            <span>Send Test Alert to This Device</span>
+                          </button>
                         )}
                       </div>
                     </div>

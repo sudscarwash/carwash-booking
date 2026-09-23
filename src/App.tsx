@@ -18,11 +18,34 @@ import { BookingFlowModal } from './components/BookingFlowModal.js';
 import { Role, CarWash } from './types.js';
 import { isValidEmail } from './lib/validation.js';
 import { useModalBack } from './utils/useBackHandler.js';
-import { Lock, Mail, UserPlus, LogIn, Sparkles, Compass, Sliders, Briefcase, Shield, ShieldAlert, KeyRound, Check, Info, X, AlertTriangle, LogOut, Eye, EyeOff, Building, Phone, MapPin } from 'lucide-react';
+import { Lock, Mail, UserPlus, LogIn, Sparkles, Compass, Sliders, Briefcase, Shield, ShieldAlert, KeyRound, Check, Info, X, AlertTriangle, LogOut, Eye, EyeOff, Building, Phone, MapPin, Bell } from 'lucide-react';
 import autoshineLogo from './assets/images/autoshine_logo.jpg';
 
 const MainAppContent: React.FC = () => {
-  const { user, loading, login, verifyAdminOtp, resendAdminOtp, register, verifyRegistrationOtp, resendRegistrationOtp, notification, clearNotification, forgotPassword, resetPassword, showNotification, platformInfo, locations, createBooking } = useApp();
+  const {
+    user,
+    loading,
+    login,
+    verifyAdminOtp,
+    resendAdminOtp,
+    register,
+    verifyRegistrationOtp,
+    resendRegistrationOtp,
+    notification,
+    clearNotification,
+    forgotPassword,
+    resetPassword,
+    showNotification,
+    platformInfo,
+    locations,
+    createBooking,
+    deviceNotificationPermission,
+    requestDeviceNotificationPermission,
+  } = useApp();
+
+  const [hasDismissedPrompt, setHasDismissedPrompt] = useState(() => {
+    return sessionStorage.getItem('cw_dismiss_notif_banner') === 'true';
+  });
 
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isRegisterMode, setIsRegisterMode] = useState(() => window.location.pathname === '/register');
@@ -619,6 +642,51 @@ const MainAppContent: React.FC = () => {
       {user ? (
         <>
           <Navbar activeTab={activeTab} setActiveTab={setActiveTab} />
+
+          {/* Quick Push/Device Notifications Opt-In Banner */}
+          {deviceNotificationPermission !== 'granted' && deviceNotificationPermission !== 'denied' && !hasDismissedPrompt && (
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
+              <div className="bg-gradient-to-r from-sky-600 to-blue-700 text-white rounded-2xl p-4 sm:p-5 shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-sky-400/30">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0 backdrop-blur-xs">
+                    <Bell className="w-5 h-5 text-white animate-bounce" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-black tracking-tight text-white">
+                      Never miss a booking alert or status update!
+                    </h4>
+                    <p className="text-xs text-sky-100 mt-0.5">
+                      Enable instant lock-screen &amp; desktop alerts with audible chimes whenever a wash status updates or new booking arrives.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHasDismissedPrompt(true);
+                      sessionStorage.setItem('cw_dismiss_notif_banner', 'true');
+                    }}
+                    className="px-3 py-2 text-xs font-semibold text-sky-100 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
+                  >
+                    Maybe Later
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await requestDeviceNotificationPermission();
+                    }}
+                    className="px-4 py-2 bg-white text-sky-700 hover:bg-sky-50 rounded-xl text-xs font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Bell className="w-3.5 h-3.5" />
+                    <span>Enable Device Alerts</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
             <ErrorBoundary>
               {renderDashboardByRole(user.role)}

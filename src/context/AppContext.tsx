@@ -5,6 +5,21 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, CarWash, Booking, AuditLog, Role, BookingStatus, AppNotification, PlatformInfo } from '../types.js';
+import {
+  isDeviceNotificationSupported,
+  getDeviceNotificationPermission,
+  requestDeviceNotificationPermission,
+  showDeviceNotification,
+  registerDeviceNotificationWorker,
+} from '../utils/deviceNotifications.js';
+import { flashTabTitle } from '../utils/tabFlasher.js';
+import {
+  calculateHaversineDistanceKm,
+  calculateHaversineDistanceMeters,
+  evaluateProximity,
+  isUserAtBay,
+  AT_BAY_DISTANCE_THRESHOLD_METERS,
+} from '../utils/haversine.js';
 
 interface AppContextType {
   user: User | null;
@@ -21,6 +36,10 @@ interface AppContextType {
   notification: { message: string; type: 'success' | 'error' | 'info' } | null;
   showNotification: (message: string, type?: 'success' | 'error' | 'info') => void;
   clearNotification: () => void;
+  deviceNotificationPermission: NotificationPermission;
+  isDeviceNotificationSupported: boolean;
+  requestDeviceNotificationPermission: () => Promise<NotificationPermission>;
+  testDeviceNotification: () => Promise<void>;
   fetchPlatformInfo: () => Promise<PlatformInfo | null>;
   updatePlatformInfo: (data: Partial<PlatformInfo>) => Promise<boolean>;
   fetchAppNotifications: () => Promise<void>;
@@ -103,6 +122,8 @@ interface AppContextType {
   ) => Promise<boolean>;
   updateBookingDetails: (bookingId: string, data: { serviceId?: string; serviceName?: string; price?: number; vehicleInfo?: string; notes?: string; paymentBank?: string; txnReference?: string }) => Promise<boolean>;
   rescheduleBooking: (bookingId: string, date: string, timeSlot: string) => Promise<boolean>;
+  reportProximity: (bookingId: string, lat: number, lng: number) => Promise<{ success: boolean; proximityStatus?: string; proximityDistanceKm?: number; proximityEtaMinutes?: number; message?: string }>;
+  requestBookingEta: (bookingId: string) => Promise<boolean>;
   createEmployee: (email: string, name: string, businessId: string, password?: string) => Promise<boolean>;
   updateEmployee: (id: string, name: string, email: string, businessId: string) => Promise<boolean>;
   deleteEmployee: (id: string) => Promise<boolean>;
@@ -131,6 +152,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date>(new Date());
   const [isLiveSyncing, setIsLiveSyncing] = useState<boolean>(false);
+  const [deviceNotificationPermission, setDeviceNotificationPermission] = useState<NotificationPermission>(() => {
+    return getDeviceNotificationPermission();
+  });
+
+  // Auto-register service worker on startup
+  useEffect(() => {
+    registerDeviceNotificationWorker();
+  }, []);
+
+  const handleRequestDeviceNotificationPermission = async (): Promise<NotificationPermission> => {
+    const perm = await requestDeviceNotificationPermission();
+    setDeviceNotificationPermission(perm);
+    if (perm === 'granted') {
+      showNotification('Device notifications enabled successfully! 🔔', 'success');
+    } else if (perm === 'denied') {
+      showNotification('Notification permissions were blocked in your browser settings.', 'error');
+    }
+    return perm;
+  };
+
+  const testDeviceNotification = async () => {
+    if (deviceNotificationPermission !== 'granted') {
+      const perm = await handleRequestDeviceNotificationPermission();
+      if (perm !== 'granted') return;
+    }
+    showDeviceNotification({
+      title: '🚗 Autoshine Alert Test',
+      body: 'Device pop-up notifications and sound alerts are working perfectly on your device!',
+      sound: 'booking',
+      tag: 'test-alert',
+    });
+  };
 
   // Initialize Auth from LocalStorage and verify with server
   useEffect(() => {
@@ -662,9 +715,102 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (!event.data) return;
           try {
             const payload = JSON.parse(event.data);
-            if (payload.type === 'BOOKING_CREATED' || payload.type === 'BOOKING_UPDATED') {
+            if (payload.type === 'BOOKING_CREATED') {
               fetchBookings(true);
               fetchAppNotifications();
+
+              // Trigger native device notification for owners/employees of this car wash
+              const isOwnerOrStaff = user?.role === Role.OWNER || user?.role === Role.EMPLOYEE || user?.role === Role.ADMIN;
+              const isAssignedStation = !payload.carWashId || (user?.role === Role.EMPLOYEE ? user?.businessId === payload.carWashId : true);
+
+              if (isOwnerOrStaff && isAssignedStation) {
+                const bData = payload.data || {};
+                const customerName = bData.customerName || 'A customer';
+                const serviceName = bData.serviceName || 'Car wash service';
+                const slot = bData.timeSlot ? ` for ${bData.timeSlot}` : '';
+
+                showDeviceNotification({
+                  title: '🚗 New Car Wash Booking!',
+                  body: `${customerName} booked ${serviceName}${slot}.`,
+                  sound: 'booking',
+                  tag: `booking-${payload.bookingId || Date.now()}`,
+                  url: payload.bookingId ? `/?bookingId=${encodeURIComponent(payload.bookingId)}` : '/',
+                });
+
+                // Flash tab title in background so user spots it across browser tabs
+                flashTabTitle(`🚗 New Booking from ${customerName}!`);
+              }
+            } else if (payload.type === 'BOOKING_UPDATED') {
+              fetchBookings(true);
+              fetchAppNotifications();
+
+              const bData = payload.data || {};
+              if (bData.status) {
+                // If this status update is for the logged in customer or station
+                const isMyCustomerBooking = user?.role === Role.CUSTOMER && bData.customerId === user?.id;
+                const isStationStaff = (user?.role === Role.OWNER || user?.role === Role.EMPLOYEE || user?.role === Role.ADMIN) &&
+                  (!payload.carWashId || (user?.role === Role.EMPLOYEE ? user?.businessId === payload.carWashId : true));
+
+                if (isMyCustomerBooking || isStationStaff) {
+                  const statusTitle = isMyCustomerBooking
+                    ? `Booking Update: ${bData.status} ✨`
+                    : `Booking Status Changed: ${bData.status}`;
+
+                  const statusBody = isMyCustomerBooking
+                    ? `Your car wash booking is now ${bData.status}.`
+                    : `Booking for ${bData.customerName || 'Customer'} updated to ${bData.status}.`;
+
+                  showDeviceNotification({
+                    title: statusTitle,
+                    body: statusBody,
+                    sound: 'status',
+                    tag: `status-${payload.bookingId || Date.now()}`,
+                    url: payload.bookingId ? `/?bookingId=${encodeURIComponent(payload.bookingId)}` : '/',
+                  });
+
+                  flashTabTitle(`Booking: ${bData.status}`);
+                }
+              }
+            } else if (payload.type === 'PROXIMITY_UPDATED') {
+              fetchBookings(true);
+              fetchAppNotifications();
+
+              // Only notify station staff/owners when a customer is arriving or en route
+              const isStationStaff = (user?.role === Role.OWNER || user?.role === Role.EMPLOYEE || user?.role === Role.ADMIN) &&
+                (!payload.carWashId || (user?.role === Role.EMPLOYEE ? user?.businessId === payload.carWashId : true));
+
+              if (isStationStaff) {
+                const pData = payload.data || {};
+                const isArrived = pData.proximityStatus === 'ARRIVED';
+                const pTitle = isArrived ? '📍 Customer Arrived at Bay!' : '🚗 Customer En Route';
+                const pBody = isArrived
+                  ? `${pData.customerName || 'Customer'} is at the station bay (<100m away).`
+                  : `${pData.customerName || 'Customer'} is ${(pData.proximityDistanceKm ?? 0) < 1 ? `~${Math.round((pData.proximityDistanceKm ?? 0) * 1000)}m` : `~${pData.proximityDistanceKm || 0} km`} away (~${pData.proximityEtaMinutes || 0} mins ETA).`;
+
+                showDeviceNotification({
+                  title: pTitle,
+                  body: pBody,
+                  sound: isArrived ? 'booking' : 'status',
+                  tag: `proximity-${payload.bookingId || Date.now()}`,
+                  url: payload.bookingId ? `/?bookingId=${encodeURIComponent(payload.bookingId)}` : '/',
+                });
+
+                flashTabTitle(isArrived ? `📍 Customer Arrived!` : `🚗 Customer En Route`);
+              }
+            } else if (payload.type === 'ETA_REQUESTED') {
+              fetchAppNotifications();
+              const eData = payload.data || {};
+              // Alert customer if this ETA request ping is directed to them
+              if (user?.role === Role.CUSTOMER && (!eData.customerId || eData.customerId === user?.id)) {
+                showDeviceNotification({
+                  title: '🚗 Station Asking for Arrival ETA!',
+                  body: `${eData.stationName || 'Car wash'} is preparing for your slot (${eData.timeSlot || ''}). Tap to check in!`,
+                  sound: 'status',
+                  tag: `eta-req-${payload.bookingId || Date.now()}`,
+                  url: payload.bookingId ? `/?bookingId=${encodeURIComponent(payload.bookingId)}` : '/',
+                });
+                flashTabTitle(`🚗 Station Asking for Arrival ETA!`);
+              }
             } else if (payload.type === 'NOTIFICATION_CREATED') {
               fetchAppNotifications();
             }
@@ -884,6 +1030,66 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const reportProximity = async (
+    bookingId: string,
+    lat: number,
+    lng: number
+  ): Promise<{ success: boolean; proximityStatus?: string; proximityDistanceKm?: number; proximityEtaMinutes?: number; message?: string }> => {
+    // 🎯 Accurately evaluate proximity in frontend app state before/alongside network request
+    const targetBooking = bookings.find(b => b.id === bookingId);
+    const targetCarWash = targetBooking ? locations.find(l => l.id === targetBooking.carWashId) : null;
+    
+    if (targetCarWash && targetCarWash.locationLat != null && targetCarWash.locationLng != null) {
+      const evaluation = evaluateProximity(
+        { lat, lng },
+        { lat: targetCarWash.locationLat, lng: targetCarWash.locationLng }
+      );
+
+      // Optimistically update booking in local state immediately so UI updates with 0 latency
+      setBookings(prev =>
+        prev.map(b =>
+          b.id === bookingId
+            ? {
+                ...b,
+                proximityStatus: evaluation.proximityStatus,
+                proximityDistanceKm: evaluation.distanceKm,
+                proximityEtaMinutes: evaluation.etaMinutes,
+                proximityUpdatedAt: new Date().toISOString(),
+              }
+            : b
+        )
+      );
+    }
+
+    try {
+      const data = await apiFetch(`/api/bookings/${bookingId}/proximity`, {
+        method: 'PUT',
+        body: JSON.stringify({ lat, lng }),
+      });
+      if (data.success) {
+        showNotification(data.message || 'Location status transmitted!', 'success');
+        fetchBookings(true);
+      }
+      return data;
+    } catch (err: any) {
+      showNotification(err.message || 'Failed to report arrival status.', 'error');
+      return { success: false, message: err.message };
+    }
+  };
+
+  const requestBookingEta = async (bookingId: string): Promise<boolean> => {
+    try {
+      const data = await apiFetch(`/api/bookings/${bookingId}/request-eta`, {
+        method: 'POST',
+      });
+      showNotification(data.message || 'Sent arrival request ping to customer!', 'success');
+      return true;
+    } catch (err: any) {
+      showNotification(err.message || 'Failed to send ETA request.', 'error');
+      return false;
+    }
+  };
+
   const createEmployee = async (email: string, name: string, businessId: string, password?: string): Promise<boolean> => {
     try {
       const initialPassword = password && password.trim() ? password.trim() : 'employee123';
@@ -1093,6 +1299,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         notification,
         showNotification,
         clearNotification,
+        deviceNotificationPermission,
+        isDeviceNotificationSupported: isDeviceNotificationSupported(),
+        requestDeviceNotificationPermission: handleRequestDeviceNotificationPermission,
+        testDeviceNotification,
         fetchPlatformInfo,
         updatePlatformInfo,
         fetchAppNotifications,
@@ -1124,6 +1334,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateBookingStatus,
         updateBookingDetails,
         rescheduleBooking,
+        reportProximity,
+        requestBookingEta,
         createEmployee,
         updateEmployee,
         deleteEmployee,

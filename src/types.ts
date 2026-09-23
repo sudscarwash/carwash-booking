@@ -163,6 +163,12 @@ export interface Booking {
   serviceId?: string;
   serviceName?: string;
   price?: number;
+
+  // 🚗 Lightweight Arrival & Proximity Tracking
+  proximityStatus?: 'EN_ROUTE' | 'ARRIVED';
+  proximityDistanceKm?: number;
+  proximityEtaMinutes?: number;
+  proximityUpdatedAt?: string;
 }
 
 export interface AuditLog {

@@ -12,8 +12,11 @@ import { ReviewsModal } from '../components/ReviewsModal.js';
 import { TermsAndConditionsContent } from '../components/TermsAndConditionsContent.js';
 import { FEATURES } from '../config/features.js';
 import { useModalBack, useTabBack } from '../utils/useBackHandler.js';
-import { Search, Calendar, Clock, MapPin, History, CheckCircle, AlertTriangle, X, ChevronRight, ChevronLeft, ChevronDown, Sliders, Info, Sparkles, Navigation, User, Edit3, Check, Instagram, Landmark, Lock, Key, FileText, Maximize2, Filter, Star, DoorClosed } from 'lucide-react';
+import { Search, Calendar, Clock, MapPin, History, CheckCircle, AlertTriangle, X, ChevronRight, ChevronLeft, ChevronDown, Sliders, Info, Sparkles, Navigation, User, Edit3, Check, Instagram, Landmark, Lock, Key, FileText, Maximize2, Filter, Star, DoorClosed, Car } from 'lucide-react';
 import { CarWash, Booking, BookingStatus, TimeSlotItem } from '../types.js';
+import { evaluateProximity, calculateHaversineDistanceMeters } from '../utils/haversine.js';
+import { geolocationWatchService } from '../utils/geolocationWatchService.js';
+import { showDeviceNotification } from '../utils/deviceNotifications.js';
 import autoshineLogo from '../assets/images/autoshine_logo.jpg';
 
 const getTodayDateString = () => {
@@ -34,11 +37,15 @@ export const CustomerDashboard: React.FC = () => {
     createBooking,
     updateBookingStatus,
     rescheduleBooking,
+    reportProximity,
     updateProfile,
     changePassword,
     deleteAccount,
     loading
   } = useApp();
+
+  const [reportingProximityBookingId, setReportingProximityBookingId] = useState<string | null>(null);
+  const [watchingBookingId, setWatchingBookingId] = useState<string | null>(null);
 
   const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -258,6 +265,8 @@ export const CustomerDashboard: React.FC = () => {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [lastBookedInfo, setLastBookedInfo] = useState<any | null>(null);
   const [customWhatsAppPhone, setCustomWhatsAppPhone] = useState('');
+  const [showGpsGuideModal, setShowGpsGuideModal] = useState(false);
+  const [gpsModalErrorMessage, setGpsModalErrorMessage] = useState('');
 
   // 🔄 Navigation & Back button synchronization:
   // 1. Tab changes (book <-> bookings <-> profile)
@@ -270,6 +279,132 @@ export const CustomerDashboard: React.FC = () => {
   useModalBack(Boolean(reschedulingBooking), () => setReschedulingBooking(null), 'customer-reschedule-modal');
   useModalBack(showSuccessModal, () => setShowSuccessModal(false), 'customer-success-modal');
   useModalBack(showDeleteModal, () => setShowDeleteModal(false), 'customer-delete-modal');
+  useModalBack(showGpsGuideModal, () => setShowGpsGuideModal(false), 'customer-gps-guide-modal');
+
+  // 🎯 Deep-link listener for notifications (sw clicks, in-app notification toasts, or ?bookingId=... URLs)
+  useEffect(() => {
+    const handleTargetBooking = (targetId: string) => {
+      if (!targetId) return;
+      setActiveTab('bookings');
+      setBookingStatusFilter('ALL');
+      setExpandedBookingIds(prev => prev.includes(targetId) ? prev : [...prev, targetId]);
+
+      // Smooth scroll to the target booking card
+      setTimeout(() => {
+        const el = document.getElementById(`booking-card-${targetId}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 300);
+    };
+
+    // Check URL search parameters or hash
+    const params = new URLSearchParams(window.location.search);
+    const queryBookingId = params.get('bookingId') || params.get('booking');
+    if (queryBookingId) {
+      handleTargetBooking(queryBookingId);
+    }
+
+    // Also listen for in-app custom event from Navbar notification clicks
+    const customListener = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail && detail.bookingId) {
+        handleTargetBooking(detail.bookingId);
+      }
+    };
+    window.addEventListener('autoshine:navigate-booking', customListener);
+
+    return () => {
+      window.removeEventListener('autoshine:navigate-booking', customListener);
+    };
+  }, []);
+
+  // Clean up geolocation watch on unmount
+  useEffect(() => {
+    return () => {
+      geolocationWatchService.stopWatch();
+    };
+  }, []);
+
+  const handleTriggerProximity = async (bookingId: string) => {
+    if (!('geolocation' in navigator)) {
+      setGpsModalErrorMessage('Location services are not supported by your browser.');
+      setShowGpsGuideModal(true);
+      return;
+    }
+
+    const targetBooking = bookings.find((b) => b.id === bookingId);
+    const targetCarWash = targetBooking ? locations.find((l) => l.id === targetBooking.carWashId) : null;
+
+    setReportingProximityBookingId(bookingId);
+
+    // Initial position fix & backend update
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          const res = await reportProximity(bookingId, lat, lng);
+
+          // If not already arrived and station coordinates exist, start live distance watch
+          if (res?.proximityStatus !== 'ARRIVED' && targetCarWash?.locationLat && targetCarWash?.locationLng) {
+            setWatchingBookingId(bookingId);
+
+            geolocationWatchService.startWatch({
+              bookingId,
+              stationCoords: {
+                lat: targetCarWash.locationLat,
+                lng: targetCarWash.locationLng,
+              },
+              thresholdMeters: 100,
+              onUpdate: (data) => {
+                // If user is moving, keep backend/state informed periodically
+                if (data.isAtBay) {
+                  reportProximity(bookingId, data.lat, data.lng);
+                }
+              },
+              onThresholdCrossed: (data) => {
+                setWatchingBookingId(null);
+                reportProximity(bookingId, data.lat, data.lng);
+
+                // 🔔 Trigger device notification when crossing <100m threshold
+                showDeviceNotification({
+                  title: '📍 You Have Arrived at the Bay!',
+                  body: `You are now within 100m of ${targetCarWash.name || 'the car wash'}. Staff have been notified!`,
+                  sound: 'booking',
+                  tag: `arrived-${bookingId}`,
+                  url: `/?bookingId=${encodeURIComponent(bookingId)}`,
+                });
+              },
+              onError: (err) => {
+                console.warn('Geolocation watch error:', err);
+                setWatchingBookingId(null);
+              },
+            });
+          } else {
+            setWatchingBookingId(null);
+          }
+        } catch (err: any) {
+          alert('Could not update distance: ' + (err.message || 'Network error'));
+        } finally {
+          setReportingProximityBookingId(null);
+        }
+      },
+      (geoErr) => {
+        setReportingProximityBookingId(null);
+        setWatchingBookingId(null);
+        if (geoErr.code === geoErr.PERMISSION_DENIED) {
+          setGpsModalErrorMessage('Location permission was denied or turned off. You can easily enable it in your phone/browser settings to share your one-time arrival ETA with the bay staff.');
+        } else if (geoErr.code === geoErr.POSITION_UNAVAILABLE) {
+          setGpsModalErrorMessage('Location is currently unavailable. Please make sure your phone\'s GPS/Location switch is turned ON.');
+        } else {
+          setGpsModalErrorMessage(`Location request timed out. Please ensure GPS is enabled and try again.`);
+        }
+        setShowGpsGuideModal(true);
+      },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
+    );
+  };
 
   const getSelectedDayBreakInfo = () => {
     if (!selectedLocation || !bookingDate) return null;
@@ -1338,7 +1473,10 @@ export const CustomerDashboard: React.FC = () => {
                       return (
                         <div
                           key={bk.id}
-                          className="bg-white border border-slate-200/90 rounded-2xl transition-all shadow-2xs hover:border-sky-300 hover:shadow-xs overflow-hidden"
+                          id={`booking-card-${bk.id}`}
+                          className={`bg-white border transition-all shadow-2xs hover:border-sky-300 hover:shadow-xs overflow-hidden rounded-2xl ${
+                            isExpanded ? 'border-sky-400 ring-2 ring-sky-100' : 'border-slate-200/90'
+                          }`}
                         >
                           {/* Minimal Collapsed Card Header */}
                           <div
@@ -1386,9 +1524,41 @@ export const CustomerDashboard: React.FC = () => {
                                 <span className="text-slate-800 font-mono font-bold shrink-0">{bk.timeSlot}</span>
                               </div>
 
-                              <span className="text-[11px] font-extrabold text-sky-600 hover:underline shrink-0 flex items-center gap-0.5">
-                                {isExpanded ? 'Less info' : 'More details'}
-                              </span>
+                              <div className="flex items-center gap-2 shrink-0">
+                                {bk.status === BookingStatus.PENDING && (
+                                  <button
+                                    type="button"
+                                    disabled={reportingProximityBookingId === bk.id}
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      handleTriggerProximity(bk.id);
+                                    }}
+                                    className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all shadow-2xs flex items-center gap-1 cursor-pointer border ${
+                                      bk.proximityStatus === 'ARRIVED'
+                                        ? 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200'
+                                        : 'bg-sky-100 text-sky-800 border-sky-300 hover:bg-sky-200 animate-pulse'
+                                    }`}
+                                    title="Share your one-time proximity distance (<1KB data) so staff can prep your bay"
+                                  >
+                                    <Car className={`w-3 h-3 ${reportingProximityBookingId === bk.id ? 'animate-bounce' : watchingBookingId === bk.id ? 'animate-pulse text-sky-600' : ''}`} />
+                                    <span>
+                                      {reportingProximityBookingId === bk.id
+                                        ? 'GPS...'
+                                        : bk.proximityStatus === 'ARRIVED'
+                                        ? '📍 Arrived'
+                                        : watchingBookingId === bk.id
+                                        ? '🟢 Live Tracking'
+                                        : bk.proximityStatus === 'EN_ROUTE'
+                                        ? '🚗 Update ETA'
+                                        : "🚗 I'm On My Way"}
+                                    </span>
+                                  </button>
+                                )}
+                                <span className="text-[11px] font-extrabold text-sky-600 hover:underline flex items-center gap-0.5">
+                                  {isExpanded ? 'Less info' : 'More details'}
+                                </span>
+                              </div>
                             </div>
                           </div>
 
@@ -1445,21 +1615,80 @@ export const CustomerDashboard: React.FC = () => {
                                 </div>
                               )}
 
+                              {/* Proximity / Live Arrival Status Banner */}
+                              {bk.proximityStatus && (
+                                <div className={`p-3 rounded-xl border flex items-center justify-between gap-3 text-xs ${
+                                  bk.proximityStatus === 'ARRIVED'
+                                    ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                                    : 'bg-sky-50 border-sky-200 text-sky-900'
+                                }`}>
+                                  <div className="flex items-center gap-2">
+                                    <div className={`p-1.5 rounded-lg ${bk.proximityStatus === 'ARRIVED' ? 'bg-emerald-100 text-emerald-700' : 'bg-sky-100 text-sky-700'}`}>
+                                      {bk.proximityStatus === 'ARRIVED' ? <CheckCircle className="w-4 h-4" /> : <Car className="w-4 h-4" />}
+                                    </div>
+                                    <div>
+                                      <span className="font-black block text-xs">
+                                        {bk.proximityStatus === 'ARRIVED' ? '📍 Arrived at Station (<100m from Bay)' : '🚗 On The Way'}
+                                      </span>
+                                      <span className="text-[11px] opacity-80">
+                                        {bk.proximityStatus === 'ARRIVED'
+                                          ? 'Staff are notified that you are at the station (<100m away) and are preparing your bay.'
+                                          : `${(bk.proximityDistanceKm ?? 0) < 1 ? `~${Math.round((bk.proximityDistanceKm ?? 0) * 1000)}m away` : `~${bk.proximityDistanceKm ?? 0} km away`} • ~${bk.proximityEtaMinutes ?? 0} mins drive time`}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
                               {/* Actions Row */}
                               <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200/60">
-                                <a
-                                  href={`https://wa.me/${((bk as any).carWashPhone || '').replace(/[^0-9]/g, '') || ''}?text=${encodeURIComponent(
-                                    `Hello! I would like to confirm my car wash booking:\n\n📍 Location: ${(bk as any).carWashName || 'Car Wash'}\n📅 Date: ${bk.date}\n⏰ Time: ${bk.timeSlot}\n👤 Customer Name: ${user?.name || 'Customer'}${
-                                      bk.notes ? `\n✉️ Notes: ${bk.notes}` : ''
-                                    }\n\nThank you!`
-                                  )}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-all shadow-2xs flex items-center gap-2 cursor-pointer text-xs"
-                                  title="Send booking update via WhatsApp"
-                                >
-                                  <span>Notify via WhatsApp</span>
-                                </a>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <a
+                                    href={`https://wa.me/${((bk as any).carWashPhone || '').replace(/[^0-9]/g, '') || ''}?text=${encodeURIComponent(
+                                      `Hello! I would like to confirm my car wash booking:\n\n📍 Location: ${(bk as any).carWashName || 'Car Wash'}\n📅 Date: ${bk.date}\n⏰ Time: ${bk.timeSlot}\n👤 Customer Name: ${user?.name || 'Customer'}${
+                                        bk.notes ? `\n✉️ Notes: ${bk.notes}` : ''
+                                      }\n\nThank you!`
+                                    )}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-all shadow-2xs flex items-center gap-2 cursor-pointer text-xs"
+                                    title="Send booking update via WhatsApp"
+                                  >
+                                    <span>Notify via WhatsApp</span>
+                                  </a>
+
+                                  {/* 🚗 I'm On My Way / Update Distance Button (Available for Active/Pending Bookings) */}
+                                  {bk.status === BookingStatus.PENDING && (
+                                    <button
+                                      type="button"
+                                      disabled={reportingProximityBookingId === bk.id}
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        handleTriggerProximity(bk.id);
+                                      }}
+                                      className={`px-3 py-2 font-bold rounded-xl text-xs transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer border ${
+                                        bk.proximityStatus === 'ARRIVED'
+                                          ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                                          : 'bg-sky-50 text-sky-800 border-sky-300 hover:bg-sky-100'
+                                      }`}
+                                      title="Share your one-time proximity distance (<1KB data) so staff can prep your bay"
+                                    >
+                                      <Car className={`w-3.5 h-3.5 ${reportingProximityBookingId === bk.id ? 'animate-bounce' : watchingBookingId === bk.id ? 'animate-pulse text-sky-600' : ''}`} />
+                                      <span>
+                                        {reportingProximityBookingId === bk.id
+                                          ? 'Checking GPS...'
+                                          : bk.proximityStatus === 'ARRIVED'
+                                          ? '📍 Arrived at Bay'
+                                          : watchingBookingId === bk.id
+                                          ? '🟢 Live Tracking (<100m alert on)'
+                                          : bk.proximityStatus === 'EN_ROUTE'
+                                          ? '🚗 Update Arrival ETA'
+                                          : "🚗 I'm On My Way"}
+                                      </span>
+                                    </button>
+                                  )}
+                                </div>
 
                                 <div className="flex items-center gap-2 shrink-0 flex-wrap">
                                   {bk.status === BookingStatus.PENDING ? (
@@ -2516,6 +2745,51 @@ export const CustomerDashboard: React.FC = () => {
             refreshRatings();
           }}
         />
+      )}
+
+      {/* 📍 GPS / Location Permission Guide Modal */}
+      {showGpsGuideModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-100 text-center space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 text-amber-600 mx-auto flex items-center justify-center">
+              <MapPin className="w-6 h-6" />
+            </div>
+
+            <div className="space-y-1.5">
+              <h3 className="text-base font-black text-slate-900">Location Access Notice</h3>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                {gpsModalErrorMessage || 'Unable to read GPS location.'}
+              </p>
+            </div>
+
+            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 text-left space-y-2 text-[11px] text-slate-600">
+              <div className="flex items-start gap-2">
+                <span className="font-bold text-sky-600 shrink-0">1.</span>
+                <span>Tap the padlock / site settings icon in your browser address bar.</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="font-bold text-sky-600 shrink-0">2.</span>
+                <span>Change <strong>Location</strong> to <strong>Allow</strong>.</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="font-bold text-sky-600 shrink-0">3.</span>
+                <span>Check that your phone's main GPS / Location toggle is turned ON.</span>
+              </div>
+            </div>
+
+            <p className="text-[10px] text-slate-400 italic">
+              🔒 Note: We only check your GPS one time when you tap the button. There is no background tracking or battery drain.
+            </p>
+
+            <button
+              type="button"
+              onClick={() => setShowGpsGuideModal(false)}
+              className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer"
+            >
+              Understood
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

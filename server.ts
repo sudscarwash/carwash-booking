@@ -126,7 +126,7 @@ const sseClients = new Set<SSEClient>();
 let lastBookingsUpdateTimestamp = Date.now();
 
 export function broadcastRealtimeEvent(event: {
-  type: 'BOOKING_CREATED' | 'BOOKING_UPDATED' | 'BOOKING_DELETED' | 'NOTIFICATION_CREATED';
+  type: 'BOOKING_CREATED' | 'BOOKING_UPDATED' | 'BOOKING_DELETED' | 'NOTIFICATION_CREATED' | 'PROXIMITY_UPDATED' | 'ETA_REQUESTED';
   bookingId?: string;
   carWashId?: string;
   data?: any;
@@ -2531,7 +2531,14 @@ async function startServer() {
         type: 'BOOKING_UPDATED',
         bookingId: booking.id,
         carWashId: booking.carWashId,
-        data: { id: booking.id, status: updatedData.status },
+        data: {
+          id: booking.id,
+          status: updatedData.status,
+          customerId: booking.customerId,
+          customerName: booking.customerName,
+          date: booking.date,
+          timeSlot: booking.timeSlot,
+        },
       });
 
       res.json({ ...booking, ...updatedData });
@@ -2539,6 +2546,166 @@ async function startServer() {
       res.status(500).json({ error: error.message || 'Internal server error' });
     }
   });
+
+  // 🚗 Proximity & Lightweight Arrival Check Endpoint (Single GPS ping, <1KB data)
+  app.put('/api/bookings/:id/proximity', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { lat, lng } = req.body;
+      if (typeof lat !== 'number' || typeof lng !== 'number') {
+        res.status(400).json({ error: 'Valid latitude and longitude coordinates are required.' });
+        return;
+      }
+
+      const booking = await getBookingById(req.params.id);
+      if (!booking) {
+        res.status(404).json({ error: 'Booking not found.' });
+        return;
+      }
+
+      // Customer or authorized staff can update proximity
+      if (req.user!.id !== booking.customerId && req.user!.role !== Role.ADMIN && req.user!.role !== Role.OWNER) {
+        res.status(403).json({ error: 'Not authorized to report location for this booking.' });
+        return;
+      }
+
+      const carWash = await getCarWashById(booking.carWashId);
+      if (!carWash) {
+        res.status(404).json({ error: 'Car wash business not found.' });
+        return;
+      }
+
+      // Calculate distance using the standard Haversine formula (km)
+      const toRad = (val: number) => (val * Math.PI) / 180;
+      const R = 6371; // Earth radius in km
+      const dLat = toRad(carWash.locationLat - lat);
+      const dLon = toRad(carWash.locationLng - lng);
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRad(lat)) * Math.cos(toRad(carWash.locationLat)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      const distanceKm = Math.round(R * c * 100) / 100; // Exact distance rounded to 2 decimal places (e.g. 0.08 km = 80m)
+
+      // Estimate driving minutes based on typical urban speed (~30 km/h in Bandar Seri Begawan)
+      const etaMinutes = Math.max(1, Math.round((distanceKm / 30) * 60));
+
+      // 🎯 Precision Arrival Threshold: within 100 meters (0.10 km), mark as ARRIVED at station/bay
+      const proximityStatus: 'EN_ROUTE' | 'ARRIVED' = distanceKm <= 0.10 ? 'ARRIVED' : 'EN_ROUTE';
+
+      const updatedProximityData: Partial<Booking> = {
+        proximityStatus,
+        proximityDistanceKm: distanceKm,
+        proximityEtaMinutes: etaMinutes,
+        proximityUpdatedAt: new Date().toISOString(),
+      };
+
+      await updateBooking(booking.id, updatedProximityData);
+
+      // Instantly broadcast realtime proximity event to Station Owner and Staff
+      broadcastRealtimeEvent({
+        type: 'PROXIMITY_UPDATED',
+        bookingId: booking.id,
+        carWashId: booking.carWashId,
+        data: {
+          id: booking.id,
+          customerName: booking.customerName,
+          proximityStatus,
+          proximityDistanceKm: distanceKm,
+          proximityEtaMinutes: etaMinutes,
+          carWashName: carWash.name,
+        },
+      });
+
+      // Also create an in-app notification for the station owner
+      if (carWash.ownerId) {
+        try {
+          const notifMsg = proximityStatus === 'ARRIVED'
+            ? `📍 ${booking.customerName} has arrived at the station / waiting at bay (<100m away)!`
+            : `🚗 ${booking.customerName} is on the way (${(distanceKm * 1000) < 1000 ? `~${Math.round(distanceKm * 1000)}m away` : `~${distanceKm} km away`} • ~${etaMinutes} mins ETA).`;
+
+          await createNotification({
+            id: `notif_${Math.random().toString(36).substr(2, 9)}`,
+            userId: carWash.ownerId,
+            title: proximityStatus === 'ARRIVED' ? 'Customer Arrived! 📍' : 'Customer En Route 🚗',
+            message: notifMsg,
+            type: 'STATUS_CHANGE',
+            bookingId: booking.id,
+            isRead: false,
+            createdAt: new Date().toISOString(),
+          });
+        } catch (notifErr) {
+          console.error('Failed to notify owner of proximity:', notifErr);
+        }
+      }
+
+      res.json({
+        success: true,
+        proximityStatus,
+        proximityDistanceKm: distanceKm,
+        proximityEtaMinutes: etaMinutes,
+        isArrived: proximityStatus === 'ARRIVED',
+        message: proximityStatus === 'ARRIVED'
+          ? `You have arrived at ${carWash.name}! The wash team has been notified.`
+          : `Station notified! You are ~${distanceKm} km away (~${etaMinutes} mins ETA).`,
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // 🔔 Owner / Staff: Request Arrival ETA Ping from Customer (In-App notification & chime)
+  app.post(
+    '/api/bookings/:id/request-eta',
+    authenticateToken,
+    requireRoles([Role.OWNER, Role.EMPLOYEE, Role.ADMIN, Role.SPECIAL]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const booking = await getBookingById(req.params.id);
+        if (!booking) {
+          res.status(404).json({ error: 'Booking not found.' });
+          return;
+        }
+
+        const carWash = await getCarWashById(booking.carWashId);
+        const stationName = carWash ? carWash.name : 'The car wash';
+
+        // Notify customer via in-app notification
+        if (booking.customerId) {
+          await createNotification({
+            id: `notif_${Math.random().toString(36).substr(2, 9)}`,
+            userId: booking.customerId,
+            title: '🚗 Station Asking for Arrival ETA!',
+            message: `${stationName} is preparing for your booking (${booking.timeSlot}). Tap to share your arrival status.`,
+            type: 'STATUS_CHANGE',
+            bookingId: booking.id,
+            isRead: false,
+            createdAt: new Date().toISOString(),
+          });
+        }
+
+        // Broadcast realtime push event so customer phone / tab receives instant chime and alert
+        broadcastRealtimeEvent({
+          type: 'ETA_REQUESTED',
+          bookingId: booking.id,
+          carWashId: booking.carWashId,
+          data: {
+            bookingId: booking.id,
+            customerId: booking.customerId,
+            customerName: booking.customerName,
+            stationName,
+            timeSlot: booking.timeSlot,
+            date: booking.date,
+          },
+        });
+
+        res.json({
+          success: true,
+          message: `Sent arrival request ping to ${booking.customerName}!`,
+        });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to send ETA request ping.' });
+      }
+    }
+  );
 
   // ==========================================
   // NOTIFICATIONS ENDPOINTS
