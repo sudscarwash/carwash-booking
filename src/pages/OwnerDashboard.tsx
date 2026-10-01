@@ -2244,13 +2244,13 @@ export const OwnerDashboard: React.FC = () => {
 
           {/* 🔔 In-App Live Notifications & Activity Feed Widget */}
           <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 text-white rounded-3xl p-5 sm:p-6 shadow-md border border-slate-800 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-700/60">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-700/60">
               <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-sky-500/20 text-sky-400 rounded-xl border border-sky-500/30">
+                <div className="p-2 bg-sky-500/20 text-sky-400 rounded-xl border border-sky-500/30 shrink-0">
                   <Bell className="h-5 w-5 animate-bounce" />
                 </div>
-                <div>
-                  <h3 className="font-extrabold text-sm sm:text-base tracking-tight flex items-center gap-2">
+                <div className="min-w-0">
+                  <h3 className="font-extrabold text-sm sm:text-base tracking-tight flex items-center gap-2 flex-wrap">
                     Live Booking Notifications & Activity
                     {unreadNotificationCount > 0 && (
                       <span className="bg-rose-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse">
@@ -2265,7 +2265,7 @@ export const OwnerDashboard: React.FC = () => {
               {unreadNotificationCount > 0 && (
                 <button
                   onClick={() => markAllNotificationsAsRead()}
-                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-sky-300 text-xs font-bold rounded-xl border border-slate-700 transition-all flex items-center gap-1.5 cursor-pointer"
+                  className="self-end sm:self-auto px-3 py-1.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-sky-300 text-xs font-bold rounded-xl border border-slate-700 transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
                 >
                   <CheckCheck className="h-3.5 w-3.5" />
                   <span>Mark all read</span>

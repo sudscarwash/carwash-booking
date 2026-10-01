@@ -164,10 +164,10 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
                 {isNotifOpen && (
                   <>
                     <div
-                      className="fixed inset-0 z-30 cursor-default bg-transparent"
+                      className="fixed inset-0 z-30 cursor-default bg-black/20 sm:bg-transparent backdrop-blur-[1px] sm:backdrop-blur-none"
                       onClick={() => setIsNotifOpen(false)}
                     />
-                    <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white border border-slate-200/90 rounded-2xl shadow-xl z-40 overflow-hidden py-2 animate-in fade-in slide-in-from-top-2 duration-150">
+                    <div className="fixed sm:absolute left-3 right-3 sm:left-auto sm:right-0 top-[68px] sm:top-full mt-0 sm:mt-2 w-auto sm:w-96 max-w-none sm:max-w-md bg-white border border-slate-200/90 rounded-2xl shadow-2xl z-40 overflow-hidden py-2 animate-in fade-in slide-in-from-top-2 duration-150">
                       <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                         <div className="flex items-center gap-2">
                           <Bell className="h-4 w-4 text-sky-600" />
@@ -312,7 +312,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
               {/* Floating Dropdown Menu */}
               {isProfileOpen && (
                 <div
-                  className="absolute right-0 mt-2 w-64 bg-white border border-slate-200/80 rounded-2xl shadow-xl z-40 overflow-hidden py-1.5 animate-in fade-in slide-in-from-top-2 duration-150"
+                  className="absolute right-0 mt-2 w-64 max-w-[calc(100vw-24px)] bg-white border border-slate-200/80 rounded-2xl shadow-xl z-40 overflow-hidden py-1.5 animate-in fade-in slide-in-from-top-2 duration-150"
                   id="user-profile-dropdown-menu"
                 >
                   {/* User Profile Header Info */}
