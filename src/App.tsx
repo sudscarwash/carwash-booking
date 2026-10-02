@@ -623,7 +623,7 @@ const MainAppContent: React.FC = () => {
       {notification && (
         <div
           onClick={clearNotification}
-          className={`fixed top-4 left-4 right-4 sm:left-auto sm:right-4 z-50 p-4 rounded-2xl shadow-xl max-w-sm sm:w-auto border transition-all duration-300 cursor-pointer flex items-center gap-3 animate-slide-in ${
+          className={`fixed top-4 right-3 left-3 sm:left-auto sm:right-4 z-50 p-3.5 sm:p-4 rounded-2xl shadow-xl sm:max-w-sm border transition-all duration-300 cursor-pointer flex items-center gap-3 animate-slide-in ${
             notification.type === 'success'
               ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
               : 'bg-rose-50 border-rose-200 text-rose-800'

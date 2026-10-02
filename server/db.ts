@@ -14,7 +14,7 @@ import pg from 'pg';
 import path from 'path';
 import fs from 'fs';
 import bcrypt from 'bcryptjs';
-import { Role, BookingStatus, UserWithPassword, CarWash, Booking, AuditLog, WeeklySchedule, MapPreset, AppNotification, PlatformInfo, Review, ReviewSummary } from '../src/types.js';
+import { Role, BookingStatus, UserWithPassword, CarWash, Booking, AuditLog, WeeklySchedule, MapPreset, AppNotification, PlatformInfo, Review, ReviewSummary, CarWashMembershipConfig, CustomerMembership, MembershipPointsRule, MembershipPointsLedger, MembershipReward, MembershipRedemption, PointsTransactionType } from '../src/types.js';
 
 let primaryDbUrl = process.env.DATABASE_URL || process.env.DIRECT_URL || '';
 let directDbUrl = process.env.DIRECT_URL || '';
@@ -200,8 +200,74 @@ function convertQueryToPg(sql: string): string {
     ownernavigationenabled: 'owner_navigation_enabled',
     ownerQrCodeEnabled: 'owner_qr_code_enabled',
     ownerqrcodeenabled: 'owner_qr_code_enabled',
+    membershipEnabled: 'membership_enabled',
+    membershipenabled: 'membership_enabled',
     adminOtpRequired: 'admin_otp_required',
     adminotprequired: 'admin_otp_required',
+    isFeatureEnabled: 'is_feature_enabled',
+    isfeatureenabled: 'is_feature_enabled',
+    isProgrammeActive: 'is_programme_active',
+    isprogrammeactive: 'is_programme_active',
+    programmeName: 'programme_name',
+    programmename: 'programme_name',
+    programmeDescription: 'programme_description',
+    programmedescription: 'programme_description',
+    pointsExpiryMonths: 'points_expiry_months',
+    pointsexpirymonths: 'points_expiry_months',
+    allowQrJoin: 'allow_qr_join',
+    allowqrjoin: 'allow_qr_join',
+    allowCounterJoin: 'allow_counter_join',
+    allowcounterjoin: 'allow_counter_join',
+    termsConditions: 'terms_conditions',
+    termsconditions: 'terms_conditions',
+    membershipNumber: 'membership_number',
+    membershipnumber: 'membership_number',
+    pointsBalance: 'points_balance',
+    pointsbalance: 'points_balance',
+    joinedAt: 'joined_at',
+    joinedat: 'joined_at',
+    joinMethod: 'join_method',
+    joinmethod: 'join_method',
+    consentGiven: 'consent_given',
+    consentgiven: 'consent_given',
+    consentTimestamp: 'consent_timestamp',
+    consenttimestamp: 'consent_timestamp',
+    termsVersion: 'terms_version',
+    termsversion: 'terms_version',
+    qrToken: 'qr_token',
+    qrtoken: 'qr_token',
+    pointsAwarded: 'points_awarded',
+    pointsawarded: 'points_awarded',
+    transactionType: 'transaction_type',
+    transactiontype: 'transaction_type',
+    redemptionId: 'redemption_id',
+    redemptionid: 'redemption_id',
+    performedById: 'performed_by_id',
+    performedbyid: 'performed_by_id',
+    performedByRole: 'performed_by_role',
+    performedbyrole: 'performed_by_role',
+    pointsCost: 'points_cost',
+    pointscost: 'points_cost',
+    rewardType: 'reward_type',
+    rewardtype: 'reward_type',
+    discountValue: 'discount_value',
+    discountvalue: 'discount_value',
+    eligibleServiceId: 'eligible_service_id',
+    eligibleserviceid: 'eligible_service_id',
+    redemptionCode: 'redemption_code',
+    redemptioncode: 'redemption_code',
+    rewardId: 'reward_id',
+    rewardid: 'reward_id',
+    rewardTitle: 'reward_title',
+    rewardtitle: 'reward_title',
+    pointsSpent: 'points_spent',
+    pointsspent: 'points_spent',
+    redemptionToken: 'redemption_token',
+    redemptiontoken: 'redemption_token',
+    redeemedAt: 'redeemed_at',
+    redeemedat: 'redeemed_at',
+    redeemedByStaffId: 'redeemed_by_staff_id',
+    redeemedbystaffid: 'redeemed_by_staff_id',
   };
 
   // Perform whole-word replacements to avoid matching partial strings
@@ -216,7 +282,21 @@ function convertQueryToPg(sql: string): string {
     result = result.replace(/INSERT\s+OR\s+IGNORE\s+INTO/gi, 'INSERT INTO');
     
     // Add primary key conflict targets
-    if (tableName === 'users' || tableName === 'car_washes' || tableName === 'bookings' || tableName === 'audit_logs' || tableName === 'map_presets' || tableName === 'notifications' || tableName === 'reviews') {
+    if (
+      tableName === 'users' ||
+      tableName === 'car_washes' ||
+      tableName === 'bookings' ||
+      tableName === 'audit_logs' ||
+      tableName === 'map_presets' ||
+      tableName === 'notifications' ||
+      tableName === 'reviews' ||
+      tableName === 'car_wash_memberships_config' ||
+      tableName === 'customer_memberships' ||
+      tableName === 'membership_points_rules' ||
+      tableName === 'membership_points_ledger' ||
+      tableName === 'membership_rewards' ||
+      tableName === 'membership_redemptions'
+    ) {
       result += ' ON CONFLICT (id) DO NOTHING';
     }
   }
@@ -462,6 +542,9 @@ const mapCarWash = (row: any): CarWash => {
   const ownerQrVal = row.ownerQrCodeEnabled !== undefined
     ? row.ownerQrCodeEnabled
     : (row.owner_qr_code_enabled !== undefined ? row.owner_qr_code_enabled : row.ownerqrcodeenabled);
+  const membershipVal = row.membershipEnabled !== undefined
+    ? row.membershipEnabled
+    : (row.membership_enabled !== undefined ? row.membership_enabled : row.membershipenabled);
   const openingHours = row.openingHours ?? row.opening_hours ?? row.openinghours;
 
   return {
@@ -479,6 +562,7 @@ const mapCarWash = (row: any): CarWash => {
     isActive: isActiveVal === 1 || isActiveVal === true || isActiveVal === '1',
     ownerNavigationEnabled: ownerNavVal !== undefined ? (ownerNavVal === 1 || ownerNavVal === true || ownerNavVal === '1') : true,
     ownerQrCodeEnabled: ownerQrVal !== undefined ? (ownerQrVal === 1 || ownerQrVal === true || ownerQrVal === '1') : false,
+    membershipEnabled: membershipVal !== undefined ? (membershipVal === 1 || membershipVal === true || membershipVal === '1') : false,
     createdAt: row.createdAt ?? row.created_at ?? row.createdat,
     phone: row.phone ?? undefined,
     instagram: row.instagram ?? undefined,
@@ -710,10 +794,113 @@ async function executeSeedFirestore() {
       ownerReplyBy TEXT,
       bookingId TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS car_wash_memberships_config (
+      id TEXT PRIMARY KEY,
+      carWashId TEXT UNIQUE NOT NULL,
+      isFeatureEnabled INTEGER NOT NULL DEFAULT 0,
+      isProgrammeActive INTEGER NOT NULL DEFAULT 0,
+      programmeName TEXT NOT NULL,
+      programmeDescription TEXT,
+      pointsExpiryMonths INTEGER NOT NULL DEFAULT 0,
+      allowQrJoin INTEGER NOT NULL DEFAULT 1,
+      allowCounterJoin INTEGER NOT NULL DEFAULT 1,
+      termsConditions TEXT,
+      updatedAt TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS customer_memberships (
+      id TEXT PRIMARY KEY,
+      customerId TEXT NOT NULL,
+      carWashId TEXT NOT NULL,
+      membershipNumber TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'ACTIVE',
+      pointsBalance INTEGER NOT NULL DEFAULT 0,
+      joinedAt TEXT NOT NULL,
+      joinMethod TEXT NOT NULL DEFAULT 'ONLINE_OPT_IN',
+      consentGiven INTEGER NOT NULL DEFAULT 1,
+      consentTimestamp TEXT NOT NULL,
+      termsVersion TEXT DEFAULT '1.0',
+      qrToken TEXT UNIQUE NOT NULL,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      UNIQUE(customerId, carWashId)
+    );
+
+    CREATE TABLE IF NOT EXISTS membership_points_rules (
+      id TEXT PRIMARY KEY,
+      carWashId TEXT NOT NULL,
+      serviceId TEXT NOT NULL,
+      serviceName TEXT NOT NULL,
+      pointsAwarded INTEGER NOT NULL DEFAULT 10,
+      isActive INTEGER NOT NULL DEFAULT 1,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      UNIQUE(carWashId, serviceId)
+    );
+
+    CREATE TABLE IF NOT EXISTS membership_points_ledger (
+      id TEXT PRIMARY KEY,
+      membershipId TEXT NOT NULL,
+      customerId TEXT NOT NULL,
+      carWashId TEXT NOT NULL,
+      points INTEGER NOT NULL,
+      transactionType TEXT NOT NULL,
+      description TEXT NOT NULL,
+      bookingId TEXT,
+      redemptionId TEXT,
+      performedById TEXT NOT NULL,
+      performedByRole TEXT NOT NULL,
+      createdAt TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS membership_rewards (
+      id TEXT PRIMARY KEY,
+      carWashId TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      pointsCost INTEGER NOT NULL,
+      rewardType TEXT NOT NULL DEFAULT 'FREE_SERVICE',
+      discountValue REAL DEFAULT 0,
+      eligibleServiceId TEXT,
+      isActive INTEGER NOT NULL DEFAULT 1,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS membership_redemptions (
+      id TEXT PRIMARY KEY,
+      redemptionCode TEXT UNIQUE NOT NULL,
+      membershipId TEXT NOT NULL,
+      customerId TEXT NOT NULL,
+      carWashId TEXT NOT NULL,
+      rewardId TEXT NOT NULL,
+      rewardTitle TEXT NOT NULL,
+      pointsSpent INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'PENDING',
+      redemptionToken TEXT UNIQUE NOT NULL,
+      expiresAt TEXT,
+      redeemedAt TEXT,
+      redeemedByStaffId TEXT,
+      createdAt TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_bookings_carwash ON bookings(carWashId);
+    CREATE INDEX IF NOT EXISTS idx_bookings_customer ON bookings(customerId);
+    CREATE INDEX IF NOT EXISTS idx_bookings_date ON bookings(date);
+    CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status);
+    CREATE INDEX IF NOT EXISTS idx_memberships_carwash ON customer_memberships(carWashId);
+    CREATE INDEX IF NOT EXISTS idx_memberships_customer ON customer_memberships(customerId);
+    CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
   `);
 
   // Dynamically add rich user profile columns and ensure all required core columns exist
   const alterColumns = [
+    'ALTER TABLE car_washes ADD COLUMN membershipEnabled INTEGER DEFAULT 0',
+    'ALTER TABLE membership_rewards ADD COLUMN maxRedemptionsPerMember INTEGER DEFAULT 0',
+    'ALTER TABLE membership_rewards ADD COLUMN maxTotalSupply INTEGER DEFAULT 0',
+    'ALTER TABLE membership_rewards ADD COLUMN claimCount INTEGER DEFAULT 0',
+    'ALTER TABLE car_wash_memberships_config ADD COLUMN maxRedemptionsPerMemberPerDay INTEGER DEFAULT 0',
     'ALTER TABLE reviews ADD COLUMN ownerReply TEXT',
     'ALTER TABLE reviews ADD COLUMN ownerReplyAt TEXT',
     'ALTER TABLE reviews ADD COLUMN ownerReplyBy TEXT',
@@ -1074,6 +1261,96 @@ async function executeSeedFirestore() {
       "UPDATE car_washes SET servicesJson = ? WHERE id = 'cw_brunei' AND (servicesJson IS NULL OR servicesJson = '' OR servicesJson = '[]')",
       [JSON.stringify(defaultBruneiServices)]
     );
+
+    // Enable loyalty on Brunei Royal Auto Spa by default so owner, staff, and customer flows are immediately available
+    await runQueryRun("UPDATE car_washes SET membershipEnabled = 1 WHERE id = 'cw_brunei'");
+
+    // Seed default membership config, points rules, and rewards if not yet present
+    const existingConfig = await runQueryOne("SELECT id FROM car_wash_memberships_config WHERE carWashId = 'cw_brunei'");
+    if (!existingConfig) {
+      const now = new Date().toISOString();
+      await runQueryRun(`
+        INSERT INTO car_wash_memberships_config (
+          id, carWashId, isFeatureEnabled, isProgrammeActive, programmeName, programmeDescription,
+          pointsExpiryMonths, allowQrJoin, allowCounterJoin, maxRedemptionsPerMemberPerDay, termsConditions, updatedAt
+        ) VALUES (?, ?, 1, 1, ?, ?, 12, 1, 1, 2, ?, ?)
+      `, [
+        'mcfg_cw_brunei',
+        'cw_brunei',
+        'Brunei Royal VIP Club',
+        'Earn points on every wash booking or bay visit. Redeem points for free foam washes, wax treatments, and exclusive savings.',
+        'Points are non-transferable and valid for 12 months. Redemptions are subject to bay slot availability.',
+        now
+      ]);
+
+      // Seed Points Rules for services
+      const defaultRules = [
+        { serviceId: 'srv_express_wash', name: 'Express Jet Wash & Towel Dry', pts: 10 },
+        { serviceId: 'srv_deluxe_wash', name: 'Deluxe Foam Wash, Wax & Tyre Shine', pts: 25 },
+        { serviceId: 'srv_ceramic_detail', name: 'Premium Ceramic Coating & Deep Detailing', pts: 50 },
+      ];
+      for (const r of defaultRules) {
+        await runQueryRun(`
+          INSERT INTO membership_points_rules (id, carWashId, serviceId, serviceName, pointsAwarded, isActive, createdAt, updatedAt)
+          VALUES (?, 'cw_brunei', ?, ?, ?, 1, ?, ?)
+        `, [`mpr_cw_brunei_${r.serviceId}`, r.serviceId, r.name, r.pts, now, now]);
+      }
+
+      // Seed Rewards Catalog with max limits
+      const defaultRewards = [
+        {
+          id: 'mrw_tyre_shine',
+          title: 'Free Tyre Shine & Hydrophobic Rim Gloss',
+          description: 'Glossy tyre dressing and hydrophobic rim protection on your next visit.',
+          pointsCost: 50,
+          rewardType: 'FREE_ADDON',
+          discountValue: 5,
+          maxRedemptionsPerMember: 3,
+        },
+        {
+          id: 'mrw_voucher_5',
+          title: 'BND $5.00 Off Any Wash Service',
+          description: 'Instant BND $5 cash deduction applied to any wash booking or counter ticket.',
+          pointsCost: 100,
+          rewardType: 'DISCOUNT_FIXED',
+          discountValue: 5,
+          maxRedemptionsPerMember: 5,
+        },
+        {
+          id: 'mrw_free_express',
+          title: 'Free Express Jet Wash',
+          description: '100% complimentary Express Jet Wash & Microfiber Towel Hand Dry.',
+          pointsCost: 150,
+          rewardType: 'FREE_SERVICE',
+          discountValue: 10,
+          eligibleServiceId: 'srv_express_wash',
+          maxRedemptionsPerMember: 2,
+        },
+        {
+          id: 'mrw_free_deluxe',
+          title: 'Free Deluxe Foam Wash & Spray Wax',
+          description: '100% complimentary Deluxe Foam Wash, deep interior vacuum, and wax coat.',
+          pointsCost: 250,
+          rewardType: 'FREE_SERVICE',
+          discountValue: 25,
+          eligibleServiceId: 'srv_deluxe_wash',
+          maxRedemptionsPerMember: 1,
+        },
+      ];
+
+      for (const rw of defaultRewards) {
+        await runQueryRun(`
+          INSERT INTO membership_rewards (
+            id, carWashId, title, description, pointsCost, rewardType, discountValue,
+            eligibleServiceId, isActive, maxRedemptionsPerMember, maxTotalSupply, claimCount, createdAt, updatedAt
+          ) VALUES (?, 'cw_brunei', ?, ?, ?, ?, ?, ?, 1, ?, 100, 0, ?, ?)
+        `, [
+          rw.id, rw.title, rw.description, rw.pointsCost, rw.rewardType, rw.discountValue,
+          rw.eligibleServiceId || null, rw.maxRedemptionsPerMember || 0,
+          now, now
+        ]);
+      }
+    }
   } catch (err) {
     console.error('Error ensuring Brunei location is seeded:', err);
   }
@@ -1665,11 +1942,12 @@ export async function createCarWash(carWash: CarWash): Promise<void> {
     const customPaymentsStr = carWash.customPaymentsJson || null;
     const ownerNavVal = carWash.ownerNavigationEnabled !== undefined ? (carWash.ownerNavigationEnabled ? 1 : 0) : 1;
     const ownerQrVal = carWash.ownerQrCodeEnabled !== undefined ? (carWash.ownerQrCodeEnabled ? 1 : 0) : 0;
+    const membershipVal = carWash.membershipEnabled !== undefined ? (carWash.membershipEnabled ? 1 : 0) : 0;
     await runQueryRun(`
       INSERT INTO car_washes (
-        id, name, slug, description, locationLat, locationLng, address, openingHours, slotDuration, capacityPerSlot, ownerId, isActive, createdAt, phone, instagram, paymentPolicy, logoUrl, bibdAccountName, bibdAccountNo, bibdEnabled, baiduriAccountName, baiduriAccountNo, baiduriEnabled, bibdQrImageUrl, baiduriQrImageUrl, customPaymentsJson, servicesJson, ownerNavigationEnabled, ownerQrCodeEnabled
+        id, name, slug, description, locationLat, locationLng, address, openingHours, slotDuration, capacityPerSlot, ownerId, isActive, createdAt, phone, instagram, paymentPolicy, logoUrl, bibdAccountName, bibdAccountNo, bibdEnabled, baiduriAccountName, baiduriAccountNo, baiduriEnabled, bibdQrImageUrl, baiduriQrImageUrl, customPaymentsJson, servicesJson, ownerNavigationEnabled, ownerQrCodeEnabled, membershipEnabled
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       carWash.id,
       carWash.name,
@@ -1700,6 +1978,7 @@ export async function createCarWash(carWash: CarWash): Promise<void> {
       servicesStr,
       ownerNavVal,
       ownerQrVal,
+      membershipVal,
     ]);
   } catch (error) {
     console.error('Database createCarWash Error:', error);
@@ -1746,7 +2025,7 @@ export async function updateCarWash(id: string, data: Partial<CarWash>): Promise
         columnMap.set('scheduleOverridesJson', typeof val === 'string' ? val : JSON.stringify(val));
         return;
       }
-      if (key === 'isActive' || key === 'bibdEnabled' || key === 'baiduriEnabled' || key === 'ownerNavigationEnabled' || key === 'ownerQrCodeEnabled') {
+      if (key === 'isActive' || key === 'bibdEnabled' || key === 'baiduriEnabled' || key === 'ownerNavigationEnabled' || key === 'ownerQrCodeEnabled' || key === 'membershipEnabled') {
         columnMap.set(key, val ? 1 : 0);
         return;
       }
@@ -1912,15 +2191,74 @@ export async function getBookingByTxnRef(txnReference: string): Promise<Booking 
   }
 }
 
-export async function getCustomersForOwner(ownerId: string, isAdmin = false): Promise<any[]> {
+export async function getCustomersForOwner(ownerId: string, isAdmin = false, carWashId?: string): Promise<any[]> {
   try {
     const carWashes = await getCarWashes();
-    const ownedIds = isAdmin ? carWashes.map(cw => cw.id) : carWashes.filter(cw => cw.ownerId === ownerId).map(cw => cw.id);
+    let ownedIds = isAdmin 
+      ? carWashes.map(cw => cw.id) 
+      : carWashes.filter(cw => cw.ownerId === ownerId).map(cw => cw.id);
+
+    if (carWashId && carWashId !== 'ALL') {
+      if (isAdmin || ownedIds.includes(carWashId)) {
+        ownedIds = [carWashId];
+      } else {
+        return [];
+      }
+    }
+
+    if (ownedIds.length === 0) {
+      return [];
+    }
     
-    const allUsers = await getUsers();
-    const allBookings = await getBookings();
-    
-    const relevantBookings = allBookings.filter(b => ownedIds.includes(b.carWashId));
+    // Directly query indexed bookings scoped strictly to owner's authorized locations
+    const placeholders = ownedIds.map(() => '?').join(',');
+    const bookingRows = await runQueryAll(`
+      SELECT 
+        b.*, 
+        u.phone AS user_phone, 
+        u.name AS user_name, 
+        u.email AS user_email,
+        u.profileImageUrl AS user_profile_image_url
+      FROM bookings b 
+      LEFT JOIN users u ON b.customerId = u.id 
+      WHERE b.carWashId IN (${placeholders})
+      ORDER BY b.createdAt DESC
+    `, ownedIds);
+    const relevantBookings = bookingRows.map(mapBooking);
+
+    // Get members explicitly enrolled in this car wash's VIP Loyalty / Membership
+    const memberMap = new Map<string, CustomerMembership>();
+    for (const cwId of ownedIds) {
+      const members = await getCarWashMembers(cwId);
+      for (const m of members) {
+        if (m.customerId) {
+          memberMap.set(m.customerId.toLowerCase(), m);
+        }
+      }
+    }
+
+    // Lookup users for profile enrichment (name, phone, email, avatar) ONLY for actual patrons
+    const userMap = new Map<string, any>();
+    for (const row of bookingRows) {
+      if (row.customerId && !userMap.has(row.customerId.toLowerCase())) {
+        userMap.set(row.customerId.toLowerCase(), {
+          id: row.customerId,
+          name: row.user_name,
+          phone: row.user_phone,
+          email: row.user_email,
+          profileImageUrl: row.user_profile_image_url,
+        });
+      }
+      if (row.customerEmail && !userMap.has(row.customerEmail.toLowerCase())) {
+        userMap.set(row.customerEmail.toLowerCase(), {
+          id: row.customerId,
+          name: row.user_name || row.customerName,
+          phone: row.user_phone || row.customerPhone,
+          email: row.customerEmail,
+          profileImageUrl: row.user_profile_image_url,
+        });
+      }
+    }
     
     const customerMap = new Map<string, {
       id: string;
@@ -1928,9 +2266,6 @@ export async function getCustomersForOwner(ownerId: string, isAdmin = false): Pr
       name: string;
       phone: string;
       email?: string;
-      address?: string;
-      dateOfBirth?: string;
-      gender?: string;
       profileImageUrl?: string;
       vehicles: string[];
       totalBookings: number;
@@ -1938,73 +2273,65 @@ export async function getCustomersForOwner(ownerId: string, isAdmin = false): Pr
       totalSpent: number;
       lastBookingDate: string;
       firstLetter: string;
+      isMember?: boolean;
+      membershipNumber?: string;
+      pointsBalance?: number;
     }>();
 
-    // 1. Seed registered customers
-    const registeredCustomers = allUsers.filter(u => u.role === Role.CUSTOMER || u.role === Role.SPECIAL);
-    for (const u of registeredCustomers) {
-      const validPhone = u.phone && String(u.phone).trim() !== '' && String(u.phone).trim().toUpperCase() !== 'NA' && String(u.phone).trim().toUpperCase() !== 'N/A' ? String(u.phone).trim() : '';
-      const key = (u.id || u.email || validPhone || u.name).toLowerCase();
-      let letter = (u.name || 'C').charAt(0).toUpperCase();
-      if (!/^[A-Z]$/i.test(letter)) letter = '#';
-      
-      customerMap.set(key, {
-        id: u.id,
-        customerId: u.id,
-        name: u.name || 'Customer',
-        phone: validPhone,
-        email: u.email,
-        address: u.address,
-        dateOfBirth: u.dateOfBirth,
-        gender: u.gender,
-        profileImageUrl: u.profileImageUrl,
-        vehicles: [],
-        totalBookings: 0,
-        completedBookings: 0,
-        totalSpent: 0,
-        lastBookingDate: '',
-        firstLetter: letter,
-      });
-    }
-
-    // 2. Merge bookings
+    // 1. Process customers with bookings at this owner's carwash
     for (const b of relevantBookings) {
       const rawName = (b.customerName || 'Customer').trim();
       const rawPhone = (b.customerPhone && String(b.customerPhone).trim().toUpperCase() !== 'NA' && String(b.customerPhone).trim().toUpperCase() !== 'N/A' ? String(b.customerPhone).trim() : '');
       const rawEmail = (b.customerEmail || '').trim().toLowerCase();
-      
-      let existing: any = null;
-      if (b.customerId && customerMap.has(b.customerId.toLowerCase())) {
+
+      // Find registered user profile if available for clean name/phone/avatar
+      const regUser = (b.customerId && userMap.get(b.customerId.toLowerCase())) ||
+                      (rawEmail && userMap.get(rawEmail));
+
+      const effectiveName = (regUser && regUser.name ? regUser.name : rawName) || 'Customer';
+      const effectivePhone = (regUser && regUser.phone && regUser.phone.toUpperCase() !== 'NA' && regUser.phone.toUpperCase() !== 'N/A' ? regUser.phone : rawPhone);
+      const effectiveEmail = (regUser && regUser.email ? regUser.email : rawEmail);
+      const profileImageUrl = regUser ? regUser.profileImageUrl : undefined;
+
+      const key = (b.customerId || effectiveEmail || effectivePhone || effectiveName).toLowerCase();
+      let existing = customerMap.get(key);
+
+      if (!existing && b.customerId && customerMap.has(b.customerId.toLowerCase())) {
         existing = customerMap.get(b.customerId.toLowerCase());
-      } else if (rawEmail && customerMap.has(rawEmail)) {
-        existing = customerMap.get(rawEmail);
-      } else if (rawPhone && customerMap.has(rawPhone.toLowerCase())) {
-        existing = customerMap.get(rawPhone.toLowerCase());
-      } else if (customerMap.has(rawName.toLowerCase())) {
-        existing = customerMap.get(rawName.toLowerCase());
+      } else if (!existing && effectiveEmail && customerMap.has(effectiveEmail)) {
+        existing = customerMap.get(effectiveEmail);
+      } else if (!existing && effectivePhone && customerMap.has(effectivePhone.toLowerCase())) {
+        existing = customerMap.get(effectivePhone.toLowerCase());
       }
 
       const bPrice = Number(b.price) || 0;
       const isCompleted = b.status === BookingStatus.COMPLETED;
       const vehicleStr = b.vehicleInfo ? b.vehicleInfo.trim() : '';
 
+      // Check loyalty membership
+      const membership = (b.customerId && memberMap.get(b.customerId.toLowerCase())) ||
+                         (effectiveEmail && memberMap.get(effectiveEmail.toLowerCase()));
+
       if (!existing) {
-        let letter = rawName.charAt(0).toUpperCase();
+        let letter = effectiveName.charAt(0).toUpperCase();
         if (!/^[A-Z]$/i.test(letter)) letter = '#';
-        const newKey = (b.customerId || rawEmail || rawPhone || rawName).toLowerCase();
-        
-        customerMap.set(newKey, {
-          id: b.customerId || `guest_${newKey}`,
+
+        customerMap.set(key, {
+          id: b.customerId || `guest_${key}`,
           customerId: b.customerId,
-          name: rawName,
-          phone: rawPhone,
-          email: rawEmail || undefined,
+          name: effectiveName,
+          phone: effectivePhone,
+          email: effectiveEmail || undefined,
+          profileImageUrl: profileImageUrl,
           vehicles: vehicleStr ? [vehicleStr] : [],
           totalBookings: 1,
           completedBookings: isCompleted ? 1 : 0,
           totalSpent: isCompleted ? bPrice : 0,
           lastBookingDate: b.date || '',
           firstLetter: letter,
+          isMember: !!membership,
+          membershipNumber: membership ? membership.membershipNumber : undefined,
+          pointsBalance: membership ? membership.pointsBalance : undefined,
         });
       } else {
         existing.totalBookings += 1;
@@ -2012,14 +2339,90 @@ export async function getCustomersForOwner(ownerId: string, isAdmin = false): Pr
           existing.completedBookings += 1;
           existing.totalSpent += bPrice;
         }
-        if (rawPhone && (!existing.phone || existing.phone.toUpperCase() === 'NA' || existing.phone.toUpperCase() === 'N/A')) {
-          existing.phone = rawPhone;
+        if (effectivePhone && (!existing.phone || existing.phone.toUpperCase() === 'NA' || existing.phone.toUpperCase() === 'N/A')) {
+          existing.phone = effectivePhone;
+        }
+        if (effectiveEmail && !existing.email) {
+          existing.email = effectiveEmail;
         }
         if (vehicleStr && !existing.vehicles.includes(vehicleStr)) {
           existing.vehicles.push(vehicleStr);
         }
         if (b.date && b.date > existing.lastBookingDate) {
           existing.lastBookingDate = b.date;
+        }
+        if (membership) {
+          existing.isMember = true;
+          existing.membershipNumber = membership.membershipNumber;
+          existing.pointsBalance = membership.pointsBalance;
+        }
+      }
+    }
+
+    // 2. Include customers who signed up / enrolled in this car wash's VIP loyalty membership
+    // (even if they joined via counter QR or online and haven't booked their first appointment yet)
+    for (const [mCustomerId, membership] of memberMap.entries()) {
+      const existing = customerMap.get(mCustomerId) ||
+                       (membership.customerEmail && customerMap.get(membership.customerEmail.toLowerCase()));
+
+      if (!existing) {
+        const regUser = userMap.get(mCustomerId);
+        const name = (regUser && regUser.name) || membership.customerName || 'Loyalty Member';
+        const phone = (regUser && regUser.phone && regUser.phone.toUpperCase() !== 'NA' ? regUser.phone : '') || membership.customerPhone || '';
+        const email = (regUser && regUser.email) || membership.customerEmail || undefined;
+
+        let letter = name.charAt(0).toUpperCase();
+        if (!/^[A-Z]$/i.test(letter)) letter = '#';
+
+        customerMap.set(mCustomerId, {
+          id: mCustomerId,
+          customerId: mCustomerId,
+          name: name,
+          phone: phone,
+          email: email,
+          profileImageUrl: regUser?.profileImageUrl,
+          vehicles: [],
+          totalBookings: 0,
+          completedBookings: 0,
+          totalSpent: 0,
+          lastBookingDate: '',
+          firstLetter: letter,
+          isMember: true,
+          membershipNumber: membership.membershipNumber,
+          pointsBalance: membership.pointsBalance,
+        });
+      } else {
+        existing.isMember = true;
+        existing.membershipNumber = membership.membershipNumber;
+        existing.pointsBalance = membership.pointsBalance;
+      }
+    }
+
+    // 3. For Platform Administrators ONLY (Global Super-Admin view when no specific car wash is selected)
+    // Regular owners NEVER see non-patron customers under any circumstance.
+    if (isAdmin && !carWashId) {
+      const allUsers = await getUsers();
+      const registeredCustomers = allUsers.filter(u => u.role === Role.CUSTOMER || u.role === Role.SPECIAL);
+      for (const u of registeredCustomers) {
+        const key = (u.id || u.email || u.phone || u.name).toLowerCase();
+        if (!customerMap.has(key) && (!u.id || !customerMap.has(u.id.toLowerCase()))) {
+          let letter = (u.name || 'C').charAt(0).toUpperCase();
+          if (!/^[A-Z]$/i.test(letter)) letter = '#';
+          customerMap.set(key, {
+            id: u.id,
+            customerId: u.id,
+            name: u.name || 'Customer',
+            phone: u.phone && u.phone.toUpperCase() !== 'NA' ? u.phone : '',
+            email: u.email,
+            profileImageUrl: u.profileImageUrl,
+            vehicles: [],
+            totalBookings: 0,
+            completedBookings: 0,
+            totalSpent: 0,
+            lastBookingDate: '',
+            firstLetter: letter,
+            isMember: false,
+          });
         }
       }
     }
@@ -2829,6 +3232,994 @@ export async function getReviewsSummaryForCarWash(carWashId: string): Promise<Re
     totalReviews,
     ratingCounts,
   };
+}
+
+// ==========================================
+// 🌟 MULTI-TENANT MEMBERSHIP & LOYALTY ENGINE
+// ==========================================
+
+const mapMembershipConfig = (row: any): CarWashMembershipConfig => {
+  if (!row) return row;
+  const isFeature = row.isFeatureEnabled !== undefined ? row.isFeatureEnabled : (row.is_feature_enabled !== undefined ? row.is_feature_enabled : row.isfeatureenabled);
+  const isProgActive = row.isProgrammeActive !== undefined ? row.isProgrammeActive : (row.is_programme_active !== undefined ? row.is_programme_active : row.isprogrammeactive);
+  const allowQr = row.allowQrJoin !== undefined ? row.allowQrJoin : (row.allow_qr_join !== undefined ? row.allow_qr_join : row.allowqrjoin);
+  const allowCounter = row.allowCounterJoin !== undefined ? row.allowCounterJoin : (row.allow_counter_join !== undefined ? row.allow_counter_join : row.allowcounterjoin);
+
+  return {
+    id: row.id,
+    carWashId: row.carWashId ?? row.car_wash_id ?? row.carwashid,
+    isFeatureEnabled: isFeature === 1 || isFeature === true || isFeature === '1',
+    isProgrammeActive: isProgActive === 1 || isProgActive === true || isProgActive === '1',
+    programmeName: row.programmeName ?? row.programme_name ?? row.programmename ?? 'Rewards Programme',
+    programmeDescription: row.programmeDescription ?? row.programme_description ?? row.programmedescription ?? undefined,
+    pointsExpiryMonths: Number(row.pointsExpiryMonths ?? row.points_expiry_months ?? row.pointsexpirymonths ?? 0),
+    allowQrJoin: allowQr === undefined || allowQr === 1 || allowQr === true || allowQr === '1',
+    allowCounterJoin: allowCounter === undefined || allowCounter === 1 || allowCounter === true || allowCounter === '1',
+    maxRedemptionsPerMemberPerDay: Number(row.maxRedemptionsPerMemberPerDay ?? row.max_redemptions_per_member_per_day ?? row.maxredemptionspermemberperday ?? 0),
+    termsConditions: row.termsConditions ?? row.terms_conditions ?? row.termsconditions ?? undefined,
+    updatedAt: row.updatedAt ?? row.updated_at ?? row.updatedat ?? new Date().toISOString(),
+  };
+};
+
+const mapCustomerMembership = (row: any): CustomerMembership => {
+  if (!row) return row;
+  const consent = row.consentGiven !== undefined ? row.consentGiven : (row.consent_given !== undefined ? row.consent_given : row.consentgiven);
+
+  return {
+    id: row.id,
+    customerId: row.customerId ?? row.customer_id ?? row.customerid,
+    customerName: row.customerName ?? row.customer_name ?? row.customername ?? row.user_name ?? undefined,
+    customerEmail: row.customerEmail ?? row.customer_email ?? row.customeremail ?? row.user_email ?? undefined,
+    customerPhone: row.customerPhone ?? row.customer_phone ?? row.customerphone ?? row.user_phone ?? undefined,
+    carWashId: row.carWashId ?? row.car_wash_id ?? row.carwashid,
+    carWashName: row.carWashName ?? row.car_wash_name ?? row.carwashname ?? undefined,
+    carWashLogo: row.carWashLogo ?? row.car_wash_logo ?? row.carwashlogo ?? row.logo_url ?? undefined,
+    membershipNumber: row.membershipNumber ?? row.membership_number ?? row.membershipnumber,
+    status: (row.status ?? 'ACTIVE') as any,
+    pointsBalance: Number(row.pointsBalance ?? row.points_balance ?? row.pointsbalance ?? 0),
+    joinedAt: row.joinedAt ?? row.joined_at ?? row.joinedat,
+    joinMethod: (row.joinMethod ?? row.join_method ?? row.joinmethod ?? 'ONLINE_OPT_IN') as any,
+    consentGiven: consent === 1 || consent === true || consent === '1',
+    consentTimestamp: row.consentTimestamp ?? row.consent_timestamp ?? row.consenttimestamp,
+    termsVersion: row.termsVersion ?? row.terms_version ?? row.termsversion ?? '1.0',
+    qrToken: row.qrToken ?? row.qr_token ?? row.qrtoken,
+    createdAt: row.createdAt ?? row.created_at ?? row.createdat,
+    updatedAt: row.updatedAt ?? row.updated_at ?? row.updatedat,
+  };
+};
+
+const mapPointsRule = (row: any): MembershipPointsRule => {
+  if (!row) return row;
+  const active = row.isActive !== undefined ? row.isActive : (row.is_active !== undefined ? row.is_active : row.isactive);
+  return {
+    id: row.id,
+    carWashId: row.carWashId ?? row.car_wash_id ?? row.carwashid,
+    serviceId: row.serviceId ?? row.service_id ?? row.serviceid,
+    serviceName: row.serviceName ?? row.service_name ?? row.servicename,
+    pointsAwarded: Number(row.pointsAwarded ?? row.points_awarded ?? row.pointsawarded ?? 10),
+    isActive: active === 1 || active === true || active === '1',
+    createdAt: row.createdAt ?? row.created_at ?? row.createdat,
+    updatedAt: row.updatedAt ?? row.updated_at ?? row.updatedat,
+  };
+};
+
+const mapPointsLedger = (row: any): MembershipPointsLedger => {
+  if (!row) return row;
+  const pts = Number(row.points ?? 0);
+  const balAfter = row.balanceAfter !== undefined ? Number(row.balanceAfter) : (row.balance_after !== undefined ? Number(row.balance_after) : undefined);
+  return {
+    id: row.id,
+    membershipId: row.membershipId ?? row.membership_id ?? row.membershipid,
+    customerId: row.customerId ?? row.customer_id ?? row.customerid,
+    carWashId: row.carWashId ?? row.car_wash_id ?? row.carwashid,
+    points: pts,
+    pointsDelta: pts,
+    balanceAfter: balAfter,
+    transactionType: row.transactionType ?? row.transaction_type ?? row.transactiontype,
+    description: row.description,
+    bookingId: row.bookingId ?? row.booking_id ?? row.bookingid ?? undefined,
+    redemptionId: row.redemptionId ?? row.redemption_id ?? row.redemptionid ?? undefined,
+    performedById: row.performedById ?? row.performed_by_id ?? row.performedbyid,
+    performedByRole: row.performedByRole ?? row.performed_by_role ?? row.performedbyrole,
+    createdAt: row.createdAt ?? row.created_at ?? row.createdat,
+  };
+};
+
+const mapReward = (row: any): MembershipReward => {
+  if (!row) return row;
+  const active = row.isActive !== undefined ? row.isActive : (row.is_active !== undefined ? row.is_active : row.isactive);
+  const discountVal = row.discountValue !== undefined && row.discountValue !== null ? Number(row.discountValue ?? row.discount_value ?? row.discountvalue) : undefined;
+  const maxPerMember = row.maxRedemptionsPerMember !== undefined ? Number(row.maxRedemptionsPerMember) : (row.max_redemptions_per_member !== undefined ? Number(row.max_redemptions_per_member) : undefined);
+  const maxSupply = row.maxTotalSupply !== undefined ? Number(row.maxTotalSupply) : (row.max_total_supply !== undefined ? Number(row.max_total_supply) : undefined);
+  const claims = row.claimCount !== undefined ? Number(row.claimCount) : (row.claim_count !== undefined ? Number(row.claim_count) : 0);
+
+  return {
+    id: row.id,
+    carWashId: row.carWashId ?? row.car_wash_id ?? row.carwashid,
+    title: row.title,
+    description: row.description ?? undefined,
+    pointsCost: Number(row.pointsCost ?? row.points_cost ?? row.pointscost ?? 100),
+    rewardType: (row.rewardType ?? row.reward_type ?? row.rewardtype ?? 'FREE_SERVICE') as any,
+    discountValue: discountVal,
+    eligibleServiceId: row.eligibleServiceId ?? row.eligible_service_id ?? row.eligibleserviceid ?? undefined,
+    maxRedemptionsPerMember: maxPerMember && maxPerMember > 0 ? maxPerMember : undefined,
+    maxTotalSupply: maxSupply && maxSupply > 0 ? maxSupply : undefined,
+    claimCount: claims,
+    isActive: active === 1 || active === true || active === '1',
+    createdAt: row.createdAt ?? row.created_at ?? row.createdat,
+    updatedAt: row.updatedAt ?? row.updated_at ?? row.updatedat,
+  };
+};
+
+const mapRedemption = (row: any): MembershipRedemption => {
+  if (!row) return row;
+  return {
+    id: row.id,
+    redemptionCode: row.redemptionCode ?? row.redemption_code ?? row.redemptioncode,
+    membershipId: row.membershipId ?? row.membership_id ?? row.membershipid,
+    customerId: row.customerId ?? row.customer_id ?? row.customerid,
+    customerName: row.customerName ?? row.customer_name ?? row.customername ?? row.user_name ?? undefined,
+    customerEmail: row.customerEmail ?? row.customer_email ?? row.customeremail ?? row.user_email ?? undefined,
+    customerPhone: row.customerPhone ?? row.customer_phone ?? row.customerphone ?? row.user_phone ?? undefined,
+    carWashId: row.carWashId ?? row.car_wash_id ?? row.carwashid,
+    carWashName: row.carWashName ?? row.car_wash_name ?? row.carwashname ?? undefined,
+    rewardId: row.rewardId ?? row.reward_id ?? row.rewardid,
+    rewardTitle: row.rewardTitle ?? row.reward_title ?? row.rewardtitle,
+    pointsSpent: Number(row.pointsSpent ?? row.points_spent ?? row.pointsspent ?? 0),
+    status: (row.status ?? 'PENDING') as any,
+    redemptionToken: row.redemptionToken ?? row.redemption_token ?? row.redemptiontoken,
+    expiresAt: row.expiresAt ?? row.expires_at ?? row.expiresat ?? undefined,
+    redeemedAt: row.redeemedAt ?? row.redeemed_at ?? row.redeemedat ?? undefined,
+    redeemedByStaffId: row.redeemedByStaffId ?? row.redeemed_by_staff_id ?? row.redeemedbystaffid ?? undefined,
+    createdAt: row.createdAt ?? row.created_at ?? row.createdat,
+  };
+};
+
+// 1. Programme Configuration
+export async function getCarWashMembershipConfig(carWashId: string): Promise<CarWashMembershipConfig | null> {
+  try {
+    const row = await runQueryOne('SELECT * FROM car_wash_memberships_config WHERE carWashId = ?', [carWashId]);
+    if (!row) {
+      // Check if car_wash exists and has membershipEnabled
+      const cw = await runQueryOne('SELECT id, name, membershipEnabled FROM car_washes WHERE id = ?', [carWashId]);
+      if (!cw) return null;
+      const isFeature = cw.membershipEnabled === 1 || cw.membership_enabled === 1 || cw.membershipEnabled === true;
+      return {
+        id: `mcfg_${carWashId}`,
+        carWashId,
+        isFeatureEnabled: isFeature,
+        isProgrammeActive: isFeature,
+        programmeName: `${cw.name || 'AutoShine'} Rewards`,
+        programmeDescription: 'Earn loyalty points for every wash and redeem exclusive services and gifts.',
+        pointsExpiryMonths: 0,
+        allowQrJoin: true,
+        allowCounterJoin: true,
+        termsConditions: 'Points are awarded upon service completion. Points belong strictly to this car wash and cannot be transferred or exchanged for cash.',
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    return mapMembershipConfig(row);
+  } catch (error) {
+    console.error('Database getCarWashMembershipConfig Error:', error);
+    return null;
+  }
+}
+
+export async function upsertCarWashMembershipConfig(config: Partial<CarWashMembershipConfig> & { carWashId: string }): Promise<CarWashMembershipConfig> {
+  const existing = await getCarWashMembershipConfig(config.carWashId);
+  const now = new Date().toISOString();
+  const id = existing?.id || `mcfg_${config.carWashId}`;
+  const isFeatureEnabled = config.isFeatureEnabled !== undefined ? (config.isFeatureEnabled ? 1 : 0) : (existing?.isFeatureEnabled ? 1 : 0);
+  const isProgrammeActive = config.isProgrammeActive !== undefined ? (config.isProgrammeActive ? 1 : 0) : (existing?.isProgrammeActive ? 1 : 0);
+  const programmeName = config.programmeName || existing?.programmeName || 'Rewards Programme';
+  const programmeDescription = config.programmeDescription ?? existing?.programmeDescription ?? null;
+  const pointsExpiryMonths = config.pointsExpiryMonths !== undefined ? config.pointsExpiryMonths : (existing?.pointsExpiryMonths ?? 0);
+  const allowQrJoin = config.allowQrJoin !== undefined ? (config.allowQrJoin ? 1 : 0) : (existing?.allowQrJoin !== false ? 1 : 1);
+  const allowCounterJoin = config.allowCounterJoin !== undefined ? (config.allowCounterJoin ? 1 : 0) : (existing?.allowCounterJoin !== false ? 1 : 1);
+  const maxRedemptionsPerMemberPerDay = config.maxRedemptionsPerMemberPerDay !== undefined ? config.maxRedemptionsPerMemberPerDay : (existing?.maxRedemptionsPerMemberPerDay ?? 0);
+  const termsConditions = config.termsConditions ?? existing?.termsConditions ?? null;
+
+  await runQueryRun(`
+    INSERT INTO car_wash_memberships_config (
+      id, carWashId, isFeatureEnabled, isProgrammeActive, programmeName, programmeDescription,
+      pointsExpiryMonths, allowQrJoin, allowCounterJoin, maxRedemptionsPerMemberPerDay, termsConditions, updatedAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(carWashId) DO UPDATE SET
+      isFeatureEnabled = excluded.isFeatureEnabled,
+      isProgrammeActive = excluded.isProgrammeActive,
+      programmeName = excluded.programmeName,
+      programmeDescription = excluded.programmeDescription,
+      pointsExpiryMonths = excluded.pointsExpiryMonths,
+      allowQrJoin = excluded.allowQrJoin,
+      allowCounterJoin = excluded.allowCounterJoin,
+      maxRedemptionsPerMemberPerDay = excluded.maxRedemptionsPerMemberPerDay,
+      termsConditions = excluded.termsConditions,
+      updatedAt = excluded.updatedAt
+  `, [
+    id, config.carWashId, isFeatureEnabled, isProgrammeActive, programmeName, programmeDescription,
+    pointsExpiryMonths, allowQrJoin, allowCounterJoin, maxRedemptionsPerMemberPerDay, termsConditions, now
+  ]);
+
+  // Keep car_washes.membershipEnabled synced
+  await runQueryRun('UPDATE car_washes SET membershipEnabled = ? WHERE id = ?', [isFeatureEnabled, config.carWashId]);
+
+  return {
+    id,
+    carWashId: config.carWashId,
+    isFeatureEnabled: isFeatureEnabled === 1,
+    isProgrammeActive: isProgrammeActive === 1,
+    programmeName,
+    programmeDescription: programmeDescription || undefined,
+    pointsExpiryMonths,
+    allowQrJoin: allowQrJoin === 1,
+    allowCounterJoin: allowCounterJoin === 1,
+    maxRedemptionsPerMemberPerDay,
+    termsConditions: termsConditions || undefined,
+    updatedAt: now,
+  };
+}
+
+export async function setCarWashMembershipFeature(carWashId: string, isEnabled: boolean): Promise<void> {
+  const flag = isEnabled ? 1 : 0;
+  await runQueryRun('UPDATE car_washes SET membershipEnabled = ? WHERE id = ?', [flag, carWashId]);
+  
+  // Upsert config table
+  const cfg = await getCarWashMembershipConfig(carWashId);
+  const now = new Date().toISOString();
+  if (cfg) {
+    await runQueryRun('UPDATE car_wash_memberships_config SET isFeatureEnabled = ?, isProgrammeActive = ?, updatedAt = ? WHERE carWashId = ?', [flag, flag, now, carWashId]);
+  } else {
+    await upsertCarWashMembershipConfig({ carWashId, isFeatureEnabled: isEnabled, isProgrammeActive: isEnabled });
+  }
+}
+
+// 2. Customer Memberships (Multi-Tenant)
+export async function getCustomerMemberships(customerId: string): Promise<CustomerMembership[]> {
+  try {
+    const rows = await runQueryAll(`
+      SELECT cm.*, cw.name AS car_wash_name, cw.logoUrl AS car_wash_logo
+      FROM customer_memberships cm
+      LEFT JOIN car_washes cw ON cm.carWashId = cw.id
+      WHERE cm.customerId = ?
+      ORDER BY cm.joinedAt DESC
+    `, [customerId]);
+    return rows.map(mapCustomerMembership);
+  } catch (error) {
+    console.error('Database getCustomerMemberships Error:', error);
+    return [];
+  }
+}
+
+export async function getCustomerMembership(customerId: string, carWashId: string): Promise<CustomerMembership | null> {
+  try {
+    const row = await runQueryOne(`
+      SELECT cm.*, cw.name AS car_wash_name, cw.logoUrl AS car_wash_logo
+      FROM customer_memberships cm
+      LEFT JOIN car_washes cw ON cm.carWashId = cw.id
+      WHERE cm.customerId = ? AND cm.carWashId = ?
+    `, [customerId, carWashId]);
+    if (!row) return null;
+    return mapCustomerMembership(row);
+  } catch (error) {
+    console.error('Database getCustomerMembership Error:', error);
+    return null;
+  }
+}
+
+export async function getCustomerMembershipByToken(qrTokenOrNumber: string): Promise<CustomerMembership | null> {
+  try {
+    const clean = qrTokenOrNumber.trim();
+    const row = await runQueryOne(`
+      SELECT cm.*, cw.name AS car_wash_name, cw.logoUrl AS car_wash_logo,
+             u.name AS user_name, u.email AS user_email, u.phone AS user_phone
+      FROM customer_memberships cm
+      LEFT JOIN car_washes cw ON cm.carWashId = cw.id
+      LEFT JOIN users u ON cm.customerId = u.id
+      WHERE cm.qrToken = ? OR LOWER(cm.membershipNumber) = LOWER(?)
+    `, [clean, clean]);
+    if (!row) return null;
+    return mapCustomerMembership(row);
+  } catch (error) {
+    console.error('Database getCustomerMembershipByToken Error:', error);
+    return null;
+  }
+}
+
+export async function getCustomerMembershipById(id: string): Promise<CustomerMembership | null> {
+  try {
+    const row = await runQueryOne(`
+      SELECT cm.*, cw.name AS car_wash_name, cw.logoUrl AS car_wash_logo,
+             u.name AS user_name, u.email AS user_email, u.phone AS user_phone
+      FROM customer_memberships cm
+      LEFT JOIN car_washes cw ON cm.carWashId = cw.id
+      LEFT JOIN users u ON cm.customerId = u.id
+      WHERE cm.id = ?
+    `, [id]);
+    if (!row) return null;
+    return mapCustomerMembership(row);
+  } catch (error) {
+    console.error('Database getCustomerMembershipById Error:', error);
+    return null;
+  }
+}
+
+export async function getCarWashMembers(carWashId: string, search?: string): Promise<CustomerMembership[]> {
+  try {
+    let sql = `
+      SELECT cm.*, cw.name AS car_wash_name, cw.logoUrl AS car_wash_logo,
+             u.name AS user_name, u.email AS user_email, u.phone AS user_phone
+      FROM customer_memberships cm
+      LEFT JOIN car_washes cw ON cm.carWashId = cw.id
+      LEFT JOIN users u ON cm.customerId = u.id
+      WHERE cm.carWashId = ?
+    `;
+    const params: any[] = [carWashId];
+
+    if (search && search.trim()) {
+      const q = `%${search.trim().toLowerCase()}%`;
+      sql += ` AND (LOWER(cm.membershipNumber) LIKE ? OR LOWER(u.name) LIKE ? OR LOWER(u.email) LIKE ? OR u.phone LIKE ?)`;
+      params.push(q, q, q, q);
+    }
+
+    sql += ` ORDER BY cm.joinedAt DESC`;
+    const rows = await runQueryAll(sql, params);
+    return rows.map(mapCustomerMembership);
+  } catch (error) {
+    console.error('Database getCarWashMembers Error:', error);
+    return [];
+  }
+}
+
+export async function joinCarWashMembership(customerId: string, carWashId: string, joinMethod: string = 'ONLINE_OPT_IN'): Promise<CustomerMembership> {
+  // Check programme enablement
+  const config = await getCarWashMembershipConfig(carWashId);
+  if (!config || !config.isFeatureEnabled) {
+    throw new Error('Membership programme is not enabled for this car wash.');
+  }
+
+  // Check existing membership
+  const existing = await getCustomerMembership(customerId, carWashId);
+  if (existing) {
+    if (existing.status === 'ACTIVE') {
+      return existing;
+    }
+    // Re-activate previously cancelled membership
+    const now = new Date().toISOString();
+    await runQueryRun(`
+      UPDATE customer_memberships
+      SET status = 'ACTIVE', updatedAt = ?, joinMethod = ?
+      WHERE id = ?
+    `, [now, joinMethod, existing.id]);
+    return { ...existing, status: 'ACTIVE', updatedAt: now, joinMethod: joinMethod as any };
+  }
+
+  // Generate safe identifiers
+  const carWash = await runQueryOne('SELECT name FROM car_washes WHERE id = ?', [carWashId]);
+  const prefix = carWash?.name ? carWash.name.replace(/[^a-zA-Z]/g, '').substring(0, 3).toUpperCase() : 'MBR';
+  const randomSuffix = Math.floor(100000 + Math.random() * 900000);
+  const membershipNumber = `${prefix}-${randomSuffix}`;
+  const qrToken = `mbr_${Math.random().toString(36).substring(2, 12)}_${Date.now().toString(36)}`;
+  const now = new Date().toISOString();
+  const membershipId = `mem_${Math.random().toString(36).substring(2, 9)}`;
+
+  await runQueryRun(`
+    INSERT INTO customer_memberships (
+      id, customerId, carWashId, membershipNumber, status, pointsBalance,
+      joinedAt, joinMethod, consentGiven, consentTimestamp, termsVersion, qrToken, createdAt, updatedAt
+    ) VALUES (?, ?, ?, ?, 'ACTIVE', 0, ?, ?, 1, ?, '1.0', ?, ?, ?)
+  `, [
+    membershipId, customerId, carWashId, membershipNumber, now, joinMethod, now, qrToken, now, now
+  ]);
+
+  // Log audit
+  const user = await runQueryOne('SELECT name, email FROM users WHERE id = ?', [customerId]);
+  if (user) {
+    await addAuditLog(customerId, user.email, 'JOIN_MEMBERSHIP', `Joined loyalty programme for car wash ${carWashId} (${membershipNumber})`);
+  }
+
+  const created = await getCustomerMembership(customerId, carWashId);
+  if (!created) {
+    throw new Error('Failed to retrieve newly created membership.');
+  }
+  return created;
+}
+
+export async function cancelCustomerMembership(customerId: string, carWashId: string): Promise<CustomerMembership | null> {
+  const existing = await getCustomerMembership(customerId, carWashId);
+  if (!existing) return null;
+
+  const now = new Date().toISOString();
+  await runQueryRun(`
+    UPDATE customer_memberships
+    SET status = 'CANCELLED', updatedAt = ?
+    WHERE id = ?
+  `, [now, existing.id]);
+
+  const user = await runQueryOne('SELECT name, email FROM users WHERE id = ?', [customerId]);
+  if (user) {
+    await addAuditLog(customerId, user.email, 'CANCEL_MEMBERSHIP', `Left membership programme for car wash ${carWashId}`);
+  }
+
+  return { ...existing, status: 'CANCELLED', updatedAt: now };
+}
+
+// 3. Points Rules (Linked to Services)
+export async function getMembershipPointsRules(carWashId: string): Promise<MembershipPointsRule[]> {
+  try {
+    const rows = await runQueryAll('SELECT * FROM membership_points_rules WHERE carWashId = ? ORDER BY createdAt ASC', [carWashId]);
+    return rows.map(mapPointsRule);
+  } catch (error) {
+    console.error('Database getMembershipPointsRules Error:', error);
+    return [];
+  }
+}
+
+export async function upsertMembershipPointsRule(
+  carWashId: string,
+  serviceId: string,
+  serviceName: string,
+  pointsAwarded: number,
+  isActive: boolean = true
+): Promise<MembershipPointsRule> {
+  const now = new Date().toISOString();
+  const ruleId = `rule_${carWashId.substring(0, 4)}_${serviceId.substring(0, 6)}`;
+  const activeVal = isActive ? 1 : 0;
+
+  await runQueryRun(`
+    INSERT INTO membership_points_rules (id, carWashId, serviceId, serviceName, pointsAwarded, isActive, createdAt, updatedAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(carWashId, serviceId) DO UPDATE SET
+      serviceName = excluded.serviceName,
+      pointsAwarded = excluded.pointsAwarded,
+      isActive = excluded.isActive,
+      updatedAt = excluded.updatedAt
+  `, [ruleId, carWashId, serviceId, serviceName, pointsAwarded, activeVal, now, now]);
+
+  return {
+    id: ruleId,
+    carWashId,
+    serviceId,
+    serviceName,
+    pointsAwarded,
+    isActive,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+// 4. Points Ledger & Transactions (Immutable Audit Trail)
+export async function getMembershipLedger(membershipId: string): Promise<MembershipPointsLedger[]> {
+  try {
+    const rows = await runQueryAll(`
+      SELECT * FROM membership_points_ledger
+      WHERE membershipId = ?
+      ORDER BY createdAt DESC
+    `, [membershipId]);
+    return rows.map(mapPointsLedger);
+  } catch (error) {
+    console.error('Database getMembershipLedger Error:', error);
+    return [];
+  }
+}
+
+export async function recordPointsTransaction(params: {
+  membershipId: string;
+  customerId: string;
+  carWashId: string;
+  points: number;
+  transactionType: PointsTransactionType;
+  description: string;
+  bookingId?: string;
+  redemptionId?: string;
+  performedById: string;
+  performedByRole: string;
+}): Promise<{ newBalance: number; transaction: MembershipPointsLedger }> {
+  const membership = await runQueryOne('SELECT id, pointsBalance, status FROM customer_memberships WHERE id = ?', [params.membershipId]);
+  if (!membership) {
+    throw new Error('Membership not found.');
+  }
+  if (membership.status !== 'ACTIVE') {
+    throw new Error('Membership is not currently active.');
+  }
+
+  const currentBalance = Number(membership.pointsBalance ?? membership.points_balance ?? 0);
+  const newBalance = currentBalance + params.points;
+
+  if (newBalance < 0) {
+    throw new Error(`Insufficient points balance. Current: ${currentBalance}, Required deduction: ${Math.abs(params.points)}`);
+  }
+
+  const now = new Date().toISOString();
+  const txId = `tx_${Math.random().toString(36).substring(2, 9)}`;
+
+  // Atomic update to pointsBalance
+  await runQueryRun('UPDATE customer_memberships SET pointsBalance = ?, updatedAt = ? WHERE id = ?', [newBalance, now, params.membershipId]);
+
+  // Insert ledger entry
+  await runQueryRun(`
+    INSERT INTO membership_points_ledger (
+      id, membershipId, customerId, carWashId, points, transactionType,
+      description, bookingId, redemptionId, performedById, performedByRole, createdAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, [
+    txId, params.membershipId, params.customerId, params.carWashId, params.points, params.transactionType,
+    params.description, params.bookingId || null, params.redemptionId || null,
+    params.performedById, params.performedByRole, now
+  ]);
+
+  const tx: MembershipPointsLedger = {
+    id: txId,
+    membershipId: params.membershipId,
+    customerId: params.customerId,
+    carWashId: params.carWashId,
+    points: params.points,
+    pointsDelta: params.points,
+    balanceAfter: newBalance,
+    transactionType: params.transactionType,
+    description: params.description,
+    bookingId: params.bookingId,
+    redemptionId: params.redemptionId,
+    performedById: params.performedById,
+    performedByRole: params.performedByRole,
+    createdAt: now,
+  };
+
+  return { newBalance, transaction: tx };
+}
+
+export async function adjustCustomerPoints(params: {
+  membershipId: string;
+  pointsDelta: number;
+  reason: string;
+  performedById: string;
+  performedByRole: string;
+}): Promise<{ newBalance: number; transaction: MembershipPointsLedger }> {
+  if (!params.reason || params.reason.trim().length === 0) {
+    throw new Error('A specific reason is required for manual point adjustments.');
+  }
+  const membership = await runQueryOne('SELECT customerId, carWashId FROM customer_memberships WHERE id = ?', [params.membershipId]);
+  if (!membership) throw new Error('Membership not found.');
+
+  const customerId = membership.customerId ?? membership.customer_id;
+  const carWashId = membership.carWashId ?? membership.car_wash_id;
+
+  return recordPointsTransaction({
+    membershipId: params.membershipId,
+    customerId,
+    carWashId,
+    points: params.pointsDelta,
+    transactionType: 'ADJUSTMENT',
+    description: `Manual adjustment: ${params.reason.trim()}`,
+    performedById: params.performedById,
+    performedByRole: params.performedByRole,
+  });
+}
+
+// 5. Automatic Points Awarding on Booking Completion
+export async function awardPointsForBookingCompletion(
+  bookingId: string,
+  staffUser: { id: string; role: string } = { id: 'SYSTEM', role: 'SYSTEM' }
+): Promise<{ pointsAwarded: number } | null> {
+  const booking = await getBookingById(bookingId);
+  if (!booking) return null;
+
+  // Check if booking has already earned points to prevent duplicate earning
+  const existingTx = await runQueryOne(
+    `SELECT id FROM membership_points_ledger WHERE bookingId = ? AND transactionType = 'EARN'`,
+    [bookingId]
+  );
+  if (existingTx) {
+    // Already awarded
+    return null;
+  }
+
+  // Check if loyalty programme is enabled and active
+  const config = await getCarWashMembershipConfig(booking.carWashId);
+  const isEnabled = config ? (config.isFeatureEnabled && config.isProgrammeActive !== false) : false;
+  if (!isEnabled) {
+    return null;
+  }
+
+  // Check if customer has active membership with this car wash; auto-enroll if booking at an enabled location
+  let membership = await getCustomerMembership(booking.customerId, booking.carWashId);
+  if (!membership || membership.status !== 'ACTIVE') {
+    try {
+      membership = await joinCarWashMembership(booking.customerId, booking.carWashId, 'BOOKING_COMPLETION');
+    } catch (joinErr) {
+      console.warn('Could not auto-enroll member on booking completion:', joinErr);
+      return null;
+    }
+  }
+
+  // Calculate points
+  let pointsToAward = 0;
+  if (booking.serviceId) {
+    const rules = await getMembershipPointsRules(booking.carWashId);
+    const rule = rules.find((r) => r.serviceId === booking.serviceId && r.isActive);
+    if (rule) {
+      pointsToAward = rule.pointsAwarded;
+    } else {
+      // Default: 10 points or 1 point per $1
+      pointsToAward = booking.price ? Math.max(1, Math.round(booking.price)) : 10;
+    }
+  } else {
+    pointsToAward = booking.price ? Math.max(1, Math.round(booking.price)) : 10;
+  }
+
+  if (pointsToAward <= 0) return null;
+
+  const desc = `Completed wash: ${booking.serviceName || 'Car Wash Service'} (${booking.date})`;
+  await recordPointsTransaction({
+    membershipId: membership.id,
+    customerId: booking.customerId,
+    carWashId: booking.carWashId,
+    points: pointsToAward,
+    transactionType: 'EARN',
+    description: desc,
+    bookingId: booking.id,
+    performedById: staffUser.id,
+    performedByRole: staffUser.role,
+  });
+
+  return { pointsAwarded: pointsToAward };
+}
+
+export async function reversePointsForBookingCancellation(
+  bookingId: string,
+  staffUser: { id: string; role: string } = { id: 'SYSTEM', role: 'SYSTEM' }
+): Promise<{ pointsReversed: number } | null> {
+  const booking = await getBookingById(bookingId);
+  if (!booking) return null;
+
+  // Check if points were previously awarded for this booking
+  const earnTx = await runQueryOne(
+    `SELECT * FROM membership_points_ledger WHERE bookingId = ? AND transactionType = 'EARN'`,
+    [bookingId]
+  );
+  if (!earnTx) return null;
+
+  // Check if already reversed
+  const reversedTx = await runQueryOne(
+    `SELECT id FROM membership_points_ledger WHERE bookingId = ? AND transactionType = 'REFUND_REVERSAL'`,
+    [bookingId]
+  );
+  if (reversedTx) return null;
+
+  const membershipId = earnTx.membershipId ?? earnTx.membership_id;
+  const customerId = earnTx.customerId ?? earnTx.customer_id;
+  const carWashId = earnTx.carWashId ?? earnTx.car_wash_id;
+  const earnedPoints = Number(earnTx.points ?? 0);
+
+  if (earnedPoints <= 0) return null;
+
+  await recordPointsTransaction({
+    membershipId,
+    customerId,
+    carWashId,
+    points: -earnedPoints,
+    transactionType: 'REFUND_REVERSAL',
+    description: `Reversal for cancelled/refunded booking: ${booking.serviceName || 'Wash'}`,
+    bookingId: booking.id,
+    performedById: staffUser.id,
+    performedByRole: staffUser.role,
+  });
+
+  return { pointsReversed: earnedPoints };
+}
+
+// 6. Rewards Management
+export async function getMembershipRewards(carWashId: string, activeOnly: boolean = false): Promise<MembershipReward[]> {
+  try {
+    let sql = 'SELECT * FROM membership_rewards WHERE carWashId = ?';
+    if (activeOnly) {
+      sql += ' AND isActive = 1';
+    }
+    sql += ' ORDER BY pointsCost ASC, createdAt DESC';
+    const rows = await runQueryAll(sql, [carWashId]);
+    return rows.map(mapReward);
+  } catch (error) {
+    console.error('Database getMembershipRewards Error:', error);
+    return [];
+  }
+}
+
+export async function getMembershipRewardById(rewardId: string): Promise<MembershipReward | null> {
+  try {
+    const row = await runQueryOne('SELECT * FROM membership_rewards WHERE id = ?', [rewardId]);
+    if (!row) return null;
+    return mapReward(row);
+  } catch (error) {
+    console.error('Database getMembershipRewardById Error:', error);
+    return null;
+  }
+}
+
+export async function createMembershipReward(reward: Omit<MembershipReward, 'id' | 'createdAt' | 'updatedAt'>): Promise<MembershipReward> {
+  const id = `rew_${Math.random().toString(36).substring(2, 9)}`;
+  const now = new Date().toISOString();
+  const activeVal = reward.isActive ? 1 : 0;
+  const maxPerMember = reward.maxRedemptionsPerMember || 0;
+  const maxSupply = reward.maxTotalSupply || 0;
+
+  await runQueryRun(`
+    INSERT INTO membership_rewards (
+      id, carWashId, title, description, pointsCost, rewardType, discountValue, eligibleServiceId, isActive,
+      maxRedemptionsPerMember, maxTotalSupply, claimCount, createdAt, updatedAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+  `, [
+    id, reward.carWashId, reward.title, reward.description || null, reward.pointsCost,
+    reward.rewardType || 'FREE_SERVICE', reward.discountValue || 0, reward.eligibleServiceId || null,
+    activeVal, maxPerMember, maxSupply, now, now
+  ]);
+
+  return {
+    id,
+    carWashId: reward.carWashId,
+    title: reward.title,
+    description: reward.description,
+    pointsCost: reward.pointsCost,
+    rewardType: reward.rewardType || 'FREE_SERVICE',
+    discountValue: reward.discountValue,
+    eligibleServiceId: reward.eligibleServiceId,
+    maxRedemptionsPerMember: reward.maxRedemptionsPerMember,
+    maxTotalSupply: reward.maxTotalSupply,
+    claimCount: 0,
+    isActive: reward.isActive,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+export async function updateMembershipReward(rewardId: string, updates: Partial<MembershipReward>): Promise<MembershipReward | null> {
+  const existing = await getMembershipRewardById(rewardId);
+  if (!existing) return null;
+
+  const now = new Date().toISOString();
+  const title = updates.title ?? existing.title;
+  const description = updates.description !== undefined ? updates.description : existing.description;
+  const pointsCost = updates.pointsCost ?? existing.pointsCost;
+  const rewardType = updates.rewardType ?? existing.rewardType;
+  const discountValue = updates.discountValue !== undefined ? updates.discountValue : existing.discountValue;
+  const eligibleServiceId = updates.eligibleServiceId !== undefined ? updates.eligibleServiceId : existing.eligibleServiceId;
+  const maxRedemptionsPerMember = updates.maxRedemptionsPerMember !== undefined ? updates.maxRedemptionsPerMember : (existing.maxRedemptionsPerMember || 0);
+  const maxTotalSupply = updates.maxTotalSupply !== undefined ? updates.maxTotalSupply : (existing.maxTotalSupply || 0);
+  const isActive = updates.isActive !== undefined ? updates.isActive : existing.isActive;
+
+  await runQueryRun(`
+    UPDATE membership_rewards
+    SET title = ?, description = ?, pointsCost = ?, rewardType = ?, discountValue = ?, eligibleServiceId = ?,
+        maxRedemptionsPerMember = ?, maxTotalSupply = ?, isActive = ?, updatedAt = ?
+    WHERE id = ?
+  `, [
+    title, description || null, pointsCost, rewardType, discountValue || 0,
+    eligibleServiceId || null, maxRedemptionsPerMember, maxTotalSupply, isActive ? 1 : 0, now, rewardId
+  ]);
+
+  return {
+    ...existing,
+    title,
+    description,
+    pointsCost,
+    rewardType,
+    discountValue,
+    eligibleServiceId,
+    maxRedemptionsPerMember: maxRedemptionsPerMember > 0 ? maxRedemptionsPerMember : undefined,
+    maxTotalSupply: maxTotalSupply > 0 ? maxTotalSupply : undefined,
+    isActive,
+    updatedAt: now,
+  };
+}
+
+// 7. Reward Redemption & Atomic Deductions
+export async function createMembershipRedemption(
+  customerId: string,
+  carWashId: string,
+  rewardId: string
+): Promise<{ redemption: MembershipRedemption; newBalance: number }> {
+  // Verify membership
+  const membership = await getCustomerMembership(customerId, carWashId);
+  if (!membership || membership.status !== 'ACTIVE') {
+    throw new Error('You do not have an active membership with this car wash.');
+  }
+
+  // Verify reward
+  const reward = await getMembershipRewardById(rewardId);
+  if (!reward || reward.carWashId !== carWashId || !reward.isActive) {
+    throw new Error('Reward is not available or inactive.');
+  }
+
+  // Verify points balance
+  if (membership.pointsBalance < reward.pointsCost) {
+    throw new Error(`Insufficient points. You need ${reward.pointsCost} points, but have ${membership.pointsBalance} points.`);
+  }
+
+  // 1. Enforce max claims per member (if configured by owner)
+  if (reward.maxRedemptionsPerMember && reward.maxRedemptionsPerMember > 0) {
+    const userRedeemedCountRow = await runQueryOne(
+      `SELECT COUNT(*) as count FROM membership_redemptions WHERE customerId = ? AND rewardId = ? AND status != 'CANCELLED'`,
+      [customerId, rewardId]
+    );
+    const userCount = Number(userRedeemedCountRow?.count || 0);
+    if (userCount >= reward.maxRedemptionsPerMember) {
+      throw new Error(`You have reached the maximum redemption limit (${reward.maxRedemptionsPerMember}) set by the owner for this reward.`);
+    }
+  }
+
+  // 2. Enforce total supply cap (if configured by owner)
+  if (reward.maxTotalSupply && reward.maxTotalSupply > 0) {
+    const totalClaimCount = Number(reward.claimCount || 0);
+    if (totalClaimCount >= reward.maxTotalSupply) {
+      throw new Error(`This reward has reached its maximum total allocation of ${reward.maxTotalSupply} claims.`);
+    }
+  }
+
+  // 3. Enforce max redemptions per member per day (if configured in programme)
+  const config = await getCarWashMembershipConfig(carWashId);
+  if (config?.maxRedemptionsPerMemberPerDay && config.maxRedemptionsPerMemberPerDay > 0) {
+    const todayPrefix = new Date().toISOString().split('T')[0];
+    const todayCountRow = await runQueryOne(
+      `SELECT COUNT(*) as count FROM membership_redemptions WHERE customerId = ? AND carWashId = ? AND createdAt LIKE ? AND status != 'CANCELLED'`,
+      [customerId, carWashId, `${todayPrefix}%`]
+    );
+    const todayCount = Number(todayCountRow?.count || 0);
+    if (todayCount >= config.maxRedemptionsPerMemberPerDay) {
+      throw new Error(`You have reached the daily limit of ${config.maxRedemptionsPerMemberPerDay} reward redemptions per day.`);
+    }
+  }
+
+  const now = new Date().toISOString();
+  const redemptionId = `rdm_${Math.random().toString(36).substring(2, 9)}`;
+  const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+  const redemptionCode = `RED-${randomSuffix}`;
+  const redemptionToken = `rdmtk_${Math.random().toString(36).substring(2, 10)}_${Date.now().toString(36)}`;
+  // 7 days redemption validity
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  // Deduct points atomically
+  const { newBalance } = await recordPointsTransaction({
+    membershipId: membership.id,
+    customerId,
+    carWashId,
+    points: -reward.pointsCost,
+    transactionType: 'REDEEM',
+    description: `Redeemed reward: ${reward.title} (${redemptionCode})`,
+    redemptionId,
+    performedById: customerId,
+    performedByRole: 'CUSTOMER',
+  });
+
+  // Create redemption record
+  await runQueryRun(`
+    INSERT INTO membership_redemptions (
+      id, redemptionCode, membershipId, customerId, carWashId, rewardId, rewardTitle,
+      pointsSpent, status, redemptionToken, expiresAt, createdAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, ?)
+  `, [
+    redemptionId, redemptionCode, membership.id, customerId, carWashId, reward.id, reward.title,
+    reward.pointsCost, redemptionToken, expiresAt, now
+  ]);
+
+  // Increment claimCount on reward
+  try {
+    await runQueryRun('UPDATE membership_rewards SET claimCount = claimCount + 1 WHERE id = ?', [reward.id]);
+  } catch (err) {
+    console.warn('Could not increment reward claimCount:', err);
+  }
+
+  const carWash = await runQueryOne('SELECT name FROM car_washes WHERE id = ?', [carWashId]);
+  const user = await runQueryOne('SELECT name, email, phone FROM users WHERE id = ?', [customerId]);
+
+  const redemption: MembershipRedemption = {
+    id: redemptionId,
+    redemptionCode,
+    membershipId: membership.id,
+    customerId,
+    customerName: user?.name,
+    customerEmail: user?.email,
+    customerPhone: user?.phone,
+    carWashId,
+    carWashName: carWash?.name,
+    rewardId: reward.id,
+    rewardTitle: reward.title,
+    pointsSpent: reward.pointsCost,
+    status: 'PENDING',
+    redemptionToken,
+    expiresAt,
+    createdAt: now,
+  };
+
+  return { redemption, newBalance };
+}
+
+export async function getRedemptionByToken(tokenOrCode: string): Promise<MembershipRedemption | null> {
+  try {
+    const clean = tokenOrCode.trim();
+    const row = await runQueryOne(`
+      SELECT mr.*, cw.name AS car_wash_name, u.name AS user_name, u.email AS user_email, u.phone AS user_phone
+      FROM membership_redemptions mr
+      LEFT JOIN car_washes cw ON mr.carWashId = cw.id
+      LEFT JOIN users u ON mr.customerId = u.id
+      WHERE mr.redemptionToken = ? OR LOWER(mr.redemptionCode) = LOWER(?)
+    `, [clean, clean]);
+    if (!row) return null;
+    return mapRedemption(row);
+  } catch (error) {
+    console.error('Database getRedemptionByToken Error:', error);
+    return null;
+  }
+}
+
+export async function confirmMembershipRedemption(
+  tokenOrCode: string,
+  staffId: string,
+  carWashId: string
+): Promise<MembershipRedemption> {
+  const redemption = await getRedemptionByToken(tokenOrCode);
+  if (!redemption) {
+    throw new Error('Redemption record not found.');
+  }
+
+  // Cross-tenant verification
+  if (redemption.carWashId !== carWashId) {
+    throw new Error('This voucher belongs to a different car wash location.');
+  }
+
+  // Prevent double redemption atomically
+  if (redemption.status === 'REDEEMED') {
+    throw new Error('This reward voucher has already been redeemed and cannot be used again.');
+  }
+  if (redemption.status === 'CANCELLED' || redemption.status === 'EXPIRED') {
+    throw new Error(`This reward voucher is ${redemption.status.toLowerCase()} and cannot be redeemed.`);
+  }
+
+  const now = new Date().toISOString();
+
+  // Atomic state check & update
+  const res = await runQueryRun(`
+    UPDATE membership_redemptions
+    SET status = 'REDEEMED', redeemedAt = ?, redeemedByStaffId = ?
+    WHERE id = ? AND status = 'PENDING'
+  `, [now, staffId, redemption.id]);
+
+  return {
+    ...redemption,
+    status: 'REDEEMED',
+    redeemedAt: now,
+    redeemedByStaffId: staffId,
+  };
+}
+
+export async function getCarWashRedemptions(carWashId: string): Promise<MembershipRedemption[]> {
+  try {
+    const rows = await runQueryAll(`
+      SELECT mr.*, cw.name AS car_wash_name, u.name AS user_name, u.email AS user_email, u.phone AS user_phone
+      FROM membership_redemptions mr
+      LEFT JOIN car_washes cw ON mr.carWashId = cw.id
+      LEFT JOIN users u ON mr.customerId = u.id
+      WHERE mr.carWashId = ?
+      ORDER BY mr.createdAt DESC
+    `, [carWashId]);
+    return rows.map(mapRedemption);
+  } catch (error) {
+    console.error('Database getCarWashRedemptions Error:', error);
+    return [];
+  }
+}
+
+export async function getCustomerRedemptions(customerId: string): Promise<MembershipRedemption[]> {
+  try {
+    const rows = await runQueryAll(`
+      SELECT mr.*, cw.name AS car_wash_name
+      FROM membership_redemptions mr
+      LEFT JOIN car_washes cw ON mr.carWashId = cw.id
+      WHERE mr.customerId = ?
+      ORDER BY mr.createdAt DESC
+    `, [customerId]);
+    return rows.map(mapRedemption);
+  } catch (error) {
+    console.error('Database getCustomerRedemptions Error:', error);
+    return [];
+  }
 }
 
 

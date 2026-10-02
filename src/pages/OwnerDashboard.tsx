@@ -11,7 +11,7 @@ import {
   Clock, MapPin, BarChart3, ChevronRight, Edit2, Plus, Info, Briefcase, Trash2, Edit, Lock, Key,
   Phone, Car, User as UserIcon, Search, ChevronLeft, Filter, ShieldCheck, CheckCircle2, AlertCircle, CalendarDays, ChevronDown,
   FileText, Printer, Download, TrendingUp, PieChart, CreditCard, Package, FileSpreadsheet, Tag, Layers, RefreshCw, Bell, CheckCheck, MessageCircle, Mail, Save, Sparkles, Pencil, Upload,
-  Star, CornerDownRight, MessageSquare, QrCode, Eye
+  Star, CornerDownRight, MessageSquare, QrCode, Eye, Award, Coins
 } from 'lucide-react';
 import { BookingStatus, CarWash, Booking, WeeklySchedule, CustomPaymentMethod, WashService, Role, Review, ReviewSummary } from '../types.js';
 import { EditBookingModal } from '../components/EditBookingModal.js';
@@ -19,6 +19,7 @@ import { ServicePickerModal } from '../components/ServicePickerModal.js';
 import { SettlementConfirmationModal } from '../components/SettlementConfirmationModal.js';
 import { TransferProviderSelector } from '../components/TransferProviderSelector.js';
 import { QRCodeManager } from '../components/QRCodeManager.js';
+import { LoyaltyMembershipOwnerView } from '../components/LoyaltyMembershipOwnerView.js';
 import { FEATURES } from '../config/features.js';
 import { useModalBack, useTabBack } from '../utils/useBackHandler.js';
 
@@ -198,10 +199,12 @@ export const OwnerDashboard: React.FC = () => {
     return methods;
   }, [selectedBusiness]);
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'bookings' | 'customers' | 'calendar' | 'reviews' | 'qrcode' | 'settings'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'bookings' | 'customers' | 'calendar' | 'reviews' | 'qrcode' | 'settings' | 'loyalty'>('overview');
   const [requestingEtaBookingId, setRequestingEtaBookingId] = useState<string | null>(null);
   // QR Code access is controlled by Admin / Special User (hidden by default, all other navigation is always available)
   const isOwnerQrCodeAllowed = selectedBusiness ? (selectedBusiness.ownerQrCodeEnabled === true) : false;
+  // Loyalty & Rewards membership feature enabled by Admin
+  const isMembershipEnabled = selectedBusiness ? (selectedBusiness.membershipEnabled === true) : false;
 
   useEffect(() => {
     if (!isOwnerQrCodeAllowed && activeTab === 'qrcode') {
@@ -245,6 +248,8 @@ export const OwnerDashboard: React.FC = () => {
 
   const [customerAlphabetFilter, setCustomerAlphabetFilter] = useState<string>('ALL');
   const [customerSearchQuery, setCustomerSearchQuery] = useState<string>('');
+  const [customerPage, setCustomerPage] = useState<number>(1);
+  const CUSTOMERS_PER_PAGE = 24;
   const [isSeedingLedger, setIsSeedingLedger] = useState(false);
   const [serverCustomers, setServerCustomers] = useState<any[]>([]);
   const [isLoadingCustomers, setIsLoadingCustomers] = useState(false);
@@ -371,7 +376,8 @@ export const OwnerDashboard: React.FC = () => {
     if (!token) return;
     setIsLoadingCustomers(true);
     try {
-      const res = await fetch('/api/owner/customers', {
+      const queryParam = selectedBusiness?.id ? `?carWashId=${encodeURIComponent(selectedBusiness.id)}` : '';
+      const res = await fetch(`/api/owner/customers${queryParam}`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -393,7 +399,7 @@ export const OwnerDashboard: React.FC = () => {
     if (activeTab === 'customers' || activeTab === 'overview') {
       fetchServerCustomers();
     }
-  }, [activeTab, selectedBusiness, token]);
+  }, [activeTab, selectedBusiness?.id, token]);
 
   // Edit Booking Modal state
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
@@ -1836,6 +1842,10 @@ export const OwnerDashboard: React.FC = () => {
     totalSpent: number;
     lastBookingDate: string;
     firstLetter: string;
+    isMember?: boolean;
+    membershipNumber?: string;
+    tier?: string;
+    pointsBalance?: number;
   }>();
 
   // Helper to sanitize phone strings
@@ -1846,7 +1856,7 @@ export const OwnerDashboard: React.FC = () => {
     return clean;
   };
 
-  // Pre-seed with server customers if available
+  // Pre-seed with server customers if available (strictly patrons who booked or joined this location)
   serverCustomers.forEach((sc) => {
     const rawName = (sc.name || 'Customer').trim();
     const cleanPhone = sanitizePhone(sc.phone);
@@ -1869,6 +1879,10 @@ export const OwnerDashboard: React.FC = () => {
       totalSpent: Number(sc.totalSpent) || 0,
       lastBookingDate: sc.lastBookingDate || '',
       firstLetter: letter,
+      isMember: sc.isMember,
+      membershipNumber: sc.membershipNumber,
+      tier: sc.tier,
+      pointsBalance: sc.pointsBalance,
     });
   });
 
@@ -1959,6 +1973,12 @@ export const OwnerDashboard: React.FC = () => {
     return true;
   });
 
+  const totalCustomerPages = Math.ceil(filteredCustomersList.length / CUSTOMERS_PER_PAGE) || 1;
+  const paginatedCustomersList = filteredCustomersList.slice(
+    (customerPage - 1) * CUSTOMERS_PER_PAGE,
+    customerPage * CUSTOMERS_PER_PAGE
+  );
+
   return (
     <div className="space-y-8 animate-fade-in pb-24 md:pb-6">
       {/* Top Header */}
@@ -2012,11 +2032,11 @@ export const OwnerDashboard: React.FC = () => {
       )}
 
       {/* Responsive Bottom Navigation Bar - All operational tabs always accessible */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-150 shadow-[0_-8px_30px_rgba(0,0,0,0.06)] px-4 py-2 flex justify-around items-center md:sticky md:top-4 md:bottom-auto md:left-auto md:right-auto md:z-30 md:bg-slate-50/90 md:border md:border-slate-200/60 md:shadow-xs md:rounded-2xl md:py-2 md:px-3 md:w-max md:mx-auto md:mb-6 md:gap-1.5 animate-fade-in">
+      <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-150 shadow-[0_-8px_30px_rgba(0,0,0,0.06)] px-2 sm:px-4 py-2 flex items-center overflow-x-auto no-scrollbar justify-start sm:justify-around md:sticky md:top-4 md:bottom-auto md:left-auto md:right-auto md:z-30 md:bg-slate-50/90 md:border md:border-slate-200/60 md:shadow-xs md:rounded-2xl md:py-2 md:px-3 md:w-max md:mx-auto md:mb-6 md:gap-1.5 animate-fade-in">
         <button
           type="button"
           onClick={() => setActiveTab('overview')}
-          className={`flex flex-col md:flex-row items-center gap-1 md:gap-2 px-4 py-1.5 rounded-xl transition-all cursor-pointer ${
+          className={`flex flex-col md:flex-row items-center gap-1 md:gap-2 px-3 sm:px-4 py-1.5 rounded-xl transition-all cursor-pointer shrink-0 ${
             activeTab === 'overview'
               ? 'text-indigo-600 font-bold bg-indigo-50/85'
               : 'text-slate-400 font-medium hover:text-slate-600 hover:bg-slate-50'
@@ -2029,7 +2049,7 @@ export const OwnerDashboard: React.FC = () => {
         <button
           type="button"
           onClick={() => setActiveTab('bookings')}
-          className={`flex flex-col md:flex-row items-center gap-1 md:gap-2 px-4 py-1.5 rounded-xl transition-all cursor-pointer ${
+          className={`flex flex-col md:flex-row items-center gap-1 md:gap-2 px-3 sm:px-4 py-1.5 rounded-xl transition-all cursor-pointer shrink-0 ${
             activeTab === 'bookings'
               ? 'text-indigo-600 font-bold bg-indigo-50/85'
               : 'text-slate-400 font-medium hover:text-slate-600 hover:bg-slate-50'
@@ -2042,7 +2062,7 @@ export const OwnerDashboard: React.FC = () => {
         <button
           type="button"
           onClick={() => setActiveTab('customers')}
-          className={`flex flex-col md:flex-row items-center gap-1 md:gap-2 px-4 py-1.5 rounded-xl transition-all cursor-pointer ${
+          className={`flex flex-col md:flex-row items-center gap-1 md:gap-2 px-3 sm:px-4 py-1.5 rounded-xl transition-all cursor-pointer shrink-0 ${
             activeTab === 'customers'
               ? 'text-indigo-600 font-bold bg-indigo-50/85'
               : 'text-slate-400 font-medium hover:text-slate-600 hover:bg-slate-50'
@@ -2056,7 +2076,7 @@ export const OwnerDashboard: React.FC = () => {
         <button
           type="button"
           onClick={() => setActiveTab('calendar')}
-          className={`flex flex-col md:flex-row items-center gap-1 md:gap-2 px-4 py-1.5 rounded-xl transition-all cursor-pointer ${
+          className={`flex flex-col md:flex-row items-center gap-1 md:gap-2 px-3 sm:px-4 py-1.5 rounded-xl transition-all cursor-pointer shrink-0 ${
             activeTab === 'calendar'
               ? 'text-indigo-600 font-bold bg-indigo-50/85'
               : 'text-slate-400 font-medium hover:text-slate-600 hover:bg-slate-50'
@@ -2070,7 +2090,7 @@ export const OwnerDashboard: React.FC = () => {
           <button
             type="button"
             onClick={() => setActiveTab('reviews')}
-            className={`flex flex-col md:flex-row items-center gap-1 md:gap-2 px-4 py-1.5 rounded-xl transition-all cursor-pointer ${
+            className={`flex flex-col md:flex-row items-center gap-1 md:gap-2 px-3 sm:px-4 py-1.5 rounded-xl transition-all cursor-pointer shrink-0 ${
               activeTab === 'reviews'
                 ? 'text-indigo-600 font-bold bg-indigo-50/85'
                 : 'text-slate-400 font-medium hover:text-slate-600 hover:bg-slate-50'
@@ -2087,7 +2107,7 @@ export const OwnerDashboard: React.FC = () => {
           <button
             type="button"
             onClick={() => setActiveTab('qrcode')}
-            className={`flex flex-col md:flex-row items-center gap-1 md:gap-2 px-4 py-1.5 rounded-xl transition-all cursor-pointer ${
+            className={`flex flex-col md:flex-row items-center gap-1 md:gap-2 px-3 sm:px-4 py-1.5 rounded-xl transition-all cursor-pointer shrink-0 ${
               activeTab === 'qrcode'
                 ? 'text-indigo-600 font-bold bg-indigo-50/85'
                 : 'text-slate-400 font-medium hover:text-slate-600 hover:bg-slate-50'
@@ -2099,10 +2119,32 @@ export const OwnerDashboard: React.FC = () => {
           </button>
         )}
 
+        {/* Loyalty & Rewards Tab */}
+        <button
+          type="button"
+          onClick={() => setActiveTab('loyalty')}
+          className={`flex flex-col md:flex-row items-center gap-1 md:gap-2 px-3 sm:px-4 py-1.5 rounded-xl transition-all cursor-pointer relative shrink-0 ${
+            activeTab === 'loyalty'
+              ? 'text-indigo-600 font-bold bg-indigo-50/85'
+              : 'text-slate-400 font-medium hover:text-slate-600 hover:bg-slate-50'
+          }`}
+          id="owner-tab-loyalty"
+        >
+          <Award className="h-5 w-5 md:h-4 md:w-4" />
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] md:text-xs font-semibold">Loyalty &amp; Rewards</span>
+            {!isMembershipEnabled && (
+              <span className="text-[8px] bg-slate-100 text-slate-500 border border-slate-200 px-1 rounded-sm uppercase font-bold tracking-tight">
+                Inactive
+              </span>
+            )}
+          </div>
+        </button>
+
         <button
           type="button"
           onClick={() => setActiveTab('settings')}
-          className={`flex flex-col md:flex-row items-center gap-1 md:gap-2 px-4 py-1.5 rounded-xl transition-all cursor-pointer ${
+          className={`flex flex-col md:flex-row items-center gap-1 md:gap-2 px-3 sm:px-4 py-1.5 rounded-xl transition-all cursor-pointer shrink-0 ${
             activeTab === 'settings'
               ? 'text-indigo-600 font-bold bg-indigo-50/85'
               : 'text-slate-400 font-medium hover:text-slate-600 hover:bg-slate-50'
@@ -2191,6 +2233,53 @@ export const OwnerDashboard: React.FC = () => {
             </div>
           )}
 
+          {/* Loyalty & Rewards Club Banner in Overview */}
+          <div className={`p-4 md:p-5 rounded-3xl border flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all relative overflow-hidden ${
+            isMembershipEnabled
+              ? 'bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border-indigo-500/30 text-white shadow-md'
+              : 'bg-indigo-50/50 border-indigo-100 text-slate-800'
+          }`}>
+            <div className="relative z-10 flex items-center gap-4">
+              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${
+                isMembershipEnabled
+                  ? 'bg-indigo-500/20 border border-indigo-400/30 text-indigo-400'
+                  : 'bg-white border border-indigo-200 text-indigo-600'
+              }`}>
+                <Award className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className={`font-bold text-base ${isMembershipEnabled ? 'text-white' : 'text-slate-900'}`}>
+                    VIP Loyalty &amp; Rewards Club
+                  </h4>
+                  <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full border ${
+                    isMembershipEnabled
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/30'
+                      : 'bg-amber-100 text-amber-800 border-amber-200'
+                  }`}>
+                    {isMembershipEnabled ? 'Active' : 'Inactive'}
+                  </span>
+                </div>
+                <p className={`text-xs mt-1 ${isMembershipEnabled ? 'text-slate-300' : 'text-slate-500'}`}>
+                  {isMembershipEnabled
+                    ? 'Reward points are automatically credited when wash bookings complete. Customers can join via digital QR passes and redeem rewards.'
+                    : 'Loyalty programme is currently inactive. Activate to reward regular customers with points and free detailing.'}
+                </p>
+              </div>
+            </div>
+            <div className="relative z-10 flex items-center gap-2.5 w-full md:w-auto">
+              <button
+                type="button"
+                onClick={() => setActiveTab('loyalty')}
+                className="flex-1 md:flex-initial px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs bg-indigo-600 hover:bg-indigo-500 text-white"
+                id="owner-manage-loyalty-banner-btn"
+              >
+                <Award className="w-3.5 h-3.5" />
+                <span>{isMembershipEnabled ? 'Manage Loyalty & Points' : 'Activate Loyalty Club'}</span>
+              </button>
+            </div>
+          </div>
+
           {/* Analytics Bento Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
             <div className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-xs flex items-center gap-4">
@@ -2244,13 +2333,13 @@ export const OwnerDashboard: React.FC = () => {
 
           {/* 🔔 In-App Live Notifications & Activity Feed Widget */}
           <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 text-white rounded-3xl p-5 sm:p-6 shadow-md border border-slate-800 space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-700/60">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-3 border-b border-slate-700/60">
               <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-sky-500/20 text-sky-400 rounded-xl border border-sky-500/30 shrink-0">
+                <div className="p-2 bg-sky-500/20 text-sky-400 rounded-xl border border-sky-500/30">
                   <Bell className="h-5 w-5 animate-bounce" />
                 </div>
-                <div className="min-w-0">
-                  <h3 className="font-extrabold text-sm sm:text-base tracking-tight flex items-center gap-2 flex-wrap">
+                <div>
+                  <h3 className="font-extrabold text-sm sm:text-base tracking-tight flex items-center gap-2">
                     Live Booking Notifications & Activity
                     {unreadNotificationCount > 0 && (
                       <span className="bg-rose-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse">
@@ -2265,7 +2354,7 @@ export const OwnerDashboard: React.FC = () => {
               {unreadNotificationCount > 0 && (
                 <button
                   onClick={() => markAllNotificationsAsRead()}
-                  className="self-end sm:self-auto px-3 py-1.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-sky-300 text-xs font-bold rounded-xl border border-slate-700 transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
+                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-sky-300 text-xs font-bold rounded-xl border border-slate-700 transition-all flex items-center gap-1.5 cursor-pointer"
                 >
                   <CheckCheck className="h-3.5 w-3.5" />
                   <span>Mark all read</span>
@@ -3011,7 +3100,7 @@ export const OwnerDashboard: React.FC = () => {
                       Customer Directory & CRM
                     </h2>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      Alphabetically organized client directory with A-Z index, quick contact tools, and vehicle logs
+                      Directory of clients who have booked services or enrolled in loyalty membership at your car wash
                     </p>
                   </div>
                 </div>
@@ -3075,13 +3164,19 @@ export const OwnerDashboard: React.FC = () => {
                     type="text"
                     placeholder="Search name, phone, plate..."
                     value={customerSearchQuery}
-                    onChange={(e) => setCustomerSearchQuery(e.target.value)}
+                    onChange={(e) => {
+                      setCustomerSearchQuery(e.target.value);
+                      setCustomerPage(1);
+                    }}
                     className="w-full pl-9 pr-8 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-indigo-500 shadow-2xs"
                   />
                   {customerSearchQuery && (
                     <button
                       type="button"
-                      onClick={() => setCustomerSearchQuery('')}
+                      onClick={() => {
+                        setCustomerSearchQuery('');
+                        setCustomerPage(1);
+                      }}
                       className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
                     >
                       <X className="w-3.5 h-3.5" />
@@ -3105,7 +3200,10 @@ export const OwnerDashboard: React.FC = () => {
                     <button
                       key={letter}
                       type="button"
-                      onClick={() => setCustomerAlphabetFilter(letter)}
+                      onClick={() => {
+                        setCustomerAlphabetFilter(letter);
+                        setCustomerPage(1);
+                      }}
                       className={`min-w-8 h-8 px-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center justify-center gap-1 shrink-0 ${
                         isSelected
                           ? 'bg-indigo-600 text-white shadow-xs ring-2 ring-indigo-600/30'
@@ -3136,109 +3234,149 @@ export const OwnerDashboard: React.FC = () => {
                   <p className="text-[11px] text-slate-400 mt-1">Try selecting 'ALL' or clearing search terms.</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                  {filteredCustomersList.map((cust) => {
-                    const hasValidPhone = cust.phone && cust.phone.trim() !== '' && cust.phone.trim().toUpperCase() !== 'NA' && cust.phone.trim().toUpperCase() !== 'N/A';
-                    return (
-                      <div
-                        key={cust.id}
-                        className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs hover:shadow-md hover:border-slate-300 transition-all flex flex-col justify-between space-y-3"
-                      >
-                        <div>
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex items-center gap-2.5">
-                              <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-700 font-black text-sm flex items-center justify-center shrink-0">
-                                {cust.name.charAt(0).toUpperCase() || 'C'}
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                    {paginatedCustomersList.map((cust) => {
+                      const hasValidPhone = cust.phone && cust.phone.trim() !== '' && cust.phone.trim().toUpperCase() !== 'NA' && cust.phone.trim().toUpperCase() !== 'N/A';
+                      return (
+                        <div
+                          key={cust.id}
+                          className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs hover:shadow-md hover:border-slate-300 transition-all flex flex-col justify-between space-y-3"
+                        >
+                          <div>
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-700 font-black text-sm flex items-center justify-center shrink-0">
+                                  {cust.name.charAt(0).toUpperCase() || 'C'}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <h3 className="font-extrabold text-slate-900 text-sm leading-snug truncate">
+                                      {cust.name}
+                                    </h3>
+                                    {cust.isMember && (
+                                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-black bg-amber-50 text-amber-800 border border-amber-200/80">
+                                        <Award className="w-2.5 h-2.5 text-amber-600" />
+                                        <span>VIP Member</span>
+                                      </span>
+                                    )}
+                                  </div>
+                                  {hasValidPhone ? (
+                                    <a
+                                      href={`tel:${cust.phone}`}
+                                      className="text-[11px] text-slate-600 hover:text-indigo-600 font-mono font-bold flex items-center gap-1 mt-0.5"
+                                      title="Call Customer"
+                                    >
+                                      <Phone className="w-3 h-3 text-emerald-600 shrink-0" />
+                                      <span className="text-[10px] text-slate-400 font-sans uppercase font-bold">Phone:</span>
+                                      <span>{cust.phone}</span>
+                                    </a>
+                                  ) : (
+                                    <span className="text-[10px] text-slate-400 font-medium italic mt-0.5 block">
+                                      No Phone Recorded
+                                    </span>
+                                  )}
+                                  {cust.email && (
+                                    <p className="text-[10px] text-slate-400 truncate mt-0.5" title={cust.email}>
+                                      {cust.email}
+                                    </p>
+                                  )}
+                                </div>
                               </div>
-                              <div className="min-w-0">
-                                <h3 className="font-extrabold text-slate-900 text-sm leading-snug truncate">
-                                  {cust.name}
-                                </h3>
-                                {hasValidPhone ? (
-                                  <a
-                                    href={`tel:${cust.phone}`}
-                                    className="text-[11px] text-slate-600 hover:text-indigo-600 font-mono font-bold flex items-center gap-1 mt-0.5"
-                                    title="Call Customer"
-                                  >
-                                    <Phone className="w-3 h-3 text-emerald-600 shrink-0" />
-                                    <span className="text-[10px] text-slate-400 font-sans uppercase font-bold">Phone:</span>
-                                    <span>{cust.phone}</span>
-                                  </a>
-                                ) : (
-                                  <span className="text-[10px] text-slate-400 font-medium italic mt-0.5 block">
-                                    No Phone Recorded
-                                  </span>
-                                )}
-                                {cust.email && (
-                                  <p className="text-[10px] text-slate-400 truncate mt-0.5" title={cust.email}>
-                                    {cust.email}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
 
-                            <span className="px-2 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200/80 rounded-lg text-[10px] font-black font-mono shrink-0">
-                              ${cust.totalSpent.toFixed(2)}
-                            </span>
-                          </div>
-
-                          {/* Vehicles */}
-                          <div className="mt-3 space-y-1.5 text-xs text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                            <div className="flex items-center gap-1.5 text-[11px]">
-                              <Car className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                              <span className="font-bold text-slate-800">Vehicles:</span>
-                              <span className="truncate text-slate-600 font-mono">
-                                {cust.vehicles.length > 0 ? cust.vehicles.join(', ') : 'None registered'}
+                              <span className="px-2 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200/80 rounded-lg text-[10px] font-black font-mono shrink-0">
+                                ${cust.totalSpent.toFixed(2)}
                               </span>
                             </div>
-                            <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-200/60">
-                              <span>Total Washes: <strong className="text-slate-700 font-bold">{cust.totalBookings}</strong></span>
-                              <span>Last Visit: <strong className="text-slate-700 font-bold">{cust.lastBookingDate || 'Never'}</strong></span>
+
+                            {/* Vehicles */}
+                            <div className="mt-3 space-y-1.5 text-xs text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                              <div className="flex items-center gap-1.5 text-[11px]">
+                                <Car className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                <span className="font-bold text-slate-800">Vehicles:</span>
+                                <span className="truncate text-slate-600 font-mono">
+                                  {cust.vehicles.length > 0 ? cust.vehicles.join(', ') : 'None registered'}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-200/60">
+                                <span>Total Washes: <strong className="text-slate-700 font-bold">{cust.totalBookings}</strong></span>
+                                <span>Last Visit: <strong className="text-slate-700 font-bold">{cust.lastBookingDate || 'Never'}</strong></span>
+                              </div>
                             </div>
                           </div>
-                        </div>
 
-                        {/* Quick Contact & Booking Buttons */}
-                        <div className="pt-2 border-t border-slate-100 flex items-center gap-1.5">
-                          {hasValidPhone && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => openWhatsAppCustomer(cust.phone, cust.name)}
-                                className="flex-1 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/80 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
-                                title="Chat on WhatsApp"
-                              >
-                                <MessageCircle className="w-3.5 h-3.5 fill-emerald-600 text-emerald-600" />
-                                <span>WhatsApp</span>
-                              </button>
-                              <a
-                                href={`tel:${cust.phone}`}
-                                className="px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer shrink-0"
-                                title="Direct Phone Call"
-                              >
-                                <Phone className="w-3.5 h-3.5 text-slate-600" />
-                                <span>Call</span>
-                              </a>
-                            </>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setMbName(cust.name);
-                              setMbPhone(hasValidPhone ? cust.phone : '');
-                              setMbVehicle(cust.vehicles[0] || '');
-                              setShowManualBookingModal(true);
-                            }}
-                            className="flex-1 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
-                          >
-                            <Plus className="w-3.5 h-3.5 text-slate-500" />
-                            <span>Quick Book</span>
-                          </button>
+                          {/* Quick Contact & Booking Buttons */}
+                          <div className="pt-2 border-t border-slate-100 flex items-center gap-1.5">
+                            {hasValidPhone && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => openWhatsAppCustomer(cust.phone, cust.name)}
+                                  className="flex-1 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/80 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
+                                  title="Chat on WhatsApp"
+                                >
+                                  <MessageCircle className="w-3.5 h-3.5 fill-emerald-600 text-emerald-600" />
+                                  <span>WhatsApp</span>
+                                </button>
+                                <a
+                                  href={`tel:${cust.phone}`}
+                                  className="px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer shrink-0"
+                                  title="Direct Phone Call"
+                                >
+                                  <Phone className="w-3.5 h-3.5 text-slate-600" />
+                                  <span>Call</span>
+                                </a>
+                              </>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMbName(cust.name);
+                                setMbPhone(hasValidPhone ? cust.phone : '');
+                                setMbVehicle(cust.vehicles[0] || '');
+                                setShowManualBookingModal(true);
+                              }}
+                              className="flex-1 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
+                            >
+                              <Plus className="w-3.5 h-3.5 text-slate-500" />
+                              <span>Quick Book</span>
+                            </button>
+                          </div>
                         </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Customer Directory Pagination Controls */}
+                  {totalCustomerPages > 1 && (
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-slate-100 mt-2 text-xs font-semibold text-slate-500">
+                      <div>
+                        Showing <strong className="text-slate-800">{(customerPage - 1) * CUSTOMERS_PER_PAGE + 1}</strong> to <strong className="text-slate-800">{Math.min(customerPage * CUSTOMERS_PER_PAGE, filteredCustomersList.length)}</strong> of <strong className="text-slate-800">{filteredCustomersList.length}</strong> clients
                       </div>
-                    );
-                  })}
-                </div>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setCustomerPage((prev) => Math.max(prev - 1, 1))}
+                          disabled={customerPage === 1}
+                          className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-2xs font-bold text-slate-700"
+                        >
+                          Previous
+                        </button>
+                        <span className="px-3 py-1.5 bg-slate-50 border border-slate-200/80 rounded-xl font-mono text-[11px] font-bold text-slate-700">
+                          Page {customerPage} of {totalCustomerPages}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setCustomerPage((prev) => Math.min(prev + 1, totalCustomerPages))}
+                          disabled={customerPage === totalCustomerPages}
+                          className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-2xs font-bold text-slate-700"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -5917,6 +6055,72 @@ export const OwnerDashboard: React.FC = () => {
           })()}
         </div>
       )}
+
+      {/* 🌟 LOYALTY & REWARDS MANAGEMENT */}
+      {activeTab === 'loyalty' && selectedBusiness && (
+        isMembershipEnabled ? (
+          <div className="space-y-6 animate-fade-in" id="owner-loyalty-section">
+            <LoyaltyMembershipOwnerView
+              carWash={selectedBusiness}
+              token={token}
+              currentUser={user}
+            />
+          </div>
+        ) : (
+          <div className="bg-white border border-slate-200 rounded-3xl p-8 sm:p-12 text-center max-w-2xl mx-auto space-y-6 shadow-sm animate-fade-in" id="owner-loyalty-inactive-panel">
+            <div className="w-16 h-16 bg-indigo-50 border border-indigo-200 rounded-3xl flex items-center justify-center mx-auto text-indigo-600 shadow-xs">
+              <Award className="w-8 h-8" />
+            </div>
+
+            <div className="space-y-2">
+              <span className="px-3 py-1 bg-amber-50 text-amber-800 border border-amber-200 rounded-full text-xs font-black uppercase tracking-wider inline-block">
+                Programme Inactive
+              </span>
+              <h2 className="text-xl sm:text-2xl font-black text-slate-800">
+                Customer Loyalty &amp; Rewards Club
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-500 leading-relaxed max-w-lg mx-auto">
+                Boost customer retention by automatically awarding loyalty points on every online booking and walk-in wash. Enrolled customers receive digital QR member passes and can redeem points for free washes and custom discounts.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-left">
+              <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100 space-y-1">
+                <span className="text-[10px] font-black uppercase text-indigo-600">Points Rules</span>
+                <p className="text-xs font-bold text-slate-700">Custom points per wash service</p>
+              </div>
+              <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100 space-y-1">
+                <span className="text-[10px] font-black uppercase text-indigo-600">Rewards Catalog</span>
+                <p className="text-xs font-bold text-slate-700">Free washes, discounts &amp; add-ons</p>
+              </div>
+              <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100 space-y-1">
+                <span className="text-[10px] font-black uppercase text-indigo-600">QR Counter Passes</span>
+                <p className="text-xs font-bold text-slate-700">Fast scan &amp; award at cashier counter</p>
+              </div>
+            </div>
+
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  const success = await updateLocationConfig(selectedBusiness.id, {
+                    membershipEnabled: true,
+                  });
+                  if (success) {
+                    showNotification('⭐ Loyalty & Rewards Programme activated for this branch!', 'success');
+                  }
+                }}
+                className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs uppercase tracking-wider rounded-2xl shadow-lg transition-all transform hover:-translate-y-0.5 cursor-pointer inline-flex items-center gap-2"
+                id="btn-activate-branch-loyalty"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>Activate Loyalty Programme Now</span>
+              </button>
+            </div>
+          </div>
+        )
+      )}
+
       {showEmployeeModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-50 overflow-y-auto animate-fade-in">
           <div className="relative my-auto bg-white rounded-2xl max-w-sm w-full border border-slate-200 shadow-2xl p-5 sm:p-6 text-left max-h-[85vh] overflow-y-auto overscroll-contain">

@@ -77,7 +77,33 @@ import {
   deleteOwnerReply,
   getReviewsSummaryForCarWash,
   generateSlug,
-  getUniqueSlug
+  getUniqueSlug,
+  getCarWashMembershipConfig,
+  upsertCarWashMembershipConfig,
+  setCarWashMembershipFeature,
+  getCustomerMemberships,
+  getCustomerMembership,
+  getCustomerMembershipById,
+  getCustomerMembershipByToken,
+  getCarWashMembers,
+  joinCarWashMembership,
+  cancelCustomerMembership,
+  getMembershipPointsRules,
+  upsertMembershipPointsRule,
+  getMembershipLedger,
+  recordPointsTransaction,
+  adjustCustomerPoints,
+  awardPointsForBookingCompletion,
+  reversePointsForBookingCancellation,
+  getMembershipRewards,
+  getMembershipRewardById,
+  createMembershipReward,
+  updateMembershipReward,
+  createMembershipRedemption,
+  getRedemptionByToken,
+  confirmMembershipRedemption,
+  getCarWashRedemptions,
+  getCustomerRedemptions
 } from './server/db.js';
 import { 
   isSupabaseAuthEnabled, 
@@ -1374,7 +1400,7 @@ async function startServer() {
           bibdAccountName, bibdAccountNo, bibdEnabled, bibdQrImageUrl,
           baiduriAccountName, baiduriAccountNo, baiduriEnabled, baiduriQrImageUrl,
           customPaymentsJson, paymentPolicy, services, servicesJson, ownerId,
-          scheduleOverrides, scheduleOverridesJson, slug, ownerNavigationEnabled, ownerQrCodeEnabled
+          scheduleOverrides, scheduleOverridesJson, slug, ownerNavigationEnabled, ownerQrCodeEnabled, membershipEnabled
         } = req.body;
 
         let resolvedSlug = carWash.slug;
@@ -1448,7 +1474,14 @@ async function startServer() {
           ownerQrCodeEnabled: (req.user!.role === Role.ADMIN || req.user!.role === Role.SPECIAL) && ownerQrCodeEnabled !== undefined
             ? !!ownerQrCodeEnabled
             : carWash.ownerQrCodeEnabled,
+          membershipEnabled: (req.user!.role === Role.ADMIN || req.user!.role === Role.SPECIAL) && membershipEnabled !== undefined
+            ? !!membershipEnabled
+            : carWash.membershipEnabled,
         };
+
+        if (membershipEnabled !== undefined && (req.user!.role === Role.ADMIN || req.user!.role === Role.SPECIAL)) {
+          await setCarWashMembershipFeature(carWash.id, !!membershipEnabled);
+        }
 
         await updateCarWash(req.params.id, updatedData);
         await addAuditLog(
@@ -2501,6 +2534,34 @@ async function startServer() {
 
       await updateBooking(booking.id, updatedData);
 
+      // 🌟 Loyalty Points Award / Reversal on Completed or Cancelled status
+      if (status === BookingStatus.COMPLETED) {
+        try {
+          const awarded = await awardPointsForBookingCompletion(booking.id, { id: user.id, role: user.role });
+          if (awarded && awarded.pointsAwarded > 0 && booking.customerId) {
+            const carWash = carWashes.find((c) => c.id === booking.carWashId);
+            await createNotification({
+              id: `notif_${Math.random().toString(36).substr(2, 9)}`,
+              userId: booking.customerId,
+              title: `🎉 Loyalty Points Earned!`,
+              message: `You earned +${awarded.pointsAwarded} points for your completed wash at ${carWash ? carWash.name : 'Car Wash'}!`,
+              type: 'STATUS_CHANGE',
+              bookingId: booking.id,
+              isRead: false,
+              createdAt: new Date().toISOString(),
+            });
+          }
+        } catch (ptsErr) {
+          console.error('Failed to award loyalty points on booking completion:', ptsErr);
+        }
+      } else if (status === BookingStatus.CANCELLED) {
+        try {
+          await reversePointsForBookingCancellation(booking.id, { id: user.id, role: user.role });
+        } catch (revErr) {
+          console.error('Failed to reverse points on booking cancellation:', revErr);
+        }
+      }
+
       // Trigger notification for customer on status change
       if (booking.customerId) {
         try {
@@ -2904,7 +2965,8 @@ async function startServer() {
     async (req: AuthenticatedRequest, res) => {
       try {
         const isAdmin = req.user!.role === Role.ADMIN || req.user!.role === Role.SPECIAL;
-        const customers = await getCustomersForOwner(req.user!.id, isAdmin);
+        const carWashId = req.query.carWashId as string | undefined;
+        const customers = await getCustomersForOwner(req.user!.id, isAdmin, carWashId);
         res.json(customers);
       } catch (error: any) {
         res.status(500).json({ error: error.message || 'Internal server error' });
@@ -3497,6 +3559,643 @@ async function startServer() {
       res.status(500).json({ error: error.message || 'Internal server error' });
     }
   });
+
+  // ==========================================
+  // 🌟 MULTI-TENANT MEMBERSHIP & LOYALTY API
+  // ==========================================
+
+  // 1. Get Programme Details / Config (Public / Authenticated)
+  app.get(['/api/membership/programme/:carWashId', '/api/membership/config/:carWashId'], async (req, res) => {
+    try {
+      const config = await getCarWashMembershipConfig(req.params.carWashId);
+      if (!config) {
+        res.status(404).json({ error: 'Car wash not found or membership not configured.' });
+        return;
+      }
+      res.json(config);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to get membership programme' });
+    }
+  });
+
+  // 2. Admin / Special User Feature Toggle
+  app.put(
+    '/api/membership/feature-toggle',
+    authenticateToken,
+    requireRoles([Role.ADMIN, Role.SPECIAL]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { carWashId, isEnabled } = req.body;
+        if (!carWashId || isEnabled === undefined) {
+          res.status(400).json({ error: 'carWashId and isEnabled are required.' });
+          return;
+        }
+
+        const cw = await getCarWashById(carWashId);
+        if (!cw) {
+          res.status(404).json({ error: 'Car wash not found.' });
+          return;
+        }
+
+        await setCarWashMembershipFeature(carWashId, !!isEnabled);
+
+        await addAuditLog(
+          req.user!.id,
+          req.user!.email,
+          'MEMBERSHIP_FEATURE_TOGGLE',
+          `${req.user!.role} toggled loyalty & membership feature to [${isEnabled ? 'ENABLED' : 'DISABLED'}] for ${cw.name}`
+        );
+
+        res.json({ success: true, carWashId, isEnabled: !!isEnabled });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to toggle membership feature' });
+      }
+    }
+  );
+
+  // 3. Owner / Admin Update Programme Settings
+  app.put(
+    ['/api/membership/programme/:carWashId', '/api/membership/config/:carWashId'],
+    authenticateToken,
+    requireRoles([Role.OWNER, Role.ADMIN]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const carWashId = req.params.carWashId;
+        const cw = await getCarWashById(carWashId);
+        if (!cw) {
+          res.status(404).json({ error: 'Car wash not found.' });
+          return;
+        }
+
+        // Verify tenant authorization: Owner must own this car wash
+        if (req.user!.role === Role.OWNER && cw.ownerId !== req.user!.id) {
+          res.status(403).json({ error: 'You do not own this car wash.' });
+          return;
+        }
+
+        // Check if feature is enabled by admin
+        const currentCfg = await getCarWashMembershipConfig(carWashId);
+        if (!currentCfg?.isFeatureEnabled && req.user!.role !== Role.ADMIN) {
+          res.status(403).json({ error: 'Membership feature has not been enabled for your business by an Administrator.' });
+          return;
+        }
+
+        const {
+          isProgrammeActive,
+          programmeName,
+          programmeDescription,
+          pointsExpiryMonths,
+          allowQrJoin,
+          allowCounterJoin,
+          termsConditions,
+        } = req.body;
+
+        const updated = await upsertCarWashMembershipConfig({
+          carWashId,
+          isProgrammeActive,
+          programmeName,
+          programmeDescription,
+          pointsExpiryMonths: pointsExpiryMonths !== undefined ? parseInt(pointsExpiryMonths, 10) : undefined,
+          allowQrJoin,
+          allowCounterJoin,
+          termsConditions,
+        });
+
+        await addAuditLog(
+          req.user!.id,
+          req.user!.email,
+          'MEMBERSHIP_PROGRAMME_UPDATE',
+          `Updated loyalty programme settings for ${cw.name} (Active: ${updated.isProgrammeActive})`
+        );
+
+        res.json(updated);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to update membership programme' });
+      }
+    }
+  );
+
+  // 4. Points Rules CRUD
+  app.get('/api/membership/points-rules/:carWashId', async (req, res) => {
+    try {
+      const rules = await getMembershipPointsRules(req.params.carWashId);
+      res.json(rules);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to get points rules' });
+    }
+  });
+
+  app.post(
+    '/api/membership/points-rules/:carWashId',
+    authenticateToken,
+    requireRoles([Role.OWNER, Role.ADMIN]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const carWashId = req.params.carWashId;
+        const cw = await getCarWashById(carWashId);
+        if (!cw) {
+          res.status(404).json({ error: 'Car wash not found.' });
+          return;
+        }
+        if (req.user!.role === Role.OWNER && cw.ownerId !== req.user!.id) {
+          res.status(403).json({ error: 'You do not own this car wash.' });
+          return;
+        }
+
+        const { serviceId, serviceName, pointsAwarded, isActive } = req.body;
+        if (!serviceId || !serviceName || pointsAwarded === undefined) {
+          res.status(400).json({ error: 'serviceId, serviceName, and pointsAwarded are required.' });
+          return;
+        }
+
+        const rule = await upsertMembershipPointsRule(
+          carWashId,
+          serviceId,
+          serviceName,
+          parseInt(pointsAwarded, 10),
+          isActive !== false
+        );
+
+        res.json(rule);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to save points rule' });
+      }
+    }
+  );
+
+  // 5. Rewards CRUD
+  app.get('/api/membership/rewards/:carWashId', async (req, res) => {
+    try {
+      const activeOnly = req.query.active === 'true';
+      const rewards = await getMembershipRewards(req.params.carWashId, activeOnly);
+      res.json(rewards);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to get rewards' });
+    }
+  });
+
+  app.post(
+    '/api/membership/rewards/:carWashId',
+    authenticateToken,
+    requireRoles([Role.OWNER, Role.ADMIN]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const carWashId = req.params.carWashId;
+        const cw = await getCarWashById(carWashId);
+        if (!cw) {
+          res.status(404).json({ error: 'Car wash not found.' });
+          return;
+        }
+        if (req.user!.role === Role.OWNER && cw.ownerId !== req.user!.id) {
+          res.status(403).json({ error: 'You do not own this car wash.' });
+          return;
+        }
+
+        const { title, description, pointsCost, rewardType, discountValue, eligibleServiceId, isActive, maxRedemptionsPerMember, maxTotalSupply } = req.body;
+        if (!title || pointsCost === undefined) {
+          res.status(400).json({ error: 'title and pointsCost are required.' });
+          return;
+        }
+
+        const existingRewards = await getMembershipRewards(carWashId, false);
+        if (existingRewards.length >= 12) {
+          res.status(400).json({ error: 'Maximum reward limit reached (maximum 12 rewards allowed per car wash). Please edit or deactivate an existing reward.' });
+          return;
+        }
+
+        const reward = await createMembershipReward({
+          carWashId,
+          title,
+          description,
+          pointsCost: parseInt(pointsCost, 10),
+          rewardType: rewardType || 'FREE_SERVICE',
+          discountValue: discountValue !== undefined && discountValue !== '' ? parseFloat(discountValue) : undefined,
+          eligibleServiceId: eligibleServiceId || undefined,
+          maxRedemptionsPerMember: maxRedemptionsPerMember !== undefined ? parseInt(maxRedemptionsPerMember, 10) : 0,
+          maxTotalSupply: maxTotalSupply !== undefined ? parseInt(maxTotalSupply, 10) : 0,
+          isActive: isActive !== false,
+        });
+
+        res.status(201).json(reward);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to create reward' });
+      }
+    }
+  );
+
+  app.put(
+    '/api/membership/rewards/:carWashId/:rewardId',
+    authenticateToken,
+    requireRoles([Role.OWNER, Role.ADMIN]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { carWashId, rewardId } = req.params;
+        const cw = await getCarWashById(carWashId);
+        if (!cw) {
+          res.status(404).json({ error: 'Car wash not found.' });
+          return;
+        }
+        if (req.user!.role === Role.OWNER && cw.ownerId !== req.user!.id) {
+          res.status(403).json({ error: 'You do not own this car wash.' });
+          return;
+        }
+
+        const updated = await updateMembershipReward(rewardId, req.body);
+        if (!updated) {
+          res.status(404).json({ error: 'Reward not found.' });
+          return;
+        }
+        res.json(updated);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to update reward' });
+      }
+    }
+  );
+
+  // 6. Customer Membership Operations
+  app.get('/api/membership/my-memberships', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const memberships = await getCustomerMemberships(req.user!.id);
+      res.json(memberships);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to get memberships' });
+    }
+  });
+
+  app.get('/api/membership/my-membership/:carWashId', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const membership = await getCustomerMembership(req.user!.id, req.params.carWashId);
+      res.json(membership || null);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to get membership' });
+    }
+  });
+
+  app.post('/api/membership/join', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { carWashId, joinMethod, consentGiven } = req.body;
+      if (!carWashId) {
+        res.status(400).json({ error: 'carWashId is required.' });
+        return;
+      }
+      if (!consentGiven) {
+        res.status(400).json({ error: 'Explicit consent is required to join this loyalty programme.' });
+        return;
+      }
+
+      const membership = await joinCarWashMembership(req.user!.id, carWashId, joinMethod || 'ONLINE_OPT_IN');
+
+      // Send in-app notification to customer
+      const cw = await getCarWashById(carWashId);
+      await createNotification({
+        id: `notif_${Math.random().toString(36).substr(2, 9)}`,
+        userId: req.user!.id,
+        title: `Welcome to ${cw?.name || 'Rewards'}! 🌟`,
+        message: `Your membership card (${membership.membershipNumber}) is active! Start earning points on every wash.`,
+        type: 'STATUS_CHANGE',
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      }).catch(() => {});
+
+      // Send in-app notification to car wash owner
+      if (cw && cw.ownerId) {
+        await createNotification({
+          id: `notif_${Math.random().toString(36).substr(2, 9)}`,
+          userId: cw.ownerId,
+          title: `🌟 New VIP Club Member!`,
+          message: `${req.user!.name || 'A customer'} (${req.user!.email || ''}) just joined your ${cw.name} Loyalty Club (#${membership.membershipNumber})!`,
+          type: 'STATUS_CHANGE',
+          isRead: false,
+          createdAt: new Date().toISOString(),
+        }).catch(() => {});
+      }
+
+      res.status(201).json(membership);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message || 'Failed to join membership programme' });
+    }
+  });
+
+  app.post('/api/membership/leave', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { carWashId } = req.body;
+      if (!carWashId) {
+        res.status(400).json({ error: 'carWashId is required.' });
+        return;
+      }
+
+      const cancelled = await cancelCustomerMembership(req.user!.id, carWashId);
+      if (!cancelled) {
+        res.status(404).json({ error: 'Membership not found.' });
+        return;
+      }
+      res.json(cancelled);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to leave membership' });
+    }
+  });
+
+  app.get('/api/membership/ledger/:membershipId', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const ledger = await getMembershipLedger(req.params.membershipId);
+      res.json(ledger);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to get ledger' });
+    }
+  });
+
+  // 7. Manual Points Adjustment (Audited)
+  app.post(
+    '/api/membership/adjust-points',
+    authenticateToken,
+    requireRoles([Role.OWNER, Role.ADMIN, Role.SPECIAL]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { membershipId, pointsDelta, reason } = req.body;
+        if (!membershipId || pointsDelta === undefined || !reason) {
+          res.status(400).json({ error: 'membershipId, pointsDelta, and reason are required.' });
+          return;
+        }
+
+        const delta = parseInt(pointsDelta, 10);
+        if (isNaN(delta) || delta === 0) {
+          res.status(400).json({ error: 'Points delta must be a non-zero integer.' });
+          return;
+        }
+
+        const result = await adjustCustomerPoints({
+          membershipId,
+          pointsDelta: delta,
+          reason,
+          performedById: req.user!.id,
+          performedByRole: req.user!.role,
+        });
+
+        await addAuditLog(
+          req.user!.id,
+          req.user!.email,
+          'MANUAL_POINTS_ADJUSTMENT',
+          `Adjusted points by ${delta} on membership ${membershipId}. Reason: ${reason}`
+        );
+
+        res.json(result);
+      } catch (error: any) {
+        res.status(400).json({ error: error.message || 'Failed to adjust points' });
+      }
+    }
+  );
+
+  // 8. Redeem Reward (Customer)
+  app.post('/api/membership/redeem', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { carWashId, rewardId } = req.body;
+      if (!carWashId || !rewardId) {
+        res.status(400).json({ error: 'carWashId and rewardId are required.' });
+        return;
+      }
+
+      const result = await createMembershipRedemption(req.user!.id, carWashId, rewardId);
+
+      await addAuditLog(
+        req.user!.id,
+        req.user!.email,
+        'REDEEM_REWARD',
+        `Redeemed voucher ${result.redemption.redemptionCode} for ${result.redemption.rewardTitle} (-${result.redemption.pointsSpent} pts)`
+      );
+
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message || 'Redemption failed' });
+    }
+  });
+
+  // 9. Customer Redemptions
+  app.get('/api/membership/my-redemptions', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const redemptions = await getCustomerRedemptions(req.user!.id);
+      res.json(redemptions);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to get redemptions' });
+    }
+  });
+
+  // 10. Staff / Counter Operations
+  // Scan & Identify Member
+  app.get(
+    '/api/membership/identify/:tokenOrCode',
+    authenticateToken,
+    requireRoles([Role.EMPLOYEE, Role.OWNER, Role.ADMIN, Role.SPECIAL]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const member = await getCustomerMembershipByToken(req.params.tokenOrCode);
+        if (!member) {
+          res.status(404).json({ error: 'Member not found with this code or QR token.' });
+          return;
+        }
+
+        // Verify employee business match if role is EMPLOYEE
+        if (req.user!.role === Role.EMPLOYEE) {
+          const emp = await getUserById(req.user!.id);
+          if (emp?.businessId && emp.businessId !== member.carWashId) {
+            res.status(403).json({ error: 'This customer membership belongs to a different car wash location.' });
+            return;
+          }
+        }
+
+        res.json(member);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to identify member' });
+      }
+    }
+  );
+
+  // Counter Walk-In Points Awarding
+  app.post(
+    '/api/membership/counter-award',
+    authenticateToken,
+    requireRoles([Role.EMPLOYEE, Role.OWNER, Role.ADMIN, Role.SPECIAL]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { membershipId, serviceName, points } = req.body;
+        if (!membershipId || !points) {
+          res.status(400).json({ error: 'membershipId and points are required.' });
+          return;
+        }
+
+        const pts = parseInt(points, 10);
+        if (isNaN(pts) || pts <= 0) {
+          res.status(400).json({ error: 'Points must be a positive integer.' });
+          return;
+        }
+
+        const members = await getCarWashMembers(req.body.carWashId || '');
+        // Fetch membership
+        const member = await getCustomerMembershipById(membershipId);
+        if (!member) {
+          res.status(404).json({ error: 'Membership not found.' });
+          return;
+        }
+
+        const carWashId = member.carWashId;
+        const customerId = member.customerId;
+
+        // Verify employee match
+        if (req.user!.role === Role.EMPLOYEE) {
+          const emp = await getUserById(req.user!.id);
+          if (emp?.businessId && emp.businessId !== carWashId) {
+            res.status(403).json({ error: 'Unauthorized: customer membership belongs to a different car wash.' });
+            return;
+          }
+        }
+
+        const result = await recordPointsTransaction({
+          membershipId,
+          customerId,
+          carWashId,
+          points: pts,
+          transactionType: 'EARN',
+          description: `Counter wash: ${serviceName || 'Walk-in Service'}`,
+          performedById: req.user!.id,
+          performedByRole: req.user!.role,
+        });
+
+        // Notify customer
+        await createNotification({
+          id: `notif_${Math.random().toString(36).substr(2, 9)}`,
+          userId: customerId,
+          title: `Counter Points Received! 🌟`,
+          message: `Staff awarded +${pts} points for your counter wash (${serviceName || 'Walk-in Service'}).`,
+          type: 'STATUS_CHANGE',
+          isRead: false,
+          createdAt: new Date().toISOString(),
+        }).catch(() => {});
+
+        res.json(result);
+      } catch (error: any) {
+        res.status(400).json({ error: error.message || 'Failed to award counter points' });
+      }
+    }
+  );
+
+  // Scan Voucher & Confirm Redemption
+  app.get(
+    '/api/membership/voucher/:tokenOrCode',
+    authenticateToken,
+    requireRoles([Role.EMPLOYEE, Role.OWNER, Role.ADMIN, Role.SPECIAL]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const redemption = await getRedemptionByToken(req.params.tokenOrCode);
+        if (!redemption) {
+          res.status(404).json({ error: 'Reward voucher not found.' });
+          return;
+        }
+        res.json(redemption);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to get voucher' });
+      }
+    }
+  );
+
+  app.post(
+    '/api/membership/confirm-redemption',
+    authenticateToken,
+    requireRoles([Role.EMPLOYEE, Role.OWNER, Role.ADMIN, Role.SPECIAL]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { tokenOrCode, carWashId } = req.body;
+        if (!tokenOrCode || !carWashId) {
+          res.status(400).json({ error: 'tokenOrCode and carWashId are required.' });
+          return;
+        }
+
+        const confirmed = await confirmMembershipRedemption(tokenOrCode, req.user!.id, carWashId);
+
+        await addAuditLog(
+          req.user!.id,
+          req.user!.email,
+          'CONFIRM_REWARD_REDEMPTION',
+          `Confirmed voucher ${confirmed.redemptionCode} (${confirmed.rewardTitle}) for member ${confirmed.customerName || confirmed.customerId}`
+        );
+
+        // Notify customer
+        await createNotification({
+          id: `notif_${Math.random().toString(36).substr(2, 9)}`,
+          userId: confirmed.customerId,
+          title: `Reward Voucher Redeemed! 🎁`,
+          message: `Your reward voucher ${confirmed.redemptionCode} (${confirmed.rewardTitle}) was processed by staff. Enjoy!`,
+          type: 'STATUS_CHANGE',
+          isRead: false,
+          createdAt: new Date().toISOString(),
+        }).catch(() => {});
+
+        res.json(confirmed);
+      } catch (error: any) {
+        res.status(400).json({ error: error.message || 'Failed to confirm redemption' });
+      }
+    }
+  );
+
+  // Owner Member Management List
+  app.get(
+    '/api/membership/members/:carWashId',
+    authenticateToken,
+    requireRoles([Role.OWNER, Role.EMPLOYEE, Role.ADMIN, Role.SPECIAL]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const carWashId = req.params.carWashId;
+        const cw = await getCarWashById(carWashId);
+        if (!cw) {
+          res.status(404).json({ error: 'Car wash not found.' });
+          return;
+        }
+
+        if (req.user!.role === Role.OWNER && cw.ownerId !== req.user!.id) {
+          res.status(403).json({ error: 'Unauthorized: You do not own this car wash.' });
+          return;
+        }
+        if (req.user!.role === Role.EMPLOYEE) {
+          const emp = await getUserById(req.user!.id);
+          if (emp?.businessId && emp.businessId !== carWashId) {
+            res.status(403).json({ error: 'Unauthorized: Assigned to different car wash.' });
+            return;
+          }
+        }
+
+        const search = req.query.search as string | undefined;
+        const members = await getCarWashMembers(carWashId, search);
+        res.json(members);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to fetch members' });
+      }
+    }
+  );
+
+  // Owner Redemptions History List
+  app.get(
+    '/api/membership/redemptions/:carWashId',
+    authenticateToken,
+    requireRoles([Role.OWNER, Role.EMPLOYEE, Role.ADMIN, Role.SPECIAL]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const carWashId = req.params.carWashId;
+        const cw = await getCarWashById(carWashId);
+        if (!cw) {
+          res.status(404).json({ error: 'Car wash not found.' });
+          return;
+        }
+
+        if (req.user!.role === Role.OWNER && cw.ownerId !== req.user!.id) {
+          res.status(403).json({ error: 'Unauthorized: You do not own this car wash.' });
+          return;
+        }
+
+        const redemptions = await getCarWashRedemptions(carWashId);
+        res.json(redemptions);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to fetch redemptions' });
+      }
+    }
+  );
 
   // ==========================================
   // SERVE SECURE UPLOADS AND VITE SERVICES

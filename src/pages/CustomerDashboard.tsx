@@ -10,9 +10,10 @@ import { LocalPaymentForm } from '../components/LocalPaymentForm.js';
 import { BookingFlowModal } from '../components/BookingFlowModal.js';
 import { ReviewsModal } from '../components/ReviewsModal.js';
 import { TermsAndConditionsContent } from '../components/TermsAndConditionsContent.js';
+import { LoyaltyMembershipCustomerView } from '../components/LoyaltyMembershipCustomerView.js';
 import { FEATURES } from '../config/features.js';
 import { useModalBack, useTabBack } from '../utils/useBackHandler.js';
-import { Search, Calendar, Clock, MapPin, History, CheckCircle, AlertTriangle, X, ChevronRight, ChevronLeft, ChevronDown, Sliders, Info, Sparkles, Navigation, User, Edit3, Check, Instagram, Landmark, Lock, Key, FileText, Maximize2, Filter, Star, DoorClosed, Car } from 'lucide-react';
+import { Search, Calendar, Clock, MapPin, History, CheckCircle, AlertTriangle, X, ChevronRight, ChevronLeft, ChevronDown, Sliders, Info, Sparkles, Navigation, User, Edit3, Check, Instagram, Landmark, Lock, Key, FileText, Maximize2, Filter, Star, DoorClosed, Car, Award, Gift } from 'lucide-react';
 import { CarWash, Booking, BookingStatus, TimeSlotItem } from '../types.js';
 import { evaluateProximity, calculateHaversineDistanceMeters } from '../utils/haversine.js';
 import { geolocationWatchService } from '../utils/geolocationWatchService.js';
@@ -245,7 +246,15 @@ export const CustomerDashboard: React.FC = () => {
   const [viewAllLocations, setViewAllLocations] = useState(true);
 
   // Bottom Mobile Navigation and Product Selection states
-  const [activeTab, setActiveTab] = useState<'book' | 'bookings' | 'profile'>('book');
+  const [activeTab, setActiveTab] = useState<'book' | 'bookings' | 'rewards' | 'profile'>(() => {
+    if (typeof window !== 'undefined') {
+      const p = new URLSearchParams(window.location.search);
+      if (p.get('join') === 'true' || p.get('tab') === 'rewards' || window.location.hash === '#rewards') {
+        return 'rewards';
+      }
+    }
+    return 'book';
+  });
   const [selectedService, setSelectedService] = useState<any | null>(null);
   const [itemTabFilter, setItemTabFilter] = useState<'service' | 'product'>('service');
   const [showFullScreenMap, setShowFullScreenMap] = useState(false);
@@ -840,6 +849,22 @@ export const CustomerDashboard: React.FC = () => {
 
         <button
           onClick={() => {
+            setActiveTab('rewards');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          className={`flex flex-col items-center gap-1 py-1 px-4 rounded-xl transition-all cursor-pointer ${
+            activeTab === 'rewards'
+              ? 'text-indigo-600 font-extrabold scale-110'
+              : 'text-slate-400 font-medium hover:text-slate-600'
+          }`}
+          id="btn-nav-rewards"
+        >
+          <Award className="w-5.5 h-5.5" />
+          <span className="text-[10px]">Rewards Club</span>
+        </button>
+
+        <button
+          onClick={() => {
             setActiveTab('profile');
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
@@ -1126,6 +1151,12 @@ export const CustomerDashboard: React.FC = () => {
                               {loc.services && loc.services.length > 0 && (
                                 <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded-md border border-slate-200">
                                   {loc.services.length} wash options
+                                </span>
+                              )}
+                              {loc.membershipEnabled && (
+                                <span className="bg-indigo-50 text-indigo-700 text-[10px] font-extrabold px-2 py-0.5 rounded-md border border-indigo-200 flex items-center gap-1">
+                                  <Award className="w-3 h-3 text-indigo-600" />
+                                  <span>VIP Rewards Club</span>
                                 </span>
                               )}
                             </div>
@@ -1706,6 +1737,15 @@ export const CustomerDashboard: React.FC = () => {
             )}
           </div>
         </div>
+      )}
+
+      {/* 🌟 CUSTOMER LOYALTY & REWARDS CLUB */}
+      {activeTab === 'rewards' && (
+        <LoyaltyMembershipCustomerView
+          locations={locations}
+          token={token}
+          currentUser={user}
+        />
       )}
 
       {activeTab === 'profile' && (

@@ -24,7 +24,8 @@ import {
   AlertTriangle,
   RefreshCw,
   DoorClosed,
-  CalendarX
+  CalendarX,
+  Award
 } from 'lucide-react';
 import { CarWash, User, WashService, TimeSlotItem } from '../types.js';
 import { useApp } from '../context/AppContext.js';
@@ -76,6 +77,49 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
   const [itemTabFilter, setItemTabFilter] = useState<'all' | 'service' | 'addon' | 'product'>('all');
   const [selectedItems, setSelectedItems] = useState<any[]>([]);
   const [expandedServiceId, setExpandedServiceId] = useState<string | null>(null);
+
+  // Loyalty Membership status for this car wash
+  const [customerMembership, setCustomerMembership] = useState<any | null>(null);
+  const [isJoiningLoyalty, setIsJoiningLoyalty] = useState(false);
+
+  useEffect(() => {
+    if (location.membershipEnabled && user && token) {
+      fetch(`/api/membership/my-membership/${location.id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+        .then(res => res.ok ? res.json() : null)
+        .then(data => setCustomerMembership(data))
+        .catch(() => {});
+    }
+  }, [location.id, location.membershipEnabled, user, token]);
+
+  const handleQuickJoinLoyalty = async () => {
+    if (!token || !location.id) return;
+    setIsJoiningLoyalty(true);
+    try {
+      const res = await fetch('/api/membership/join', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          carWashId: location.id,
+          joinMethod: 'BOOKING_MODAL_OPT_IN',
+          consentGiven: true,
+        }),
+      });
+      if (res.ok) {
+        const mem = await res.json();
+        setCustomerMembership(mem);
+        showNotification(`🎉 Welcome to ${location.name} Rewards Club! Member #${mem.membershipNumber}`, 'success');
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsJoiningLoyalty(false);
+    }
+  };
 
   // Default catalogs when specific category items are absent
   const DEFAULT_MAIN_SERVICES: WashService[] = [
@@ -702,6 +746,48 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
               {/* STEP 1: SERVICE & ADD-ON SELECTION (MULTI-SELECT SUPPORTED) */}
               {currentStep === 1 && (
                 <div className="space-y-4 animate-fade-in">
+                  {/* VIP Loyalty Programme Banner */}
+                  {location.membershipEnabled && (
+                    <div className="bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-indigo-500/10 border border-indigo-200/90 rounded-2xl p-3 sm:p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                          <Award className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-extrabold text-indigo-950 text-xs sm:text-sm">{location.name} Rewards Club</span>
+                            {customerMembership ? (
+                              <span className="text-[9px] bg-emerald-100 text-emerald-800 font-extrabold px-1.5 py-0.5 rounded-full uppercase tracking-wider">
+                                ✓ Member #{customerMembership.membershipNumber} ({customerMembership.pointsBalance} pts)
+                              </span>
+                            ) : (
+                              <span className="text-[9px] bg-indigo-100 text-indigo-800 font-extrabold px-1.5 py-0.5 rounded-full uppercase tracking-wider">
+                                ⭐ VIP Available
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-slate-600 text-[11px] block mt-0.5">
+                            {customerMembership 
+                              ? 'Your points will be added automatically to this membership upon wash completion!'
+                              : 'Join in 1-click to earn reward points on this booking redeemable for free washes & detailing!'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {!customerMembership && user && (
+                        <button
+                          type="button"
+                          disabled={isJoiningLoyalty}
+                          onClick={handleQuickJoinLoyalty}
+                          className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition-colors shrink-0 flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
+                        >
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>{isJoiningLoyalty ? 'Joining...' : 'Join Free in 1-Click'}</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
+
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
                     <div>
                       <h2 className="text-sm font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
@@ -1471,6 +1557,42 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                       </div>
                     </div>
                   </div>
+
+                  {/* VIP Rewards Club Points Indicator */}
+                  {location.membershipEnabled && (
+                    <div className="bg-indigo-50/70 border border-indigo-200/80 rounded-2xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                      <div className="flex items-center gap-2.5">
+                        <Award className="w-4 h-4 text-indigo-600 shrink-0" />
+                        <div>
+                          <span className="font-extrabold text-indigo-900 block text-xs">
+                            {customerMembership 
+                              ? `VIP Member Active • #${customerMembership.membershipNumber} (${customerMembership.pointsBalance} pts)` 
+                              : 'VIP Loyalty Reward Points Available'}
+                          </span>
+                          <span className="text-slate-500 text-[11px] block">
+                            {customerMembership
+                              ? 'Points will be credited automatically to your card balance upon wash completion.'
+                              : 'Enroll now to collect points on this booking towards complimentary washes!'}
+                          </span>
+                        </div>
+                      </div>
+                      {customerMembership ? (
+                        <span className="bg-indigo-600 text-white font-extrabold text-[10px] px-2.5 py-1 rounded-full uppercase tracking-wider shrink-0 shadow-2xs self-start sm:self-auto">
+                          ⭐ Auto-Earn Points
+                        </span>
+                      ) : user ? (
+                        <button
+                          type="button"
+                          disabled={isJoiningLoyalty}
+                          onClick={handleQuickJoinLoyalty}
+                          className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-2xs transition-colors shrink-0 flex items-center gap-1 cursor-pointer self-start sm:self-auto"
+                        >
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>{isJoiningLoyalty ? 'Enrolling...' : 'Join VIP Club'}</span>
+                        </button>
+                      ) : null}
+                    </div>
+                  )}
 
                   {/* Payment Method Selector */}
                   <div className="space-y-2">

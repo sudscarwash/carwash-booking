@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { User, CarWash, Booking, AuditLog, Role, BookingStatus, AppNotification, PlatformInfo } from '../types.js';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { User, CarWash, Booking, AuditLog, Role, BookingStatus, AppNotification, PlatformInfo, CustomerMembership, CarWashMembershipConfig, MembershipReward, MembershipRedemption } from '../types.js';
 import {
   isDeviceNotificationSupported,
   getDeviceNotificationPermission,
@@ -134,6 +134,13 @@ interface AppContextType {
   adminUpdateUser: (id: string, data: any) => Promise<boolean>;
   adminUsersList: User[];
   fetchAdminUsers: () => Promise<void>;
+  myMemberships: CustomerMembership[];
+  fetchMyMemberships: () => Promise<void>;
+  toggleMembershipFeature: (carWashId: string, isEnabled: boolean) => Promise<boolean>;
+  joinCarWashMembership: (carWashId: string, consentGiven: boolean, joinMethod?: string) => Promise<CustomerMembership | null>;
+  leaveCarWashMembership: (carWashId: string) => Promise<boolean>;
+  redeemMembershipReward: (carWashId: string, rewardId: string) => Promise<{ redemption: MembershipRedemption; newBalance: number } | null>;
+  fetchCustomerRedemptions: () => Promise<MembershipRedemption[]>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -146,6 +153,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [employees, setEmployees] = useState<User[]>([]);
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [adminUsersList, setAdminUsersList] = useState<User[]>([]);
+  const [myMemberships, setMyMemberships] = useState<CustomerMembership[]>([]);
   const [appNotifications, setAppNotifications] = useState<AppNotification[]>([]);
   const [platformInfo, setPlatformInfo] = useState<PlatformInfo | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -1244,6 +1252,163 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const fetchMyMemberships = useCallback(async () => {
+    const currentToken = localStorage.getItem('cw_token');
+    if (!currentToken) {
+      setMyMemberships([]);
+      return;
+    }
+    try {
+      const res = await fetch('/api/membership/my-memberships', {
+        headers: { 'Authorization': `Bearer ${currentToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMyMemberships(data || []);
+      }
+    } catch (e) {
+      console.warn('Failed to fetch memberships:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (token) {
+      fetchMyMemberships();
+    } else {
+      setMyMemberships([]);
+    }
+  }, [token, fetchMyMemberships]);
+
+  const toggleMembershipFeature = async (carWashId: string, isEnabled: boolean) => {
+    const currentToken = localStorage.getItem('cw_token');
+    if (!currentToken) return false;
+    try {
+      const res = await fetch('/api/membership/feature-toggle', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentToken}`
+        },
+        body: JSON.stringify({ carWashId, isEnabled })
+      });
+      if (res.ok) {
+        showNotification(`Loyalty & Membership programme ${isEnabled ? 'enabled' : 'disabled'} successfully.`, 'success');
+        await fetchLocations();
+        return true;
+      } else {
+        const err = await res.json();
+        showNotification(err.error || 'Failed to update membership feature', 'error');
+        return false;
+      }
+    } catch (e: any) {
+      showNotification(e.message || 'Failed to update membership feature', 'error');
+      return false;
+    }
+  };
+
+  const joinCarWashMembership = async (carWashId: string, consentGiven: boolean, joinMethod = 'ONLINE_OPT_IN') => {
+    const currentToken = localStorage.getItem('cw_token');
+    if (!currentToken) {
+      showNotification('Please log in to join this membership programme.', 'error');
+      return null;
+    }
+    try {
+      const res = await fetch('/api/membership/join', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentToken}`
+        },
+        body: JSON.stringify({ carWashId, consentGiven, joinMethod })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        showNotification(`🎉 Congratulations! You are now a member of ${data.carWashName || 'this car wash'}!`, 'success');
+        await fetchMyMemberships();
+        return data;
+      } else {
+        const err = await res.json();
+        showNotification(err.error || 'Failed to join membership', 'error');
+        return null;
+      }
+    } catch (e: any) {
+      showNotification(e.message || 'Failed to join membership', 'error');
+      return null;
+    }
+  };
+
+  const leaveCarWashMembership = async (carWashId: string) => {
+    const currentToken = localStorage.getItem('cw_token');
+    if (!currentToken) return false;
+    try {
+      const res = await fetch('/api/membership/leave', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentToken}`
+        },
+        body: JSON.stringify({ carWashId })
+      });
+      if (res.ok) {
+        showNotification('You have left the loyalty programme. Your history remains saved.', 'info');
+        await fetchMyMemberships();
+        return true;
+      } else {
+        const err = await res.json();
+        showNotification(err.error || 'Failed to leave membership', 'error');
+        return false;
+      }
+    } catch (e: any) {
+      showNotification(e.message || 'Failed to leave membership', 'error');
+      return false;
+    }
+  };
+
+  const redeemMembershipReward = async (carWashId: string, rewardId: string) => {
+    const currentToken = localStorage.getItem('cw_token');
+    if (!currentToken) return null;
+    try {
+      const res = await fetch('/api/membership/redeem', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentToken}`
+        },
+        body: JSON.stringify({ carWashId, rewardId })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        showNotification(`🎁 Reward redeemed! Voucher code: ${data.redemption.redemptionCode}`, 'success');
+        await fetchMyMemberships();
+        return data;
+      } else {
+        const err = await res.json();
+        showNotification(err.error || 'Failed to redeem reward', 'error');
+        return null;
+      }
+    } catch (e: any) {
+      showNotification(e.message || 'Failed to redeem reward', 'error');
+      return null;
+    }
+  };
+
+  const fetchCustomerRedemptions = async (): Promise<MembershipRedemption[]> => {
+    const currentToken = localStorage.getItem('cw_token');
+    if (!currentToken) return [];
+    try {
+      const res = await fetch('/api/membership/my-redemptions', {
+        headers: { 'Authorization': `Bearer ${currentToken}` }
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+      return [];
+    } catch (e) {
+      console.warn('Failed to fetch redemptions:', e);
+      return [];
+    }
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -1308,6 +1473,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         adminUpdateUser,
         adminUsersList,
         fetchAdminUsers,
+        myMemberships,
+        fetchMyMemberships,
+        toggleMembershipFeature,
+        joinCarWashMembership,
+        leaveCarWashMembership,
+        redeemMembershipReward,
+        fetchCustomerRedemptions,
       }}
     >
       {children}

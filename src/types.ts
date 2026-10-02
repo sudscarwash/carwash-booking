@@ -98,6 +98,7 @@ export interface CarWash {
   isActive: boolean;
   ownerNavigationEnabled?: boolean; // Legacy/full navigation access
   ownerQrCodeEnabled?: boolean; // Controls whether QR Code poster & tab are visible to the owner (default: false / hidden)
+  membershipEnabled?: boolean; // Controls whether Loyalty & Membership programme is available for this car wash (Admin/Special user managed)
   createdAt: string;
   phone?: string;
   instagram?: string;
@@ -254,5 +255,121 @@ export interface TimeSlotItem {
   unavailableReason?: string;
   sliceDetails?: TimeSlotSliceDetail[];
   bookings?: { id: string; customerName: string; status: BookingStatus }[];
+}
+
+// ==========================================
+// 🌟 MULTI-TENANT MEMBERSHIP & LOYALTY TYPES
+// ==========================================
+
+export interface CarWashMembershipConfig {
+  id: string;
+  carWashId: string;
+  isFeatureEnabled: boolean; // Set by Admin / Special User
+  isProgrammeActive: boolean; // Set by Owner (Active vs Paused)
+  programmeName: string; // e.g. "Autoshine Royal Rewards"
+  programmeDescription?: string;
+  pointsExpiryMonths: number; // 0 = never, >0 = number of months
+  allowQrJoin: boolean;
+  allowCounterJoin: boolean;
+  maxRedemptionsPerMemberPerDay?: number; // Maximum redemptions per member per day (0 = unlimited)
+  termsConditions?: string;
+  updatedAt: string;
+}
+
+export type MembershipStatus = 'ACTIVE' | 'PAUSED' | 'CANCELLED';
+
+export interface CustomerMembership {
+  id: string;
+  customerId: string;
+  customerName?: string;
+  customerEmail?: string;
+  customerPhone?: string;
+  carWashId: string;
+  carWashName?: string;
+  carWashLogo?: string;
+  membershipNumber: string; // e.g. "ASH-000102"
+  status: MembershipStatus;
+  pointsBalance: number;
+  joinedAt: string;
+  joinMethod: 'ONLINE_OPT_IN' | 'QR_SCAN' | 'COUNTER_INVITE';
+  consentGiven: boolean;
+  consentTimestamp: string;
+  termsVersion: string;
+  qrToken: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MembershipPointsRule {
+  id: string;
+  carWashId: string;
+  serviceId: string;
+  serviceName: string;
+  pointsAwarded: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type PointsTransactionType = 'EARN' | 'REDEEM' | 'EXPIRE' | 'ADJUSTMENT' | 'REFUND_REVERSAL';
+
+export interface MembershipPointsLedger {
+  id: string;
+  membershipId: string;
+  customerId: string;
+  carWashId: string;
+  points: number;
+  pointsDelta: number;
+  balanceAfter?: number;
+  transactionType: PointsTransactionType;
+  description: string;
+  bookingId?: string;
+  redemptionId?: string;
+  performedById: string;
+  performedByRole: string;
+  createdAt: string;
+}
+
+export type RewardType = 'FREE_SERVICE' | 'DISCOUNT_PERCENT' | 'FIXED_DISCOUNT' | 'FREE_ADDON' | 'CUSTOM';
+
+export interface MembershipReward {
+  id: string;
+  carWashId: string;
+  title: string;
+  description?: string;
+  pointsCost: number;
+  rewardType: RewardType;
+  discountValue?: number;
+  eligibleServiceId?: string;
+  maxRedemptionsPerMember?: number; // Cap on redemptions per individual member (0 = unlimited)
+  maxTotalSupply?: number; // Total supply cap across the car wash (0 = unlimited)
+  claimCount?: number; // Total times redeemed
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type RedemptionStatus = 'PENDING' | 'REDEEMED' | 'CANCELLED' | 'EXPIRED';
+
+export interface MembershipRedemption {
+  id: string;
+  redemptionCode: string; // e.g. "RED-82931"
+  membershipId: string;
+  customerId: string;
+  customerName?: string;
+  customerEmail?: string;
+  customerPhone?: string;
+  carWashId: string;
+  carWashName?: string;
+  rewardId: string;
+  rewardTitle: string;
+  pointsSpent: number;
+  status: RedemptionStatus;
+  redemptionToken: string;
+  qrToken?: string;
+  expiresAt?: string;
+  redeemedAt?: string;
+  redeemedByStaffId?: string;
+  createdAt: string;
 }
 

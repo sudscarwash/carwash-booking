@@ -10,7 +10,7 @@ import {
   ShieldAlert, ShieldCheck, Users, Activity, Sliders, Check, X,
   Plus, Edit, UserPlus, FileText, Ban, CheckCircle, Info, Lock, Key, Sparkles, MapPin, Navigation,
   Database, Mail, AlertTriangle, RefreshCw, Server, Send, Eye, Trash2, Terminal, Building, Phone, Star,
-  Search, Filter
+  Search, Filter, Award, Gift
 } from 'lucide-react';
 import { Role, User, MapPreset, Review, CarWash } from '../types.js';
 import { isValidEmail } from '../lib/validation.js';
@@ -70,6 +70,7 @@ export const AdminDashboard: React.FC = () => {
   const [onboardBusinessDesc, setOnboardBusinessDesc] = useState('');
   const [onboardBusinessLat, setOnboardBusinessLat] = useState(4.8917);
   const [onboardBusinessLng, setOnboardBusinessLng] = useState(114.9401);
+  const [onboardMembership, setOnboardMembership] = useState(true);
   const [onboardSubmitting, setOnboardSubmitting] = useState(false);
 
   // Edit Location State
@@ -83,6 +84,7 @@ export const AdminDashboard: React.FC = () => {
   const [editLocCapacity, setEditLocCapacity] = useState(1);
   const [editLocIsActive, setEditLocIsActive] = useState(true);
   const [editLocOwnerQr, setEditLocOwnerQr] = useState(false);
+  const [editLocMembership, setEditLocMembership] = useState(false);
   const [operationsModalCarWash, setOperationsModalCarWash] = useState<CarWash | null>(null);
   const [editLocPhone, setEditLocPhone] = useState('');
   const [editLocInstagram, setEditLocInstagram] = useState('');
@@ -141,7 +143,7 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
-  const [activeSubTab, setActiveSubTab] = useState<'users' | 'logs' | 'emails' | 'businesses' | 'presets' | 'info' | 'system' | 'reviews'>('users');
+  const [activeSubTab, setActiveSubTab] = useState<'users' | 'logs' | 'emails' | 'businesses' | 'memberships' | 'presets' | 'info' | 'system' | 'reviews'>('users');
 
   // Platform & Enquiry Info States
   const [infoEmail, setInfoEmail] = useState('');
@@ -454,6 +456,7 @@ export const AdminDashboard: React.FC = () => {
     setEditLocCapacity(loc.capacityPerSlot || 1);
     setEditLocIsActive(loc.isActive);
     setEditLocOwnerQr(loc.ownerQrCodeEnabled === true);
+    setEditLocMembership(loc.membershipEnabled === true);
     setEditLocPhone(loc.phone || '');
     setEditLocInstagram(loc.instagram || '');
     setEditLocOwnerId(loc.ownerId || '');
@@ -475,6 +478,7 @@ export const AdminDashboard: React.FC = () => {
       isActive: editLocIsActive,
       ownerNavigationEnabled: true,
       ownerQrCodeEnabled: editLocOwnerQr,
+      membershipEnabled: editLocMembership,
       phone: editLocPhone,
       instagram: editLocInstagram,
       ownerId: editLocOwnerId,
@@ -560,7 +564,8 @@ export const AdminDashboard: React.FC = () => {
             locationLng: onboardBusinessLng,
             ownerId: selectedOnboardOwnerId,
             slotDuration: 30,
-            capacityPerSlot: 2
+            capacityPerSlot: 2,
+            membershipEnabled: onboardMembership,
           })
         });
         success = res.ok;
@@ -583,7 +588,8 @@ export const AdminDashboard: React.FC = () => {
         businessAddress: onboardBusinessAddress,
         businessDesc: onboardBusinessDesc,
         businessLat: onboardBusinessLat,
-        businessLng: onboardBusinessLng
+        businessLng: onboardBusinessLng,
+        membershipEnabled: onboardMembership,
       });
     }
 
@@ -713,6 +719,17 @@ export const AdminDashboard: React.FC = () => {
           id="admin-subtab-businesses"
         >
           <Sliders className="h-4 w-4" /> Business Locations
+        </button>
+        <button
+          onClick={() => setActiveSubTab('memberships')}
+          className={`pb-3.5 px-1 border-b-2 transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+            activeSubTab === 'memberships'
+              ? 'border-red-600 text-red-600 font-bold'
+              : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}
+          id="admin-subtab-memberships"
+        >
+          <Award className="h-4 w-4" /> Loyalty Programmes
         </button>
         <button
           onClick={() => setActiveSubTab('presets')}
@@ -1277,6 +1294,22 @@ export const AdminDashboard: React.FC = () => {
                     >
                       {loc.ownerQrCodeEnabled ? 'Owner QR: Allowed' : 'Owner QR: Hidden'}
                     </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await updateLocationConfig(loc.id, {
+                          membershipEnabled: !loc.membershipEnabled,
+                        });
+                      }}
+                      className={`px-2 py-0.5 rounded-md text-[9px] font-extrabold uppercase tracking-wider cursor-pointer border transition-colors ${
+                        loc.membershipEnabled
+                          ? 'bg-indigo-50 text-indigo-800 border-indigo-200 hover:bg-indigo-100'
+                          : 'bg-slate-100 text-slate-500 border-slate-300 hover:bg-slate-200'
+                      }`}
+                      title="Click to toggle Loyalty & Membership Programme for this business location"
+                    >
+                      {loc.membershipEnabled ? '⭐ Loyalty: Enabled' : '⭐ Loyalty: Disabled'}
+                    </button>
                   </div>
                   <div className="flex items-center gap-1.5 sm:gap-2">
                     <button
@@ -1323,6 +1356,138 @@ export const AdminDashboard: React.FC = () => {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Sub Tab: Loyalty & Memberships Management */}
+      {activeSubTab === 'memberships' && (
+        <div className="space-y-6 animate-fade-in" id="admin-memberships-management-section">
+          {/* Header Banner */}
+          <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div>
+              <div className="inline-flex items-center gap-1.5 bg-indigo-500/20 border border-indigo-400/30 px-3 py-1 rounded-full text-indigo-300 text-xs font-semibold mb-2">
+                <Award className="h-3.5 w-3.5" />
+                <span>Multi-Tenant Loyalty Platform Administration</span>
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-black">Customer Loyalty &amp; Rewards Programmes</h2>
+              <p className="text-xs sm:text-sm text-slate-300 max-w-xl mt-1">
+                Centrally activate or deactivate the customer rewards club for each car wash partner in Brunei.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 shrink-0">
+              <div className="bg-white/10 backdrop-blur-md border border-white/20 px-4 py-3 rounded-2xl text-center">
+                <span className="text-[10px] uppercase font-bold text-slate-300 block">Programmes Active</span>
+                <span className="text-2xl font-black text-emerald-400">
+                  {locations.filter((l) => l.membershipEnabled).length}
+                </span>
+              </div>
+              <div className="bg-white/10 backdrop-blur-md border border-white/20 px-4 py-3 rounded-2xl text-center">
+                <span className="text-[10px] uppercase font-bold text-slate-300 block">Deactivated</span>
+                <span className="text-2xl font-black text-slate-400">
+                  {locations.filter((l) => !l.membershipEnabled).length}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Guide Card */}
+          <div className="bg-indigo-50/70 border border-indigo-200/80 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 bg-indigo-600 text-white rounded-xl shrink-0 mt-0.5 shadow-sm">
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <div>
+                <strong className="text-indigo-950 font-bold block text-sm">How Business Enablement Operates:</strong>
+                <p className="text-indigo-900/80 mt-0.5 leading-relaxed">
+                  When enabled, the business owner can access their <strong>"Loyalty &amp; Rewards"</strong> tab, configure points per service, create voucher rewards, and print their counter QR enrollment poster. Customers can join the club and earn points.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Facilities List Table */}
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div>
+                <h3 className="font-bold text-slate-900 text-base">Registered Car Wash Facilities ({locations.length})</h3>
+                <p className="text-xs text-slate-400">Click the toggle button to instantly permit or pause loyalty rewards for any partner.</p>
+              </div>
+            </div>
+
+            <div className="divide-y divide-slate-100">
+              {locations.map((loc) => {
+                const isEnabled = loc.membershipEnabled === true;
+
+                return (
+                  <div key={loc.id} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50/50 px-2 rounded-2xl transition-colors">
+                    <div className="flex items-start gap-3">
+                      <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border ${
+                        isEnabled
+                          ? 'bg-indigo-100 text-indigo-700 border-indigo-200'
+                          : 'bg-slate-100 text-slate-400 border-slate-200'
+                      }`}>
+                        <Award className="w-5 h-5" />
+                      </div>
+
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="font-extrabold text-slate-900 text-sm">{loc.name}</h4>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                            isEnabled
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                              : 'bg-slate-100 text-slate-600 border border-slate-200'
+                          }`}>
+                            {isEnabled ? 'Loyalty Active' : 'Feature Paused'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-0.5 truncate">{loc.address}</p>
+                        <span className="text-[10px] font-mono text-slate-400">ID: {loc.id}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await updateLocationConfig(loc.id, {
+                            membershipEnabled: !isEnabled,
+                          });
+                        }}
+                        className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-xs ${
+                          isEnabled
+                            ? 'bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300'
+                            : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/20'
+                        }`}
+                        title={isEnabled ? 'Click to disable loyalty for this facility' : 'Click to enable loyalty for this facility'}
+                      >
+                        {isEnabled ? (
+                          <>
+                            <Ban className="w-3.5 h-3.5" />
+                            <span>Disable Loyalty</span>
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle className="w-3.5 h-3.5" />
+                            <span>Enable Loyalty</span>
+                          </>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setOperationsModalCarWash(loc)}
+                        className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-colors cursor-pointer"
+                        title="Configure Full Operations & Services Catalog"
+                      >
+                        <Sliders className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
@@ -2672,6 +2837,25 @@ export const AdminDashboard: React.FC = () => {
                   />
                 </div>
 
+                {/* Loyalty & Rewards Membership Permission */}
+                <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-3.5 flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    id="admin-onboard-membership-toggle"
+                    checked={onboardMembership}
+                    onChange={(e) => setOnboardMembership(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 text-red-600 rounded border-slate-300 focus:ring-red-500 cursor-pointer"
+                  />
+                  <div>
+                    <label htmlFor="admin-onboard-membership-toggle" className="text-xs font-bold text-slate-800 cursor-pointer block">
+                      Enable Loyalty &amp; Rewards Programme Immediately
+                    </label>
+                    <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                      Enables the car wash loyalty club, points awarding per wash service, digital member passes, and rewards catalogue for this location.
+                    </p>
+                  </div>
+                </div>
+
                 {/* Map Coordinates Selection assist */}
                 <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 pt-2">
                   <div className="sm:col-span-7 space-y-2">
@@ -2870,6 +3054,17 @@ export const AdminDashboard: React.FC = () => {
                     >
                       <option value="allowed">Allowed (Visible in Dashboard)</option>
                       <option value="hidden">Hidden (Restricted from Owner)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Loyalty &amp; Membership Programme</label>
+                    <select
+                      value={editLocMembership ? 'enabled' : 'disabled'}
+                      onChange={(e) => setEditLocMembership(e.target.value === 'enabled')}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-500 font-medium"
+                    >
+                      <option value="enabled">Enabled (Active for Owner &amp; Customers)</option>
+                      <option value="disabled">Disabled (Feature Deactivated)</option>
                     </select>
                   </div>
                   <div>

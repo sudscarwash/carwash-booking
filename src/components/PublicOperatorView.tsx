@@ -27,7 +27,9 @@ import {
   Wrench,
   ShoppingBag,
   Flame,
-  ChevronDown
+  ChevronDown,
+  Award,
+  Gift
 } from 'lucide-react';
 import autoshineLogo from '../assets/images/autoshinebn_logo.svg';
 
@@ -50,6 +52,61 @@ export const PublicOperatorView: React.FC<PublicOperatorViewProps> = ({
 }) => {
   const [showShareModal, setShowShareModal] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // VIP Loyalty & Rewards Membership State
+  const [memberPass, setMemberPass] = useState<any | null>(null);
+  const [isJoiningLoyalty, setIsJoiningLoyalty] = useState(false);
+  const [joinSuccessMsg, setJoinSuccessMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (carWash?.membershipEnabled && currentUser) {
+      const token = localStorage.getItem('cw_token');
+      if (token) {
+        fetch(`/api/membership/my-membership/${carWash.id}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+          .then(res => res.ok ? res.json() : null)
+          .then(data => setMemberPass(data))
+          .catch(() => {});
+      }
+    }
+  }, [carWash?.id, carWash?.membershipEnabled, currentUser]);
+
+  const handleJoinClub = async () => {
+    if (!currentUser) {
+      onLoginClick();
+      return;
+    }
+    const token = localStorage.getItem('cw_token');
+    if (!token) {
+      onLoginClick();
+      return;
+    }
+    setIsJoiningLoyalty(true);
+    try {
+      const res = await fetch('/api/membership/join', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          carWashId: carWash.id,
+          joinMethod: 'QR_STAND_OPT_IN',
+          consentGiven: true,
+        }),
+      });
+      if (res.ok) {
+        const mem = await res.json();
+        setMemberPass(mem);
+        setJoinSuccessMsg(`Welcome to ${carWash.name} Rewards Club! Member #${mem.membershipNumber}`);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsJoiningLoyalty(false);
+    }
+  };
 
   const directUrl = typeof window !== 'undefined' ? window.location.href : '';
 
@@ -512,6 +569,58 @@ export const PublicOperatorView: React.FC<PublicOperatorViewProps> = ({
             </div>
           </div>
         </div>
+
+        {/* 🌟 VIP LOYALTY & REWARDS PROGRAMME BANNER (FOR QR STANDEE & ONLINE CUSTOMERS) */}
+        {carWash.membershipEnabled && (
+          <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-2xl sm:rounded-3xl p-5 sm:p-7 text-white shadow-md border border-indigo-900/50 flex flex-col md:flex-row md:items-center justify-between gap-5 relative overflow-hidden" id="public-loyalty-section">
+            <div className="absolute right-0 top-0 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="relative z-10 space-y-2">
+              <div className="inline-flex items-center gap-1.5 bg-indigo-500/20 border border-indigo-400/30 px-3 py-1 rounded-full text-indigo-300 text-xs font-semibold">
+                <Award className="h-3.5 w-3.5" />
+                <span>{carWash.name} Rewards Club</span>
+              </div>
+              <h3 className="text-xl sm:text-2xl font-black">
+                {memberPass ? 'You Are A Registered VIP Member!' : 'Earn Points On Every Wash!'}
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-300 max-w-xl">
+                {memberPass
+                  ? `Member #${memberPass.membershipNumber} • Current Balance: ${memberPass.pointsBalance} pts. Points are automatically credited upon wash completion.`
+                  : 'Join our exclusive Rewards Club in 1-click. Accumulate points with every wash you book or walk-in, and redeem for complimentary detailing and discounts.'}
+              </p>
+
+              {joinSuccessMsg && (
+                <div className="p-3 bg-emerald-500/20 border border-emerald-400/40 rounded-xl text-emerald-200 text-xs font-bold flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  <span>{joinSuccessMsg}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="relative z-10 shrink-0 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+              {memberPass ? (
+                <button
+                  type="button"
+                  onClick={onBrowseAll}
+                  className="px-5 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold rounded-xl sm:rounded-2xl text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Gift className="w-4 h-4" />
+                  <span>View Rewards Catalog &amp; Pass</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={isJoiningLoyalty}
+                  onClick={handleJoinClub}
+                  className="px-6 py-3.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-extrabold rounded-xl sm:rounded-2xl text-xs sm:text-sm shadow-lg shadow-emerald-950/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  id="btn-public-join-club"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  <span>{isJoiningLoyalty ? 'Joining...' : currentUser ? 'Join Free in 1-Click' : 'Sign In to Join VIP Club'}</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Available Wash Services & Packages Menu */}
         <div className="space-y-3 sm:space-y-4">

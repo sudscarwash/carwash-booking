@@ -164,11 +164,11 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
                 {isNotifOpen && (
                   <>
                     <div
-                      className="fixed inset-0 z-30 cursor-default bg-black/20 sm:bg-transparent backdrop-blur-[1px] sm:backdrop-blur-none"
+                      className="fixed inset-0 z-40 cursor-default bg-slate-900/20 sm:bg-transparent backdrop-blur-[1px] sm:backdrop-blur-none transition-opacity"
                       onClick={() => setIsNotifOpen(false)}
                     />
-                    <div className="fixed sm:absolute left-3 right-3 sm:left-auto sm:right-0 top-[68px] sm:top-full mt-0 sm:mt-2 w-auto sm:w-96 max-w-none sm:max-w-md bg-white border border-slate-200/90 rounded-2xl shadow-2xl z-40 overflow-hidden py-2 animate-in fade-in slide-in-from-top-2 duration-150">
-                      <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                    <div className="fixed sm:absolute left-3 right-3 sm:left-auto sm:right-0 top-[4.25rem] sm:top-full sm:mt-2 w-auto sm:w-96 max-w-lg sm:max-w-none mx-auto sm:mx-0 bg-white border border-slate-200/90 rounded-2xl shadow-2xl z-50 overflow-hidden py-2 animate-in fade-in slide-in-from-top-2 duration-150">
+                      <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
                         <div className="flex items-center gap-2">
                           <Bell className="h-4 w-4 text-sky-600" />
                           <span className="text-xs font-black text-slate-800 uppercase tracking-wider">
@@ -180,17 +180,27 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
                             </span>
                           )}
                         </div>
-                        {unreadNotificationCount > 0 && (
+                        <div className="flex items-center gap-2">
+                          {unreadNotificationCount > 0 && (
+                            <button
+                              onClick={() => markAllNotificationsAsRead()}
+                              className="text-[11px] font-bold text-sky-600 hover:text-sky-800 flex items-center gap-1 cursor-pointer transition-colors"
+                            >
+                              <CheckCheck className="h-3.5 w-3.5" /> Mark all read
+                            </button>
+                          )}
                           <button
-                            onClick={() => markAllNotificationsAsRead()}
-                            className="text-[11px] font-bold text-sky-600 hover:text-sky-800 flex items-center gap-1 cursor-pointer transition-colors"
+                            type="button"
+                            onClick={() => setIsNotifOpen(false)}
+                            className="sm:hidden p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 rounded-lg transition-colors cursor-pointer"
+                            title="Close notifications"
                           >
-                            <CheckCheck className="h-3.5 w-3.5" /> Mark all read
+                            <X className="h-4 w-4" />
                           </button>
-                        )}
+                        </div>
                       </div>
 
-                      <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
+                      <div className="max-h-[60vh] sm:max-h-80 overflow-y-auto divide-y divide-slate-100 overscroll-contain">
                         {appNotifications.length === 0 ? (
                           <div className="p-6 text-center text-slate-400">
                             <Bell className="h-8 w-8 mx-auto mb-2 opacity-30" />
@@ -217,7 +227,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
                               }`}
                             >
                               <div
-                                className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${
+                                className={`w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 ${
                                   !n.isRead ? 'bg-sky-500 ring-4 ring-sky-100' : 'bg-slate-200'
                                 }`}
                               />
@@ -312,7 +322,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
               {/* Floating Dropdown Menu */}
               {isProfileOpen && (
                 <div
-                  className="absolute right-0 mt-2 w-64 max-w-[calc(100vw-24px)] bg-white border border-slate-200/80 rounded-2xl shadow-xl z-40 overflow-hidden py-1.5 animate-in fade-in slide-in-from-top-2 duration-150"
+                  className="absolute right-0 mt-2 w-64 max-w-[calc(100vw-1.5rem)] bg-white border border-slate-200/80 rounded-2xl shadow-xl z-50 overflow-hidden py-1.5 animate-in fade-in slide-in-from-top-2 duration-150"
                   id="user-profile-dropdown-menu"
                 >
                   {/* User Profile Header Info */}

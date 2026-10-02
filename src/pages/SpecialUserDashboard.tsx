@@ -29,6 +29,7 @@ import {
   Sliders,
   QrCode,
   EyeOff,
+  Award,
 } from 'lucide-react';
 import { CarWash, Role, Review } from '../types.js';
 import { FEATURES } from '../config/features.js';
@@ -126,6 +127,7 @@ export const SpecialUserDashboard: React.FC = () => {
   const [lngInput, setLngInput] = useState<string>('114.9401');
   const [businessDesc, setBusinessDesc] = useState('');
   const [allowOwnerQrImmediately, setAllowOwnerQrImmediately] = useState<boolean>(false);
+  const [allowMembershipImmediately, setAllowMembershipImmediately] = useState<boolean>(true);
   const [operationsModalCarWash, setOperationsModalCarWash] = useState<CarWash | null>(null);
   const [quickSearchQuery, setQuickSearchQuery] = useState('');
 
@@ -140,6 +142,7 @@ export const SpecialUserDashboard: React.FC = () => {
   const [existLng, setExistLng] = useState<number>(114.9401);
   const [existLatInput, setExistLatInput] = useState<string>('4.8917');
   const [existLngInput, setExistLngInput] = useState<string>('114.9401');
+  const [existMembership, setExistMembership] = useState<boolean>(true);
   const [existQuickQuery, setExistQuickQuery] = useState('');
   const [isUpdatingExisting, setIsUpdatingExisting] = useState(false);
 
@@ -153,6 +156,7 @@ export const SpecialUserDashboard: React.FC = () => {
       setExistLng(first.locationLng);
       setExistLatInput(first.locationLat.toString());
       setExistLngInput(first.locationLng.toString());
+      setExistMembership(first.membershipEnabled === true);
     }
   }, [locations]);
 
@@ -166,6 +170,7 @@ export const SpecialUserDashboard: React.FC = () => {
       setExistLng(found.locationLng);
       setExistLatInput(found.locationLat.toString());
       setExistLngInput(found.locationLng.toString());
+      setExistMembership(found.membershipEnabled === true);
     }
   };
 
@@ -261,6 +266,7 @@ export const SpecialUserDashboard: React.FC = () => {
             capacityPerSlot: 2,
             ownerNavigationEnabled: true,
             ownerQrCodeEnabled: allowOwnerQrImmediately,
+            membershipEnabled: allowMembershipImmediately,
           })
         });
         success = res.ok;
@@ -283,6 +289,7 @@ export const SpecialUserDashboard: React.FC = () => {
         businessDesc,
         ownerNavigationEnabled: true,
         ownerQrCodeEnabled: allowOwnerQrImmediately,
+        membershipEnabled: allowMembershipImmediately,
       };
       success = await createOwnerWithBusiness(data);
     }
@@ -313,6 +320,7 @@ export const SpecialUserDashboard: React.FC = () => {
       locationLat: existLat,
       locationLng: existLng,
       ownerId: existOwnerId || undefined,
+      membershipEnabled: existMembership,
     });
     setIsUpdatingExisting(false);
 
@@ -560,6 +568,25 @@ export const SpecialUserDashboard: React.FC = () => {
                   </div>
                 </div>
 
+                {/* Loyalty & Rewards Membership Permission Configuration */}
+                <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-4 flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    id="allow-membership-toggle"
+                    checked={allowMembershipImmediately}
+                    onChange={(e) => setAllowMembershipImmediately(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
+                  />
+                  <div>
+                    <label htmlFor="allow-membership-toggle" className="text-xs font-bold text-slate-800 cursor-pointer block">
+                      Enable Loyalty &amp; Rewards Programme Immediately
+                    </label>
+                    <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                      Activates points earning on online bookings and walk-ins, digital QR membership passes, and redeemable rewards catalogue for this facility.
+                    </p>
+                  </div>
+                </div>
+
                 <button
                   type="submit"
                   disabled={isSubmitting}
@@ -772,6 +799,18 @@ export const SpecialUserDashboard: React.FC = () => {
                             {selectedWashObj.ownerQrCodeEnabled ? 'Allowed (Visible)' : 'Hidden'}
                           </span>
                         </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-500 font-medium">Loyalty &amp; Rewards:</span>
+                          <span
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase tracking-wider ${
+                              selectedWashObj.membershipEnabled
+                                ? 'bg-indigo-100 text-indigo-800 border border-indigo-200'
+                                : 'bg-slate-100 text-slate-600 border border-slate-200'
+                            }`}
+                          >
+                            {selectedWashObj.membershipEnabled ? '⭐ Active (Enabled)' : 'Disabled'}
+                          </span>
+                        </div>
                         <div className="flex justify-between">
                           <span className="text-slate-500 font-medium">Owner Email:</span>
                           <span className="font-mono font-bold text-slate-800">{selectedWashObj.ownerEmail || 'N/A'}</span>
@@ -786,41 +825,67 @@ export const SpecialUserDashboard: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* Owner QR Code Quick Toggle & Operations Button */}
+                      {/* Owner QR Code & Loyalty Quick Toggles & Operations Button */}
                       <div className="pt-2 border-t border-slate-200/60 space-y-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-xs text-slate-600 font-bold">Quick Toggle:</span>
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              const next = !selectedWashObj.ownerQrCodeEnabled;
-                              const success = await updateLocationConfig(selectedWashObj.id, {
-                                ownerNavigationEnabled: true,
-                                ownerQrCodeEnabled: next,
-                              });
-                              if (success) {
-                                showToast(`Owner QR Code ${next ? 'enabled' : 'hidden'} for "${selectedWashObj.name}"`);
-                              }
-                            }}
-                            className={`px-2.5 py-1 rounded-xl text-[11px] font-extrabold flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs ${
-                              selectedWashObj.ownerQrCodeEnabled
-                                ? 'bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300'
-                                : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300'
-                            }`}
-                            id="special-quick-toggle-owner-qr-btn"
-                          >
-                            {selectedWashObj.ownerQrCodeEnabled ? (
-                              <>
-                                <EyeOff className="w-3.5 h-3.5" />
-                                <span>Hide QR Code</span>
-                              </>
-                            ) : (
-                              <>
-                                <QrCode className="w-3.5 h-3.5" />
-                                <span>Allow QR Code</span>
-                              </>
-                            )}
-                          </button>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-xs text-slate-600 font-bold">Quick Toggles:</span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const next = !selectedWashObj.ownerQrCodeEnabled;
+                                const success = await updateLocationConfig(selectedWashObj.id, {
+                                  ownerNavigationEnabled: true,
+                                  ownerQrCodeEnabled: next,
+                                });
+                                if (success) {
+                                  showToast(`Owner QR Code ${next ? 'enabled' : 'hidden'} for "${selectedWashObj.name}"`);
+                                }
+                              }}
+                              className={`px-2.5 py-1 rounded-xl text-[11px] font-extrabold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs ${
+                                selectedWashObj.ownerQrCodeEnabled
+                                  ? 'bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300'
+                                  : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300'
+                              }`}
+                              id="special-quick-toggle-owner-qr-btn"
+                              title="Toggle Owner QR code access"
+                            >
+                              {selectedWashObj.ownerQrCodeEnabled ? (
+                                <>
+                                  <EyeOff className="w-3.5 h-3.5" />
+                                  <span>Hide QR</span>
+                                </>
+                              ) : (
+                                <>
+                                  <QrCode className="w-3.5 h-3.5" />
+                                  <span>Allow QR</span>
+                                </>
+                              )}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const next = !selectedWashObj.membershipEnabled;
+                                const success = await updateLocationConfig(selectedWashObj.id, {
+                                  membershipEnabled: next,
+                                });
+                                if (success) {
+                                  showToast(`Loyalty Programme ${next ? 'enabled' : 'disabled'} for "${selectedWashObj.name}"`);
+                                }
+                              }}
+                              className={`px-2.5 py-1 rounded-xl text-[11px] font-extrabold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs ${
+                                selectedWashObj.membershipEnabled
+                                  ? 'bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200'
+                                  : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200'
+                              }`}
+                              id="special-quick-toggle-loyalty-btn"
+                              title="Toggle Loyalty & Rewards membership for this car wash"
+                            >
+                              <Award className="w-3.5 h-3.5" />
+                              <span>{selectedWashObj.membershipEnabled ? 'Disable Loyalty' : 'Enable Loyalty'}</span>
+                            </button>
+                          </div>
                         </div>
 
                         <button
@@ -952,6 +1017,23 @@ export const SpecialUserDashboard: React.FC = () => {
                         </option>
                       ))}
                   </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 mb-1 uppercase tracking-wider">
+                    Loyalty &amp; Membership Programme
+                  </label>
+                  <select
+                    value={existMembership ? 'enabled' : 'disabled'}
+                    onChange={(e) => setExistMembership(e.target.value === 'enabled')}
+                    className="w-full px-3 py-2 border border-slate-200 focus:border-emerald-500 rounded-xl bg-white font-medium text-xs text-slate-800 outline-none"
+                  >
+                    <option value="enabled">⭐ Enabled (Loyalty Club &amp; Points Active)</option>
+                    <option value="disabled">Disabled (Hidden from Customers &amp; Inactive)</option>
+                  </select>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Enabling grants the car wash owner and bay operators active loyalty points awarding and customer reward redemptions.
+                  </p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">

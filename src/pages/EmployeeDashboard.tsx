@@ -10,12 +10,13 @@ import {
   Briefcase as BriefcaseIcon, Calendar as CalendarIcon, Clock as ClockIcon, Check as CheckIcon, ChevronRight as ChevronRightIcon,
   CheckCircle as CheckCircleIcon, Info as InfoIcon, MapPin as MapPinIcon, CalendarDays, ChevronLeft, ChevronRight, Plus,
   Sparkles, Phone, Car, User as UserIcon, X, CheckCheck, Pencil, MessageCircle, CreditCard,
-  Search, Filter
+  Search, Filter, Coins, Award
 } from 'lucide-react';
 import { EditBookingModal } from '../components/EditBookingModal.js';
 import { ServicePickerModal } from '../components/ServicePickerModal.js';
 import { SettlementConfirmationModal } from '../components/SettlementConfirmationModal.js';
 import { TransferProviderSelector } from '../components/TransferProviderSelector.js';
+import { LoyaltyMembershipEmployeeView } from '../components/LoyaltyMembershipEmployeeView.js';
 import { useModalBack, useTabBack } from '../utils/useBackHandler.js';
 
 const getTodayDateString = () => new Date().toISOString().split('T')[0];
@@ -139,10 +140,10 @@ const getCatalogForLocation = (loc?: CarWash | null): WashService[] => {
 };
 
 export const EmployeeDashboard: React.FC = () => {
-  const { user, bookings, updateBookingStatus, locations, createManualBooking, requestBookingEta } = useApp();
+  const { user, token, bookings, updateBookingStatus, locations, createManualBooking, requestBookingEta } = useApp();
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [requestingEtaBookingId, setRequestingEtaBookingId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'queue' | 'calendar'>('queue');
+  const [activeTab, setActiveTab] = useState<'queue' | 'calendar' | 'loyalty'>('queue');
   const [showStationInfoModal, setShowStationInfoModal] = useState(false);
 
   // Edit Booking Modal state
@@ -520,6 +521,22 @@ export const EmployeeDashboard: React.FC = () => {
           <CalendarDays className="w-5 h-5" />
           <span className="text-[10px]">Calendar & Slots</span>
         </button>
+
+        <button
+          onClick={() => {
+            setActiveTab('loyalty');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          className={`flex-1 flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition-all cursor-pointer ${
+            activeTab === 'loyalty'
+              ? 'text-indigo-600 font-extrabold scale-105'
+              : 'text-slate-400 font-medium hover:text-slate-600'
+          }`}
+          id="btn-emp-nav-loyalty"
+        >
+          <Coins className="w-5 h-5" />
+          <span className="text-[10px]">Loyalty &amp; Points</span>
+        </button>
       </div>
 
       {/* Desktop Tabs */}
@@ -543,7 +560,18 @@ export const EmployeeDashboard: React.FC = () => {
           }`}
         >
           <CalendarDays className="w-4 h-4" />
-          <span>Calendar & Quick Slots</span>
+          <span>Calendar &amp; Quick Slots</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('loyalty')}
+          className={`px-4 py-2 text-sm font-bold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 ${
+            activeTab === 'loyalty'
+              ? 'border-indigo-600 text-indigo-600 font-extrabold'
+              : 'border-transparent text-slate-400 hover:text-slate-600'
+          }`}
+        >
+          <Coins className="w-4 h-4" />
+          <span>Loyalty Desk &amp; Vouchers</span>
         </button>
       </div>
 
@@ -1333,6 +1361,15 @@ export const EmployeeDashboard: React.FC = () => {
               </div>
             </div>
           </div>
+        )}
+
+        {/* 🌟 LOYALTY & VOUCHERS DESK */}
+        {activeTab === 'loyalty' && myLocation && (
+          <LoyaltyMembershipEmployeeView
+            carWash={myLocation}
+            token={token}
+            currentUser={user}
+          />
         )}
       </div>
 

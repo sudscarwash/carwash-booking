@@ -20,6 +20,7 @@ import {
   AlertTriangle,
   QrCode,
   EyeOff,
+  Award,
 } from 'lucide-react';
 import { CarWash, WashService, WeeklySchedule } from '../types';
 import { useApp } from '../context/AppContext';
@@ -47,7 +48,7 @@ export const CarWashOperationsModal: React.FC<CarWashOperationsModalProps> = ({
   onClose,
   onSuccess,
 }) => {
-  const { updateLocationConfig } = useApp();
+  const { updateLocationConfig, toggleMembershipFeature } = useApp();
 
   const [activeTab, setActiveTab] = useState<'access' | 'services' | 'schedule' | 'banking'>('access');
   const [isSaving, setIsSaving] = useState(false);
@@ -61,6 +62,9 @@ export const CarWashOperationsModal: React.FC<CarWashOperationsModalProps> = ({
   // Core Access & Basic Params
   const [ownerQrCodeEnabled, setOwnerQrCodeEnabled] = useState<boolean>(
     carWash.ownerQrCodeEnabled === true
+  );
+  const [membershipEnabled, setMembershipEnabled] = useState<boolean>(
+    carWash.membershipEnabled === true
   );
   const [isActive, setIsActive] = useState<boolean>(carWash.isActive);
   const [slotDuration, setSlotDuration] = useState<number>(carWash.slotDuration || 30);
@@ -170,6 +174,7 @@ export const CarWashOperationsModal: React.FC<CarWashOperationsModalProps> = ({
       const payload: Partial<CarWash> = {
         ownerNavigationEnabled: true,
         ownerQrCodeEnabled,
+        membershipEnabled,
         isActive,
         slotDuration: Number(slotDuration),
         capacityPerSlot: Number(capacityPerSlot),
@@ -369,6 +374,63 @@ export const CarWashOperationsModal: React.FC<CarWashOperationsModalProps> = ({
                     <span
                       className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
                         ownerQrCodeEnabled ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+
+              {/* LOYALTY & MEMBERSHIP FEATURE TOGGLE (Admin / Special Control) */}
+              <div
+                className={`p-5 rounded-2xl border transition-all ${
+                  membershipEnabled
+                    ? 'bg-indigo-50/70 border-indigo-200'
+                    : 'bg-slate-50 border-slate-200'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start gap-3">
+                    <div
+                      className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                        membershipEnabled
+                          ? 'bg-indigo-100 text-indigo-700'
+                          : 'bg-slate-200 text-slate-600'
+                      }`}
+                    >
+                      <Award className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-extrabold text-slate-900">
+                          Customer Loyalty &amp; Membership Programme
+                        </h3>
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
+                            membershipEnabled
+                              ? 'bg-indigo-200 text-indigo-900'
+                              : 'bg-slate-200 text-slate-700'
+                          }`}
+                        >
+                          {membershipEnabled ? 'Enabled for Business' : 'Feature Disabled'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-600 mt-1 leading-relaxed max-w-xl">
+                        Enables the multi-tenant membership programme for this car wash. Once enabled, the business owner can configure service points, create redeemable vouchers, and accept customer joins. When disabled, existing history remains preserved for auditing, but customer enrollment and point earning/redemptions are paused.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setMembershipEnabled((prev) => !prev)}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
+                      membershipEnabled ? 'bg-indigo-600' : 'bg-slate-300'
+                    }`}
+                    id="toggle-membership-feature-btn"
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                        membershipEnabled ? 'translate-x-5' : 'translate-x-0'
                       }`}
                     />
                   </button>

@@ -1,6 +1,6 @@
 {
-  "name": "Development Car Wash Booking system (for supabase)",
-  "description": "Full-stack car wash booking system with real-time bay scheduling, customer QR code generator, and direct station booking pages.",
+  "name": "Development (membership system) Production Car Wash Booking system (for supabase) - September",
+  "description": "Multi-tenant car wash booking and loyalty membership SaaS with custom points, rewards, QR verification, and automated customer rewards tracking.",
   "requestFramePermissions": [
     "geolocation"
   ],
