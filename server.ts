@@ -2554,11 +2554,11 @@ async function startServer() {
         } catch (ptsErr) {
           console.error('Failed to award loyalty points on booking completion:', ptsErr);
         }
-      } else if (status === BookingStatus.CANCELLED) {
+      } else if (status === BookingStatus.CANCELLED || status === BookingStatus.REJECTED) {
         try {
           await reversePointsForBookingCancellation(booking.id, { id: user.id, role: user.role });
         } catch (revErr) {
-          console.error('Failed to reverse points on booking cancellation:', revErr);
+          console.error('Failed to reverse points on booking cancellation/rejection:', revErr);
         }
       }
 
@@ -3565,7 +3565,7 @@ async function startServer() {
   // ==========================================
 
   // 1. Get Programme Details / Config (Public / Authenticated)
-  app.get(['/api/membership/programme/:carWashId', '/api/membership/config/:carWashId'], async (req, res) => {
+  const handleGetMembershipConfig = async (req: express.Request, res: express.Response) => {
     try {
       const config = await getCarWashMembershipConfig(req.params.carWashId);
       if (!config) {
@@ -3576,7 +3576,9 @@ async function startServer() {
     } catch (error: any) {
       res.status(500).json({ error: error.message || 'Failed to get membership programme' });
     }
-  });
+  };
+  app.get('/api/membership/programme/:carWashId', handleGetMembershipConfig);
+  app.get('/api/membership/config/:carWashId', handleGetMembershipConfig);
 
   // 2. Admin / Special User Feature Toggle
   app.put(
@@ -3614,65 +3616,73 @@ async function startServer() {
   );
 
   // 3. Owner / Admin Update Programme Settings
+  const handlePutMembershipConfig = async (req: AuthenticatedRequest, res: express.Response) => {
+    try {
+      const carWashId = req.params.carWashId;
+      const cw = await getCarWashById(carWashId);
+      if (!cw) {
+        res.status(404).json({ error: 'Car wash not found.' });
+        return;
+      }
+
+      // Verify tenant authorization: Owner must own this car wash
+      if (req.user!.role === Role.OWNER && cw.ownerId !== req.user!.id) {
+        res.status(403).json({ error: 'You do not own this car wash.' });
+        return;
+      }
+
+      // Check if feature is enabled by admin
+      const currentCfg = await getCarWashMembershipConfig(carWashId);
+      if (!currentCfg?.isFeatureEnabled && req.user!.role !== Role.ADMIN) {
+        res.status(403).json({ error: 'Membership feature has not been enabled for your business by an Administrator.' });
+        return;
+      }
+
+      const {
+        isProgrammeActive,
+        programmeName,
+        programmeDescription,
+        pointsExpiryMonths,
+        allowQrJoin,
+        allowCounterJoin,
+        termsConditions,
+      } = req.body;
+
+      const updated = await upsertCarWashMembershipConfig({
+        carWashId,
+        isProgrammeActive,
+        programmeName,
+        programmeDescription,
+        pointsExpiryMonths: pointsExpiryMonths !== undefined ? parseInt(pointsExpiryMonths, 10) : undefined,
+        allowQrJoin,
+        allowCounterJoin,
+        termsConditions,
+      });
+
+      await addAuditLog(
+        req.user!.id,
+        req.user!.email,
+        'MEMBERSHIP_PROGRAMME_UPDATE',
+        `Updated loyalty programme settings for ${cw.name} (Active: ${updated.isProgrammeActive})`
+      );
+
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to update membership programme' });
+    }
+  };
+
   app.put(
-    ['/api/membership/programme/:carWashId', '/api/membership/config/:carWashId'],
+    '/api/membership/programme/:carWashId',
     authenticateToken,
     requireRoles([Role.OWNER, Role.ADMIN]),
-    async (req: AuthenticatedRequest, res) => {
-      try {
-        const carWashId = req.params.carWashId;
-        const cw = await getCarWashById(carWashId);
-        if (!cw) {
-          res.status(404).json({ error: 'Car wash not found.' });
-          return;
-        }
-
-        // Verify tenant authorization: Owner must own this car wash
-        if (req.user!.role === Role.OWNER && cw.ownerId !== req.user!.id) {
-          res.status(403).json({ error: 'You do not own this car wash.' });
-          return;
-        }
-
-        // Check if feature is enabled by admin
-        const currentCfg = await getCarWashMembershipConfig(carWashId);
-        if (!currentCfg?.isFeatureEnabled && req.user!.role !== Role.ADMIN) {
-          res.status(403).json({ error: 'Membership feature has not been enabled for your business by an Administrator.' });
-          return;
-        }
-
-        const {
-          isProgrammeActive,
-          programmeName,
-          programmeDescription,
-          pointsExpiryMonths,
-          allowQrJoin,
-          allowCounterJoin,
-          termsConditions,
-        } = req.body;
-
-        const updated = await upsertCarWashMembershipConfig({
-          carWashId,
-          isProgrammeActive,
-          programmeName,
-          programmeDescription,
-          pointsExpiryMonths: pointsExpiryMonths !== undefined ? parseInt(pointsExpiryMonths, 10) : undefined,
-          allowQrJoin,
-          allowCounterJoin,
-          termsConditions,
-        });
-
-        await addAuditLog(
-          req.user!.id,
-          req.user!.email,
-          'MEMBERSHIP_PROGRAMME_UPDATE',
-          `Updated loyalty programme settings for ${cw.name} (Active: ${updated.isProgrammeActive})`
-        );
-
-        res.json(updated);
-      } catch (error: any) {
-        res.status(500).json({ error: error.message || 'Failed to update membership programme' });
-      }
-    }
+    handlePutMembershipConfig
+  );
+  app.put(
+    '/api/membership/config/:carWashId',
+    authenticateToken,
+    requireRoles([Role.OWNER, Role.ADMIN]),
+    handlePutMembershipConfig
   );
 
   // 4. Points Rules CRUD
@@ -3843,10 +3853,15 @@ async function startServer() {
         return;
       }
 
+      const cw = await getCarWashById(carWashId);
+      if (!cw || !cw.membershipEnabled) {
+        res.status(400).json({ error: 'Loyalty programme is disabled or not found for this car wash operator.' });
+        return;
+      }
+
       const membership = await joinCarWashMembership(req.user!.id, carWashId, joinMethod || 'ONLINE_OPT_IN');
 
       // Send in-app notification to customer
-      const cw = await getCarWashById(carWashId);
       await createNotification({
         id: `notif_${Math.random().toString(36).substr(2, 9)}`,
         userId: req.user!.id,
@@ -3951,6 +3966,12 @@ async function startServer() {
       const { carWashId, rewardId } = req.body;
       if (!carWashId || !rewardId) {
         res.status(400).json({ error: 'carWashId and rewardId are required.' });
+        return;
+      }
+
+      const cw = await getCarWashById(carWashId);
+      if (!cw || !cw.membershipEnabled) {
+        res.status(400).json({ error: 'Loyalty programme is disabled or not found for this car wash operator.' });
         return;
       }
 

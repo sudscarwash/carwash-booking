@@ -245,11 +245,14 @@ export const CustomerDashboard: React.FC = () => {
   const [radiusKm, setRadiusKm] = useState(1);
   const [viewAllLocations, setViewAllLocations] = useState(true);
 
+  // Check if loyalty program is enabled globally
+  const isLoyaltyVisibleToCustomer = Boolean(FEATURES.ENABLE_LOYALTY_PROGRAM);
+
   // Bottom Mobile Navigation and Product Selection states
   const [activeTab, setActiveTab] = useState<'book' | 'bookings' | 'rewards' | 'profile'>(() => {
     if (typeof window !== 'undefined') {
       const p = new URLSearchParams(window.location.search);
-      if (p.get('join') === 'true' || p.get('tab') === 'rewards' || window.location.hash === '#rewards') {
+      if (FEATURES.ENABLE_LOYALTY_PROGRAM && (p.get('join') === 'true' || p.get('tab') === 'rewards' || window.location.hash === '#rewards')) {
         return 'rewards';
       }
     }
@@ -847,21 +850,23 @@ export const CustomerDashboard: React.FC = () => {
           <span className="text-[10px]">My Bookings</span>
         </button>
 
-        <button
-          onClick={() => {
-            setActiveTab('rewards');
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          }}
-          className={`flex flex-col items-center gap-1 py-1 px-4 rounded-xl transition-all cursor-pointer ${
-            activeTab === 'rewards'
-              ? 'text-indigo-600 font-extrabold scale-110'
-              : 'text-slate-400 font-medium hover:text-slate-600'
-          }`}
-          id="btn-nav-rewards"
-        >
-          <Award className="w-5.5 h-5.5" />
-          <span className="text-[10px]">Rewards Club</span>
-        </button>
+        {isLoyaltyVisibleToCustomer && (
+          <button
+            onClick={() => {
+              setActiveTab('rewards');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            className={`flex flex-col items-center gap-1 py-1 px-4 rounded-xl transition-all cursor-pointer ${
+              activeTab === 'rewards'
+                ? 'text-indigo-600 font-extrabold scale-110'
+                : 'text-slate-400 font-medium hover:text-slate-600'
+            }`}
+            id="btn-nav-rewards"
+          >
+            <Award className="w-5.5 h-5.5" />
+            <span className="text-[10px]">Rewards Club</span>
+          </button>
+        )}
 
         <button
           onClick={() => {
@@ -1154,10 +1159,19 @@ export const CustomerDashboard: React.FC = () => {
                                 </span>
                               )}
                               {loc.membershipEnabled && (
-                                <span className="bg-indigo-50 text-indigo-700 text-[10px] font-extrabold px-2 py-0.5 rounded-md border border-indigo-200 flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveTab('rewards');
+                                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                                  }}
+                                  className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] font-extrabold px-2 py-0.5 rounded-md border border-indigo-200 flex items-center gap-1 cursor-pointer transition-colors"
+                                  title="View VIP Rewards Club & Points"
+                                >
                                   <Award className="w-3 h-3 text-indigo-600" />
                                   <span>VIP Rewards Club</span>
-                                </span>
+                                </button>
                               )}
                             </div>
                           </div>
@@ -1740,11 +1754,15 @@ export const CustomerDashboard: React.FC = () => {
       )}
 
       {/* 🌟 CUSTOMER LOYALTY & REWARDS CLUB */}
-      {activeTab === 'rewards' && (
+      {activeTab === 'rewards' && isLoyaltyVisibleToCustomer && (
         <LoyaltyMembershipCustomerView
           locations={locations}
           token={token}
           currentUser={user}
+          onNavigateToBook={() => {
+            setActiveTab('book');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
         />
       )}
 

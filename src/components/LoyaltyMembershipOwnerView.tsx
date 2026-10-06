@@ -36,6 +36,36 @@ import {
 } from '../types.js';
 import { StaffMembershipCounterModal } from './StaffMembershipCounterModal.js';
 
+// Safe JSON response parsing helpers
+const safeJsonFetch = async (res: Response) => {
+  if (!res.ok) return null;
+  const ct = res.headers.get('content-type') || '';
+  if (ct.includes('application/json')) {
+    try {
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
+  return null;
+};
+
+const safeJsonOrError = async (res: Response, fallbackError: string) => {
+  const ct = res.headers.get('content-type') || '';
+  let data: any = null;
+  if (ct.includes('application/json')) {
+    try {
+      data = await res.json();
+    } catch {
+      data = null;
+    }
+  }
+  if (!res.ok) {
+    throw new Error((data && data.error) || fallbackError);
+  }
+  return data;
+};
+
 interface LoyaltyMembershipOwnerViewProps {
   carWash: CarWash;
   token: string | null;
@@ -147,19 +177,6 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
     if (!carWash?.id || !token) return;
     setLoading(true);
     try {
-      const safeJson = async (res: Response) => {
-        if (!res.ok) return null;
-        const ct = res.headers.get('content-type') || '';
-        if (ct.includes('application/json')) {
-          try {
-            return await res.json();
-          } catch {
-            return null;
-          }
-        }
-        return null;
-      };
-
       const [configRes, rulesRes, rewardsRes, membersRes, redemptionsRes] = await Promise.all([
         fetch(`/api/membership/programme/${carWash.id}`, { headers: { Authorization: `Bearer ${token}` } }),
         fetch(`/api/membership/points-rules/${carWash.id}`, { headers: { Authorization: `Bearer ${token}` } }),
@@ -168,7 +185,7 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
         fetch(`/api/membership/redemptions/${carWash.id}`, { headers: { Authorization: `Bearer ${token}` } }),
       ]);
 
-      const cfg: CarWashMembershipConfig | null = await safeJson(configRes);
+      const cfg: CarWashMembershipConfig | null = await safeJsonFetch(configRes);
       if (cfg) {
         setConfig(cfg);
         setProgrammeName(cfg.programmeName || `${carWash.name} VIP Rewards`);
@@ -180,7 +197,7 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
         setTermsConditions(cfg.termsConditions || '');
       }
 
-      const rList: MembershipPointsRule[] | null = await safeJson(rulesRes);
+      const rList: MembershipPointsRule[] | null = await safeJsonFetch(rulesRes);
       if (rList && Array.isArray(rList)) {
         setRules(rList);
         const map: { [key: string]: number } = {};
@@ -190,13 +207,13 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
         setRuleEdits(map);
       }
 
-      const rwList: MembershipReward[] | null = await safeJson(rewardsRes);
+      const rwList: MembershipReward[] | null = await safeJsonFetch(rewardsRes);
       if (rwList && Array.isArray(rwList)) setRewards(rwList);
 
-      const mList: CustomerMembership[] | null = await safeJson(membersRes);
+      const mList: CustomerMembership[] | null = await safeJsonFetch(membersRes);
       if (mList && Array.isArray(mList)) setMembers(mList);
 
-      const redList: MembershipRedemption[] | null = await safeJson(redemptionsRes);
+      const redList: MembershipRedemption[] | null = await safeJsonFetch(redemptionsRes);
       if (redList && Array.isArray(redList)) setRedemptions(redList);
     } catch (err) {
       console.error('Failed to load membership owner data:', err);
@@ -233,12 +250,7 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
         }),
       });
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to save programme settings');
-      }
-
-      const updated = await res.json();
+      const updated = await safeJsonOrError(res, 'Failed to save programme settings');
       setConfig(updated);
       setConfigSuccess(true);
       setTimeout(() => setConfigSuccess(false), 3000);
@@ -269,12 +281,7 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
         }),
       });
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to save rule');
-      }
-
-      const saved = await res.json();
+      const saved = await safeJsonOrError(res, 'Failed to save rule');
       setRules((prev) => {
         const filtered = prev.filter((r) => r.serviceId !== service.id);
         return [...filtered, saved];
@@ -344,17 +351,15 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
         body: JSON.stringify(payload),
       });
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to save reward');
-      }
+      await safeJsonOrError(res, 'Failed to save reward');
 
       setShowRewardModal(false);
       // Refresh rewards
       const freshRes = await fetch(`/api/membership/rewards/${carWash.id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (freshRes.ok) setRewards(await freshRes.json());
+      const freshData = await safeJsonFetch(freshRes);
+      if (freshData && Array.isArray(freshData)) setRewards(freshData);
     } catch (err: any) {
       alert(err.message || 'Error saving reward');
     } finally {
@@ -370,8 +375,8 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
       const res = await fetch(`/api/membership/ledger/${member.id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (res.ok) {
-        const data = await res.json();
+      const data = await safeJsonFetch(res);
+      if (data && Array.isArray(data)) {
         setSelectedMemberLedger({ member, ledger: data });
       }
     } catch (err) {
@@ -411,12 +416,7 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
         }),
       });
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to adjust points');
-      }
-
-      const updated = await res.json();
+      const updated = await safeJsonOrError(res, 'Failed to adjust points');
       setMembers((prev) =>
         prev.map((m) => (m.id === adjustingMember.id ? { ...m, pointsBalance: updated.balanceAfter } : m))
       );
@@ -888,9 +888,18 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
       {/* TAB 5: REDEMPTIONS HISTORY */}
       {activeTab === 'redemptions' && (
         <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-sm space-y-4">
-          <div className="pb-2 border-b border-slate-100">
-            <h3 className="text-base font-bold text-slate-800">Customer Voucher Redemptions</h3>
-            <p className="text-xs text-slate-400">Audit log of all vouchers redeemed by members at your station.</p>
+          <div className="pb-2 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-base font-bold text-slate-800">Customer Voucher Redemptions</h3>
+              <p className="text-xs text-slate-400">Audit log of all vouchers redeemed by members at your station.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowCounterModal(true)}
+              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm self-start sm:self-auto"
+            >
+              <QrCode className="h-4 w-4" /> Scan &amp; Confirm Voucher
+            </button>
           </div>
 
           <div className="overflow-x-auto">
@@ -919,7 +928,20 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
                       <td className="px-4 py-3 font-semibold text-slate-800">{r.customerName || 'Customer'}</td>
                       <td className="px-4 py-3 font-bold text-slate-700">{r.rewardTitle}</td>
                       <td className="px-4 py-3 font-mono font-bold text-rose-600">-{r.pointsSpent} pts</td>
-                      <td className="px-4 py-3 text-slate-400">{new Date(r.redeemedAt).toLocaleString()}</td>
+                      <td className="px-4 py-3 text-slate-500">
+                        <div className="font-semibold text-slate-700">
+                          {r.createdAt ? new Date(r.createdAt).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }) : '—'}
+                        </div>
+                        {r.redeemedAt ? (
+                          <div className="text-[10px] text-emerald-600 font-bold flex items-center gap-1 mt-0.5">
+                            ✓ Redeemed: {new Date(r.redeemedAt).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
+                          </div>
+                        ) : (
+                          <div className="text-[10px] text-amber-600 font-medium mt-0.5">
+                            ⏳ Ready to Claim
+                          </div>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-right">
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
                           r.status === 'PENDING'

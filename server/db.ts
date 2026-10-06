@@ -1262,10 +1262,8 @@ async function executeSeedFirestore() {
       [JSON.stringify(defaultBruneiServices)]
     );
 
-    // Enable loyalty on Brunei Royal Auto Spa by default so owner, staff, and customer flows are immediately available
-    await runQueryRun("UPDATE car_washes SET membershipEnabled = 1 WHERE id = 'cw_brunei'");
-
-    // Seed default membership config, points rules, and rewards if not yet present
+    // Loyalty & rewards remain inactive by default until explicitly enabled by Admin or Special User
+    // Default membership config, points rules, and rewards template are seeded ready for activation
     const existingConfig = await runQueryOne("SELECT id FROM car_wash_memberships_config WHERE carWashId = 'cw_brunei'");
     if (!existingConfig) {
       const now = new Date().toISOString();
@@ -1273,7 +1271,7 @@ async function executeSeedFirestore() {
         INSERT INTO car_wash_memberships_config (
           id, carWashId, isFeatureEnabled, isProgrammeActive, programmeName, programmeDescription,
           pointsExpiryMonths, allowQrJoin, allowCounterJoin, maxRedemptionsPerMemberPerDay, termsConditions, updatedAt
-        ) VALUES (?, ?, 1, 1, ?, ?, 12, 1, 1, 2, ?, ?)
+        ) VALUES (?, ?, 0, 0, ?, ?, 12, 1, 1, 2, ?, ?)
       `, [
         'mcfg_cw_brunei',
         'cw_brunei',
@@ -3378,17 +3376,20 @@ const mapRedemption = (row: any): MembershipRedemption => {
 // 1. Programme Configuration
 export async function getCarWashMembershipConfig(carWashId: string): Promise<CarWashMembershipConfig | null> {
   try {
+    const cw = await runQueryOne('SELECT id, name, membershipEnabled, isActive FROM car_washes WHERE id = ?', [carWashId]);
+    if (!cw) return null;
+    const isFeature = Boolean(cw.membershipEnabled === 1 || cw.membership_enabled === 1 || cw.membershipEnabled === true);
+    if (!isFeature) {
+      return null;
+    }
+
     const row = await runQueryOne('SELECT * FROM car_wash_memberships_config WHERE carWashId = ?', [carWashId]);
     if (!row) {
-      // Check if car_wash exists and has membershipEnabled
-      const cw = await runQueryOne('SELECT id, name, membershipEnabled FROM car_washes WHERE id = ?', [carWashId]);
-      if (!cw) return null;
-      const isFeature = cw.membershipEnabled === 1 || cw.membership_enabled === 1 || cw.membershipEnabled === true;
       return {
         id: `mcfg_${carWashId}`,
         carWashId,
-        isFeatureEnabled: isFeature,
-        isProgrammeActive: isFeature,
+        isFeatureEnabled: true,
+        isProgrammeActive: true,
         programmeName: `${cw.name || 'AutoShine'} Rewards`,
         programmeDescription: 'Earn loyalty points for every wash and redeem exclusive services and gifts.',
         pointsExpiryMonths: 0,
@@ -3398,7 +3399,12 @@ export async function getCarWashMembershipConfig(carWashId: string): Promise<Car
         updatedAt: new Date().toISOString(),
       };
     }
-    return mapMembershipConfig(row);
+    const mapped = mapMembershipConfig(row);
+    return {
+      ...mapped,
+      isFeatureEnabled: true,
+      isProgrammeActive: mapped.isProgrammeActive !== false,
+    };
   } catch (error) {
     console.error('Database getCarWashMembershipConfig Error:', error);
     return null;
@@ -3479,8 +3485,10 @@ export async function getCustomerMemberships(customerId: string): Promise<Custom
     const rows = await runQueryAll(`
       SELECT cm.*, cw.name AS car_wash_name, cw.logoUrl AS car_wash_logo
       FROM customer_memberships cm
-      LEFT JOIN car_washes cw ON cm.carWashId = cw.id
+      JOIN car_washes cw ON cm.carWashId = cw.id
       WHERE cm.customerId = ?
+        AND cw.membershipEnabled = 1
+        AND (cw.isActive = 1 OR cw.isActive IS NULL)
       ORDER BY cm.joinedAt DESC
     `, [customerId]);
     return rows.map(mapCustomerMembership);
@@ -3495,8 +3503,10 @@ export async function getCustomerMembership(customerId: string, carWashId: strin
     const row = await runQueryOne(`
       SELECT cm.*, cw.name AS car_wash_name, cw.logoUrl AS car_wash_logo
       FROM customer_memberships cm
-      LEFT JOIN car_washes cw ON cm.carWashId = cw.id
+      JOIN car_washes cw ON cm.carWashId = cw.id
       WHERE cm.customerId = ? AND cm.carWashId = ?
+        AND cw.membershipEnabled = 1
+        AND (cw.isActive = 1 OR cw.isActive IS NULL)
     `, [customerId, carWashId]);
     if (!row) return null;
     return mapCustomerMembership(row);
@@ -3803,6 +3813,13 @@ export async function awardPointsForBookingCompletion(
   const booking = await getBookingById(bookingId);
   if (!booking) return null;
 
+  // STRICT RULE: Points MUST ONLY be awarded if the wash is COMPLETED and NOT CANCELLED or REJECTED!
+  // If customer decided to cancel or owner cancelled, points must NEVER increase or be added!
+  if (booking.status !== BookingStatus.COMPLETED) {
+    console.log(`[Points] Cannot award points: booking ${bookingId} has status '${booking.status}' (must be COMPLETED).`);
+    return null;
+  }
+
   // Check if booking has already earned points to prevent duplicate earning
   const existingTx = await runQueryOne(
     `SELECT id FROM membership_points_ledger WHERE bookingId = ? AND transactionType = 'EARN'`,
@@ -3910,6 +3927,13 @@ export async function reversePointsForBookingCancellation(
 // 6. Rewards Management
 export async function getMembershipRewards(carWashId: string, activeOnly: boolean = false): Promise<MembershipReward[]> {
   try {
+    const cw = await runQueryOne('SELECT id, membershipEnabled, isActive FROM car_washes WHERE id = ?', [carWashId]);
+    if (!cw) return [];
+    const isFeature = Boolean(cw.membershipEnabled === 1 || cw.membership_enabled === 1 || cw.membershipEnabled === true);
+    if (!isFeature) {
+      return [];
+    }
+
     let sql = 'SELECT * FROM membership_rewards WHERE carWashId = ?';
     if (activeOnly) {
       sql += ' AND isActive = 1';

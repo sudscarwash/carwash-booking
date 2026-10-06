@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import QRCode from 'qrcode';
 import { 
   Award, 
@@ -36,12 +36,44 @@ interface LoyaltyMembershipCustomerViewProps {
   locations: CarWash[];
   token: string | null;
   currentUser: any;
+  onNavigateToBook?: () => void;
 }
+
+// Helper to safely parse JSON responses and avoid '<!doctype' HTML syntax errors
+const safeJsonFetch = async (res: Response) => {
+  if (!res.ok) return null;
+  const ct = res.headers.get('content-type') || '';
+  if (ct.includes('application/json')) {
+    try {
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
+  return null;
+};
+
+const safeJsonOrError = async (res: Response, fallbackError: string) => {
+  const ct = res.headers.get('content-type') || '';
+  let data: any = null;
+  if (ct.includes('application/json')) {
+    try {
+      data = await res.json();
+    } catch {
+      data = null;
+    }
+  }
+  if (!res.ok) {
+    throw new Error((data && data.error) || fallbackError);
+  }
+  return data;
+};
 
 export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerViewProps> = ({
   locations,
   token,
   currentUser,
+  onNavigateToBook,
 }) => {
   const [memberships, setMemberships] = useState<CustomerMembership[]>([]);
   const [selectedMembership, setSelectedMembership] = useState<CustomerMembership | null>(null);
@@ -63,8 +95,41 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
   const [selectedJoinCarWash, setSelectedJoinCarWash] = useState<CarWash | null>(null);
   const [joinConsent, setJoinConsent] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
+  const [joiningCarWashId, setJoiningCarWashId] = useState<string | null>(null);
   const [joinError, setJoinError] = useState<string | null>(null);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+
+  // Active valid memberships: Car wash must exist in locations AND have membershipEnabled === true and isActive !== false
+  const activeValidMemberships = useMemo(() => {
+    return memberships.filter((m) => {
+      const loc = locations.find((l) => l.id === m.carWashId);
+      return Boolean(loc && loc.membershipEnabled === true && loc.isActive !== false);
+    });
+  }, [memberships, locations]);
+
+  // Available car washes that customer hasn't joined yet
+  const availableToJoin = useMemo(() => {
+    return locations.filter(
+      (loc) => loc.membershipEnabled === true && loc.isActive !== false && !activeValidMemberships.some((m) => m.carWashId === loc.id)
+    );
+  }, [locations, activeValidMemberships]);
+
+  // Keep selectedMembership strictly synchronized with activeValidMemberships
+  useEffect(() => {
+    if (activeValidMemberships.length > 0) {
+      if (!selectedMembership || !activeValidMemberships.some((m) => m.id === selectedMembership.id)) {
+        setSelectedMembership(activeValidMemberships[0]);
+      }
+    } else {
+      if (selectedMembership !== null) {
+        setSelectedMembership(null);
+        setConfig(null);
+        setRewards([]);
+        setLedger([]);
+        setRedemptions([]);
+      }
+    }
+  }, [activeValidMemberships, selectedMembership]);
 
   // Fetch customer memberships
   const fetchMemberships = async () => {
@@ -74,16 +139,9 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
       const res = await fetch('/api/membership/my-memberships', {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (res.ok) {
-        const data = await res.json();
+      const data = await safeJsonFetch(res);
+      if (Array.isArray(data)) {
         setMemberships(data);
-        if (data.length > 0 && !selectedMembership) {
-          setSelectedMembership(data[0]);
-        } else if (selectedMembership) {
-          // Keep selection updated
-          const updated = data.find((m: CustomerMembership) => m.id === selectedMembership.id);
-          if (updated) setSelectedMembership(updated);
-        }
       }
     } catch (err) {
       console.error('Failed to load memberships:', err);
@@ -92,62 +150,76 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
     }
   };
 
+  // Fetch details for the selected membership
+  const loadMembershipDetails = useCallback(async () => {
+    if (!selectedMembership || !token) {
+      setConfig(null);
+      setRewards([]);
+      setLedger([]);
+      setRedemptions([]);
+      return;
+    }
+
+    // Verify operator exists and has membershipEnabled
+    const matchedLoc = locations.find((l) => l.id === selectedMembership.carWashId);
+    if (!matchedLoc || !matchedLoc.membershipEnabled || matchedLoc.isActive === false) {
+      setSelectedMembership(null);
+      setConfig(null);
+      setRewards([]);
+      setLedger([]);
+      setRedemptions([]);
+      return;
+    }
+
+    try {
+      // Fetch config & rules
+      const [configRes, rewardsRes, ledgerRes, redemptionsRes] = await Promise.all([
+        fetch(`/api/membership/programme/${selectedMembership.carWashId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`/api/membership/rewards/${selectedMembership.carWashId}?active=true`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`/api/membership/ledger/${selectedMembership.id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch('/api/membership/my-redemptions', {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ]);
+
+      const cfgData = await safeJsonFetch(configRes);
+      if (cfgData && cfgData.isFeatureEnabled) {
+        setConfig(cfgData);
+      } else {
+        setConfig(null);
+      }
+
+      const rewardsData = await safeJsonFetch(rewardsRes);
+      if (rewardsData && Array.isArray(rewardsData)) {
+        setRewards(rewardsData);
+      } else {
+        setRewards([]);
+      }
+
+      const ledgerData = await safeJsonFetch(ledgerRes);
+      if (ledgerData && Array.isArray(ledgerData)) setLedger(ledgerData);
+
+      const redemptionsData = await safeJsonFetch(redemptionsRes);
+      if (redemptionsData && Array.isArray(redemptionsData)) {
+        // Filter to this car wash
+        const filtered = redemptionsData.filter((r: MembershipRedemption) => r.carWashId === selectedMembership.carWashId);
+        setRedemptions(filtered.length > 0 ? filtered : redemptionsData);
+      }
+    } catch (err) {
+      console.error('Failed to load membership details:', err);
+    }
+  }, [selectedMembership?.id, selectedMembership?.carWashId, token, locations]);
+
   // Fetch details when selectedMembership changes
   useEffect(() => {
-    if (!selectedMembership || !token) return;
-
-    const loadMembershipDetails = async () => {
-      try {
-        const safeJson = async (res: Response) => {
-          if (!res.ok) return null;
-          const ct = res.headers.get('content-type') || '';
-          if (ct.includes('application/json')) {
-            try {
-              return await res.json();
-            } catch {
-              return null;
-            }
-          }
-          return null;
-        };
-
-        // Fetch config & rules
-        const [configRes, rewardsRes, ledgerRes, redemptionsRes] = await Promise.all([
-          fetch(`/api/membership/programme/${selectedMembership.carWashId}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          fetch(`/api/membership/rewards/${selectedMembership.carWashId}?active=true`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          fetch(`/api/membership/ledger/${selectedMembership.id}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          fetch('/api/membership/my-redemptions', {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-        ]);
-
-        const cfgData = await safeJson(configRes);
-        if (cfgData) setConfig(cfgData);
-
-        const rewardsData = await safeJson(rewardsRes);
-        if (rewardsData && Array.isArray(rewardsData)) setRewards(rewardsData);
-
-        const ledgerData = await safeJson(ledgerRes);
-        if (ledgerData && Array.isArray(ledgerData)) setLedger(ledgerData);
-
-        const redemptionsData = await safeJson(redemptionsRes);
-        if (redemptionsData && Array.isArray(redemptionsData)) {
-          // Filter to this car wash
-          setRedemptions(redemptionsData.filter((r: MembershipRedemption) => r.carWashId === selectedMembership.carWashId));
-        }
-      } catch (err) {
-        console.error('Failed to load membership details:', err);
-      }
-    };
-
     loadMembershipDetails();
-  }, [selectedMembership, token]);
+  }, [loadMembershipDetails]);
 
   useEffect(() => {
     fetchMemberships();
@@ -208,15 +280,28 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
         }),
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to redeem reward');
+      const data = await safeJsonOrError(res, 'Failed to redeem reward');
+      const newlyRedeemed: MembershipRedemption = data.redemption;
+
+      // 1. Immediately update redemptions state so "My Vouchers" shows the new voucher right away!
+      if (newlyRedeemed) {
+        setRedemptions((prev) => [newlyRedeemed, ...prev.filter((r) => r.id !== newlyRedeemed.id)]);
       }
 
-      setRedemptionSuccessVoucher(data.redemption);
+      // 2. Immediately update points balance in selected membership
+      if (typeof data.newBalance === 'number') {
+        setSelectedMembership((prev) => (prev ? { ...prev, pointsBalance: data.newBalance } : null));
+      }
+
+      // 3. Open Success Modal
+      setRedemptionSuccessVoucher(newlyRedeemed);
       setRedeemingReward(null);
-      // Refresh details
+
+      // 4. Background re-sync
       fetchMemberships();
+      loadMembershipDetails();
+
+      // 5. Switch to vouchers tab
       setActiveSubTab('vouchers');
     } catch (err: any) {
       alert(err.message || 'Redemption failed');
@@ -244,10 +329,7 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
         }),
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to join membership');
-      }
+      const data = await safeJsonOrError(res, 'Failed to join membership');
 
       setSelectedJoinCarWash(null);
       setJoinConsent(false);
@@ -261,17 +343,44 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
     }
   };
 
+  // 1-Click Quick Join Club without opening modal
+  const handleQuickJoinClub = async (carWash: CarWash) => {
+    if (!carWash || !token) return;
+    setJoiningCarWashId(carWash.id);
+    setIsJoining(true);
+    setJoinError(null);
+    try {
+      const res = await fetch('/api/membership/join', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          carWashId: carWash.id,
+          joinMethod: 'ONLINE_OPT_IN',
+          consentGiven: true,
+        }),
+      });
+
+      const data = await safeJsonOrError(res, 'Failed to join membership');
+      await fetchMemberships();
+      setSelectedMembership(data);
+      setActiveSubTab('card');
+    } catch (err: any) {
+      setJoinError(err.message || 'Failed to join loyalty club');
+    } finally {
+      setIsJoining(false);
+      setJoiningCarWashId(null);
+    }
+  };
+
   // Copy code helper
   const handleCopyCode = (code: string) => {
     navigator.clipboard.writeText(code);
     setCopiedCode(code);
     setTimeout(() => setCopiedCode(null), 2000);
   };
-
-  // Available car washes that customer hasn't joined yet
-  const availableToJoin = locations.filter(
-    (loc) => loc.membershipEnabled && !memberships.some((m) => m.carWashId === loc.id)
-  );
 
   return (
     <div className="space-y-6">
@@ -293,18 +402,18 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
           </div>
 
           {/* Membership Selector or Join Prompt */}
-          {memberships.length > 0 && (
+          {activeValidMemberships.length > 0 && (
             <div className="bg-white/10 backdrop-blur-md border border-white/20 p-3 rounded-2xl flex flex-col gap-2 min-w-[240px]">
               <span className="text-[11px] uppercase font-bold text-slate-300 tracking-wider">Active Club Card</span>
               <select
                 value={selectedMembership?.id || ''}
                 onChange={(e) => {
-                  const found = memberships.find((m) => m.id === e.target.value);
+                  const found = activeValidMemberships.find((m) => m.id === e.target.value);
                   if (found) setSelectedMembership(found);
                 }}
                 className="bg-slate-900/90 text-white font-bold text-sm px-3 py-2 rounded-xl border border-white/20 focus:outline-none focus:ring-2 focus:ring-indigo-400"
               >
-                {memberships.map((m) => (
+                {activeValidMemberships.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.carWashName || 'Car Wash'} ({m.pointsBalance} pts)
                   </option>
@@ -315,8 +424,8 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
         </div>
       </div>
 
-      {/* If customer has memberships */}
-      {memberships.length > 0 && selectedMembership ? (
+      {/* If customer has valid active memberships */}
+      {activeValidMemberships.length > 0 && selectedMembership ? (
         <div className="space-y-6">
           {/* Navigation Sub-Tabs */}
           <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none border-b border-slate-200">
@@ -687,8 +796,11 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
                             </button>
                           </div>
 
-                          <p className="text-[11px] text-slate-400">
-                            Issued: {new Date(voucher.redeemedAt).toLocaleDateString()}
+                          <p className="text-[11px] text-slate-500">
+                            Issued: {new Date(voucher.createdAt || Date.now()).toLocaleDateString()}
+                            {voucher.redeemedAt && (
+                              <span className="text-emerald-600 font-bold ml-1.5">• Used: {new Date(voucher.redeemedAt).toLocaleDateString()}</span>
+                            )}
                             {voucher.expiresAt && ` • Valid until ${new Date(voucher.expiresAt).toLocaleDateString()}`}
                           </p>
                         </div>
@@ -759,46 +871,193 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
         </div>
       ) : (
         /* If user has no active memberships yet */
-        <div className="bg-white border border-slate-200 rounded-3xl p-8 sm:p-12 text-center space-y-4 shadow-sm">
-          <Award className="h-16 w-16 mx-auto text-indigo-500" />
-          <div className="max-w-md mx-auto space-y-2">
-            <h2 className="text-xl font-black text-slate-800">You Haven't Joined Any Loyalty Clubs Yet</h2>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Join your favourite car wash's rewards club to automatically earn points on every online booking or walk-in wash!
-            </p>
-          </div>
+        <div className="space-y-6">
+          {availableToJoin.length > 0 ? (
+            <div className="bg-gradient-to-br from-indigo-50/70 via-white to-purple-50/40 border border-indigo-100/90 rounded-3xl p-6 sm:p-8 shadow-xs space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-100 text-indigo-800 text-[11px] font-extrabold rounded-full uppercase tracking-wider">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Instant VIP Registration</span>
+                  </div>
+                  <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                    Choose Your Car Wash Rewards Club
+                  </h2>
+                  <p className="text-xs sm:text-sm text-slate-600 max-w-xl">
+                    Enroll for free with 1-click below. Earn points on every bay booking and walk-in wash, and redeem for complimentary washes and detailing!
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {availableToJoin.map((loc) => {
+                  const isThisJoining = joiningCarWashId === loc.id;
+                  return (
+                    <div
+                      key={loc.id}
+                      className="bg-white border border-slate-200 hover:border-indigo-300 rounded-2xl p-5 shadow-xs transition-all space-y-4 flex flex-col justify-between"
+                    >
+                      <div className="space-y-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <h3 className="font-extrabold text-base text-slate-900">{loc.name}</h3>
+                            <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">{loc.address}</p>
+                          </div>
+                          <span className="px-2.5 py-1 bg-indigo-50 text-indigo-700 font-extrabold text-[10px] rounded-lg border border-indigo-200/80 uppercase tracking-wider shrink-0">
+                            VIP Active
+                          </span>
+                        </div>
+
+                        <div className="bg-slate-50/80 rounded-xl p-3 text-[11px] text-slate-600 space-y-1.5 border border-slate-100">
+                          <div className="flex items-center gap-2 text-emerald-800 font-bold">
+                            <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            <span>Earn points automatically on every wash</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-indigo-800 font-bold">
+                            <Gift className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                            <span>Redeem for free premium detailing & discounts</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-1">
+                        <button
+                          type="button"
+                          disabled={isJoining}
+                          onClick={() => handleQuickJoinClub(loc)}
+                          className="flex-1 py-2.5 px-4 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-extrabold text-xs rounded-xl shadow-md shadow-indigo-100 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                        >
+                          {isThisJoining ? (
+                            <>
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                              <span>Joining Club...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles className="w-3.5 h-3.5" />
+                              <span>Join Free in 1-Click</span>
+                            </>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedJoinCarWash(loc);
+                            setJoinConsent(true);
+                            setJoinError(null);
+                          }}
+                          className="py-2.5 px-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all cursor-pointer"
+                          title="View Terms & Details"
+                        >
+                          Terms
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="bg-white border border-slate-200 rounded-3xl p-8 sm:p-12 text-center space-y-6 shadow-sm max-w-2xl mx-auto">
+              <div className="w-16 h-16 rounded-3xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center mx-auto shadow-xs">
+                <Award className="w-8 h-8" />
+              </div>
+              <div className="space-y-2">
+                <h2 className="text-xl sm:text-2xl font-black text-slate-900">Autoshine VIP Loyalty &amp; Rewards</h2>
+                <p className="text-xs sm:text-sm text-slate-600 max-w-md mx-auto leading-relaxed">
+                  Participating car wash branches will soon be activating digital loyalty clubs. Once a station launches its club, you&apos;ll be able to join in 1-click right here!
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-left">
+                <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3.5 space-y-1">
+                  <span className="text-[10px] font-black uppercase text-indigo-600 tracking-wider">Step 1</span>
+                  <p className="text-xs font-bold text-slate-800">Book &amp; Wash</p>
+                  <p className="text-[11px] text-slate-500">Book online or visit any partner wash station.</p>
+                </div>
+                <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3.5 space-y-1">
+                  <span className="text-[10px] font-black uppercase text-indigo-600 tracking-wider">Step 2</span>
+                  <p className="text-xs font-bold text-slate-800">Earn Points</p>
+                  <p className="text-[11px] text-slate-500">Collect points automatically for every service.</p>
+                </div>
+                <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3.5 space-y-1">
+                  <span className="text-[10px] font-black uppercase text-indigo-600 tracking-wider">Step 3</span>
+                  <p className="text-xs font-bold text-slate-800">Redeem Washes</p>
+                  <p className="text-[11px] text-slate-500">Get free waxes, detailing, and voucher codes.</p>
+                </div>
+              </div>
+
+              {onNavigateToBook && (
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={onNavigateToBook}
+                    className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-md transition-all inline-flex items-center gap-2 cursor-pointer"
+                  >
+                    <Car className="w-4 h-4" />
+                    <span>Browse Car Wash Stations &amp; Book</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
-      {/* Available Car Wash Clubs to Join */}
-      {availableToJoin.length > 0 && (
+      {/* Available Car Wash Clubs to Join (when user already has at least one active membership) */}
+      {activeValidMemberships.length > 0 && availableToJoin.length > 0 && (
         <div className="bg-slate-50 border border-slate-200 rounded-3xl p-6 space-y-4">
           <div className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-indigo-600" />
-            <h3 className="font-bold text-slate-800 text-base">Explore &amp; Join More Rewards Clubs</h3>
+            <h3 className="font-bold text-slate-800 text-base">
+              Explore &amp; Join More Rewards Clubs ({availableToJoin.length} Available)
+            </h3>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {availableToJoin.map((loc) => (
-              <div key={loc.id} className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col justify-between space-y-4">
-                <div>
-                  <h4 className="font-bold text-slate-800 text-sm">{loc.name}</h4>
-                  <p className="text-xs text-slate-500 mt-1 line-clamp-2">{loc.address}</p>
-                </div>
+            {availableToJoin.map((loc) => {
+              const isThisJoining = joiningCarWashId === loc.id;
+              return (
+                <div key={loc.id} className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col justify-between space-y-4">
+                  <div>
+                    <h4 className="font-bold text-slate-800 text-sm">{loc.name}</h4>
+                    <p className="text-xs text-slate-500 mt-1 line-clamp-2">{loc.address}</p>
+                  </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedJoinCarWash(loc);
-                    setJoinConsent(false);
-                    setJoinError(null);
-                  }}
-                  className="w-full py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-xl transition-colors cursor-pointer border border-indigo-200 flex items-center justify-center gap-1.5"
-                >
-                  <UserCheck className="h-3.5 w-3.5" /> Join Loyalty Programme
-                </button>
-              </div>
-            ))}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={isJoining}
+                      onClick={() => handleQuickJoinClub(loc)}
+                      className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
+                    >
+                      {isThisJoining ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>Joining...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>Join in 1-Click</span>
+                        </>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedJoinCarWash(loc);
+                        setJoinConsent(true);
+                        setJoinError(null);
+                      }}
+                      className="py-2 px-3 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-xs rounded-xl border border-slate-200 cursor-pointer"
+                    >
+                      Terms
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -855,6 +1114,74 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
                 ) : (
                   'Confirm & Generate Voucher'
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Redemption Success Voucher Ready */}
+      {redemptionSuccessVoucher && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4 text-center">
+            <div className="w-14 h-14 mx-auto rounded-2xl bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-600 shadow-sm">
+              <CheckCircle className="w-8 h-8" />
+            </div>
+
+            <div>
+              <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200">
+                🎉 Voucher Claimed!
+              </span>
+              <h3 className="font-extrabold text-slate-900 text-lg mt-2">
+                {redemptionSuccessVoucher.rewardTitle}
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Your points were deducted. Present this voucher code or QR barcode to the staff at the counter during your wash.
+              </p>
+            </div>
+
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+              <span className="text-[10px] uppercase font-bold text-slate-400 block">Voucher Code</span>
+              <div className="flex items-center justify-center gap-2">
+                <span className="font-mono font-black text-xl text-slate-900 tracking-wider">
+                  {redemptionSuccessVoucher.redemptionCode}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleCopyCode(redemptionSuccessVoucher.redemptionCode)}
+                  className="p-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors"
+                  title="Copy code"
+                >
+                  {copiedCode === redemptionSuccessVoucher.redemptionCode ? (
+                    <Check className="h-4 w-4 text-emerald-600" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-400">
+                Points spent: {redemptionSuccessVoucher.pointsSpent} pts • Valid for 7 days
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  const v = redemptionSuccessVoucher;
+                  setRedemptionSuccessVoucher(null);
+                  handleShowVoucherQR(v);
+                }}
+                className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-md flex items-center justify-center gap-2 cursor-pointer transition-colors"
+              >
+                <QrCode className="h-4 w-4" /> Show QR Code for Staff
+              </button>
+              <button
+                type="button"
+                onClick={() => setRedemptionSuccessVoucher(null)}
+                className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl cursor-pointer"
+              >
+                View in My Vouchers Wallet
               </button>
             </div>
           </div>

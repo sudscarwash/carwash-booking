@@ -10,7 +10,7 @@ import {
   Briefcase as BriefcaseIcon, Calendar as CalendarIcon, Clock as ClockIcon, Check as CheckIcon, ChevronRight as ChevronRightIcon,
   CheckCircle as CheckCircleIcon, Info as InfoIcon, MapPin as MapPinIcon, CalendarDays, ChevronLeft, ChevronRight, Plus,
   Sparkles, Phone, Car, User as UserIcon, X, CheckCheck, Pencil, MessageCircle, CreditCard,
-  Search, Filter, Coins, Award
+  Search, Filter, Coins, Award, QrCode
 } from 'lucide-react';
 import { EditBookingModal } from '../components/EditBookingModal.js';
 import { ServicePickerModal } from '../components/ServicePickerModal.js';
@@ -474,17 +474,32 @@ export const EmployeeDashboard: React.FC = () => {
               )}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              setMbDate(selectedCalendarDate || getTodayDateString());
-              setShowManualBookingModal(true);
-            }}
-            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-extrabold text-xs rounded-xl transition-all shadow-xs flex items-center gap-1 cursor-pointer shrink-0"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>+ Quick Walk-In</span>
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('loyalty');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+              title="Scan member QR or validate customer vouchers"
+              id="btn-emp-quick-scan-loyalty"
+            >
+              <QrCode className="w-3.5 h-3.5" />
+              <span>Scan QR / Loyalty</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMbDate(selectedCalendarDate || getTodayDateString());
+                setShowManualBookingModal(true);
+              }}
+              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-extrabold text-xs rounded-xl transition-all shadow-xs flex items-center gap-1 cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>+ Quick Walk-In</span>
+            </button>
+          </div>
         </div>
       </div>
 

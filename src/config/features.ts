@@ -17,4 +17,11 @@ export const FEATURES = {
    * - Set to `true`: Re-enables automated booking receipt/confirmation emails to customers.
    */
   ENABLE_CUSTOMER_BOOKING_EMAILS: false,
+
+  /**
+   * Customer VIP Loyalty & Rewards Points
+   * - Set to `false`: Loyalty and reward points are completely hidden from customer view.
+   * - Set to `true`: Activates the customer VIP loyalty club, digital member passes, and points earning across authorized car washes.
+   */
+  ENABLE_LOYALTY_PROGRAM: true,
 };

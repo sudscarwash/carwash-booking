@@ -127,7 +127,7 @@ export const SpecialUserDashboard: React.FC = () => {
   const [lngInput, setLngInput] = useState<string>('114.9401');
   const [businessDesc, setBusinessDesc] = useState('');
   const [allowOwnerQrImmediately, setAllowOwnerQrImmediately] = useState<boolean>(false);
-  const [allowMembershipImmediately, setAllowMembershipImmediately] = useState<boolean>(true);
+  const [allowMembershipImmediately, setAllowMembershipImmediately] = useState<boolean>(false);
   const [operationsModalCarWash, setOperationsModalCarWash] = useState<CarWash | null>(null);
   const [quickSearchQuery, setQuickSearchQuery] = useState('');
 

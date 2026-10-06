@@ -13,7 +13,8 @@ import {
   Check, 
   Calendar,
   Sparkles,
-  ArrowRight
+  ArrowRight,
+  Camera
 } from 'lucide-react';
 import { 
   CarWash, 
@@ -22,12 +23,42 @@ import {
   MembershipRedemption,
   MembershipPointsRule 
 } from '../types.js';
+import { CameraQrScannerModal } from './CameraQrScannerModal.js';
 
 interface LoyaltyMembershipEmployeeViewProps {
   carWash: CarWash;
   token: string | null;
   currentUser: any;
 }
+
+const safeJsonFetch = async (res: Response) => {
+  if (!res.ok) return null;
+  const ct = res.headers.get('content-type') || '';
+  if (ct.includes('application/json')) {
+    try {
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
+  return null;
+};
+
+const safeJsonOrError = async (res: Response, fallbackError: string) => {
+  const ct = res.headers.get('content-type') || '';
+  let data: any = null;
+  if (ct.includes('application/json')) {
+    try {
+      data = await res.json();
+    } catch {
+      data = null;
+    }
+  }
+  if (!res.ok) {
+    throw new Error((data && data.error) || fallbackError);
+  }
+  return data;
+};
 
 export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeViewProps> = ({
   carWash,
@@ -57,14 +88,17 @@ export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeVi
   const [isConfirmingVoucher, setIsConfirmingVoucher] = useState(false);
   const [confirmSuccessMsg, setConfirmSuccessMsg] = useState<string | null>(null);
 
+  // 3. Camera QR Scanner State
+  const [cameraScannerMode, setCameraScannerMode] = useState<'member' | 'voucher' | null>(null);
+
   // Fetch points rules for this car wash
   useEffect(() => {
     if (!carWash?.id) return;
     const fetchRules = async () => {
       try {
         const res = await fetch(`/api/membership/points-rules/${carWash.id}`);
-        if (res.ok) {
-          const rules = await res.json();
+        const rules = await safeJsonFetch(res);
+        if (rules && Array.isArray(rules)) {
           setPointsRules(rules);
         }
       } catch (err) {
@@ -74,10 +108,9 @@ export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeVi
     fetchRules();
   }, [carWash?.id]);
 
-  // Search member by code / token
-  const handleSearchMember = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const query = memberSearchQuery.trim();
+  // Lookup member by code / phone / QR token
+  const lookupMember = async (queryText: string) => {
+    const query = queryText.trim();
     if (!query || !token) return;
 
     setSearchingMember(true);
@@ -89,10 +122,7 @@ export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeVi
       const res = await fetch(`/api/membership/identify/${encodeURIComponent(query)}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Member not found');
-      }
+      const data = await safeJsonOrError(res, 'Member not found with this code, phone or QR pass');
       setSearchedMember(data);
 
       // Pre-select first service if available
@@ -107,6 +137,12 @@ export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeVi
     } finally {
       setSearchingMember(false);
     }
+  };
+
+  // Search member by form submit
+  const handleSearchMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    lookupMember(memberSearchQuery);
   };
 
   // When service dropdown changes, update suggested points
@@ -145,10 +181,7 @@ export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeVi
         }),
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to award points');
-      }
+      const data = await safeJsonOrError(res, 'Failed to award points');
 
       setAwardSuccessMsg(`Successfully awarded +${awardPointsAmount} points to ${searchedMember.customerName || searchedMember.membershipNumber}! New Balance: ${data.balanceAfter} pts.`);
       // Update searched member state balance
@@ -163,10 +196,9 @@ export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeVi
     }
   };
 
-  // Check / Validate Voucher Code
-  const handleCheckVoucher = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const code = voucherCodeInput.trim();
+  // Inspect / Validate Voucher Code or QR token
+  const inspectVoucher = async (codeText: string) => {
+    const code = codeText.trim();
     if (!code || !token) return;
 
     setCheckingVoucher(true);
@@ -178,10 +210,7 @@ export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeVi
       const res = await fetch(`/api/membership/voucher/${encodeURIComponent(code)}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Voucher not found');
-      }
+      const data = await safeJsonOrError(res, 'Voucher not found with this code or QR barcode');
 
       // Verify business match
       if (data.carWashId !== carWash.id) {
@@ -194,6 +223,12 @@ export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeVi
     } finally {
       setCheckingVoucher(false);
     }
+  };
+
+  // Check voucher form submit
+  const handleCheckVoucher = async (e: React.FormEvent) => {
+    e.preventDefault();
+    inspectVoucher(voucherCodeInput);
   };
 
   // Confirm Voucher Redemption
@@ -216,10 +251,7 @@ export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeVi
         }),
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to confirm voucher');
-      }
+      const data = await safeJsonOrError(res, 'Failed to confirm voucher');
 
       setCheckedVoucher(data);
       setConfirmSuccessMsg(`Voucher ${data.redemptionCode} (${data.rewardTitle}) successfully confirmed! Service applied for customer.`);
@@ -279,25 +311,41 @@ export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeVi
                 Type member number (e.g. <code>AUT-12345</code>), phone number, or scan member QR barcode.
               </p>
 
-              <form onSubmit={handleSearchMember} className="space-y-3">
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={memberSearchQuery}
-                    onChange={(e) => setMemberSearchQuery(e.target.value)}
-                    placeholder="Enter Member Code, Phone, or QR Token..."
-                    className="w-full pl-4 pr-10 py-3 border border-slate-200 rounded-2xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50 focus:bg-white"
-                    required
-                  />
-                  <button
-                    type="submit"
-                    disabled={searchingMember}
-                    className="absolute right-2 top-2 p-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl cursor-pointer"
-                  >
-                    {searchingMember ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-                  </button>
+              <div className="space-y-3">
+                <button
+                  type="button"
+                  onClick={() => setCameraScannerMode('member')}
+                  className="w-full py-3 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white rounded-2xl text-xs font-bold flex items-center justify-center gap-2 cursor-pointer shadow-md transition-all active:scale-[0.99]"
+                >
+                  <Camera className="h-4 w-4" /> Scan Customer Member QR with Camera
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-px bg-slate-200" />
+                  <span className="text-[10px] uppercase font-bold text-slate-400">or search manually</span>
+                  <div className="flex-1 h-px bg-slate-200" />
                 </div>
-              </form>
+
+                <form onSubmit={handleSearchMember} className="space-y-3">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={memberSearchQuery}
+                      onChange={(e) => setMemberSearchQuery(e.target.value)}
+                      placeholder="Enter Member Code, Phone, or QR Token..."
+                      className="w-full pl-4 pr-10 py-3 border border-slate-200 rounded-2xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50 focus:bg-white"
+                      required
+                    />
+                    <button
+                      type="submit"
+                      disabled={searchingMember}
+                      className="absolute right-2 top-2 p-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl cursor-pointer"
+                    >
+                      {searchingMember ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </form>
+              </div>
 
               {memberSearchError && (
                 <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-2xl flex items-center gap-2">
@@ -427,27 +475,43 @@ export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeVi
                 <Gift className="h-5 w-5 text-indigo-600" /> Reward Voucher Validation
               </h3>
               <p className="text-xs text-slate-500 mt-1">
-                Enter the customer&apos;s voucher code (e.g. <code>REW-7X9Q2K</code>) or scan their voucher QR code to apply their reward.
+                Scan customer voucher QR barcode or enter their voucher code (e.g. <code>RED-5258</code>) to verify and claim their reward.
               </p>
             </div>
 
-            <form onSubmit={handleCheckVoucher} className="flex gap-2">
-              <input
-                type="text"
-                value={voucherCodeInput}
-                onChange={(e) => setVoucherCodeInput(e.target.value.toUpperCase())}
-                placeholder="Enter Voucher Code (e.g. REW-ABC123)..."
-                className="flex-1 px-4 py-3 border border-slate-200 rounded-2xl text-sm font-mono font-bold tracking-wider focus:outline-none focus:ring-2 focus:ring-indigo-500 uppercase bg-slate-50 focus:bg-white"
-                required
-              />
+            <div className="space-y-3">
               <button
-                type="submit"
-                disabled={checkingVoucher}
-                className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-2xl transition-colors flex items-center gap-1.5 cursor-pointer shadow-md"
+                type="button"
+                onClick={() => setCameraScannerMode('voucher')}
+                className="w-full py-3 bg-gradient-to-r from-indigo-600 to-violet-700 hover:from-indigo-500 hover:to-violet-600 text-white rounded-2xl text-xs font-bold flex items-center justify-center gap-2 cursor-pointer shadow-md transition-all active:scale-[0.99]"
               >
-                {checkingVoucher ? <RefreshCw className="h-4 w-4 animate-spin" /> : 'Inspect Voucher'}
+                <Camera className="h-4 w-4" /> Scan Customer Voucher QR with Camera
               </button>
-            </form>
+
+              <div className="flex items-center gap-2">
+                <div className="flex-1 h-px bg-slate-200" />
+                <span className="text-[10px] uppercase font-bold text-slate-400">or enter voucher code manually</span>
+                <div className="flex-1 h-px bg-slate-200" />
+              </div>
+
+              <form onSubmit={handleCheckVoucher} className="flex gap-2">
+                <input
+                  type="text"
+                  value={voucherCodeInput}
+                  onChange={(e) => setVoucherCodeInput(e.target.value.toUpperCase())}
+                  placeholder="Enter Voucher Code (e.g. RED-5258)..."
+                  className="flex-1 px-4 py-3 border border-slate-200 rounded-2xl text-sm font-mono font-bold tracking-wider focus:outline-none focus:ring-2 focus:ring-indigo-500 uppercase bg-slate-50 focus:bg-white"
+                  required
+                />
+                <button
+                  type="submit"
+                  disabled={checkingVoucher}
+                  className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-2xl transition-colors flex items-center gap-1.5 cursor-pointer shadow-md"
+                >
+                  {checkingVoucher ? <RefreshCw className="h-4 w-4 animate-spin" /> : 'Inspect Voucher'}
+                </button>
+              </form>
+            </div>
 
             {voucherCheckError && (
               <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-2xl flex items-center gap-2">
@@ -492,8 +556,16 @@ export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeVi
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">Issued On:</span>
-                    <span>{new Date(checkedVoucher.redeemedAt).toLocaleDateString()}</span>
+                    <span className="font-semibold text-slate-700">
+                      {checkedVoucher.createdAt ? new Date(checkedVoucher.createdAt).toLocaleDateString() : '—'}
+                    </span>
                   </div>
+                  {checkedVoucher.redeemedAt && (
+                    <div className="flex justify-between text-emerald-700 font-bold">
+                      <span>Redeemed At:</span>
+                      <span>{new Date(checkedVoucher.redeemedAt).toLocaleString()}</span>
+                    </div>
+                  )}
                   {checkedVoucher.expiresAt && (
                     <div className="flex justify-between">
                       <span className="text-slate-500">Valid Until:</span>
@@ -527,8 +599,8 @@ export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeVi
                     )}
                   </button>
                 ) : checkedVoucher.status === 'REDEEMED' ? (
-                  <div className="p-3 bg-amber-50 border border-amber-200 text-amber-800 text-xs rounded-xl text-center font-medium">
-                    ⚠️ This voucher has already been marked as redeemed and cannot be used again.
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl text-center font-medium">
+                    ✓ This voucher has already been marked as redeemed and confirmed.
                   </div>
                 ) : null}
               </div>
@@ -536,6 +608,30 @@ export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeVi
           </div>
         </div>
       )}
+
+      {/* Camera QR Scanner Modal */}
+      <CameraQrScannerModal
+        isOpen={cameraScannerMode !== null}
+        onClose={() => setCameraScannerMode(null)}
+        onScan={(scanned) => {
+          const mode = cameraScannerMode;
+          setCameraScannerMode(null);
+          const clean = scanned.trim();
+          if (mode === 'member') {
+            setMemberSearchQuery(clean);
+            lookupMember(clean);
+          } else if (mode === 'voucher') {
+            setVoucherCodeInput(clean);
+            inspectVoucher(clean);
+          }
+        }}
+        title={cameraScannerMode === 'member' ? 'Scan Customer Member QR' : 'Scan Customer Voucher QR'}
+        subtitle={
+          cameraScannerMode === 'member'
+            ? 'Point camera at the customer’s Digital Member Card QR barcode'
+            : 'Point camera at the customer’s reward voucher QR code on their phone'
+        }
+      />
     </div>
   );
 };

@@ -6,7 +6,8 @@
 import React, { useState } from 'react';
 import { CarWash, CustomerMembership, MembershipRedemption } from '../types';
 import { useApp } from '../context/AppContext';
-import { Award, QrCode, Search, Gift, CheckCircle, AlertTriangle, X, ArrowRight, UserCheck } from 'lucide-react';
+import { Award, QrCode, Search, Gift, CheckCircle, AlertTriangle, X, ArrowRight, UserCheck, Camera } from 'lucide-react';
+import { CameraQrScannerModal } from './CameraQrScannerModal.js';
 
 interface StaffMembershipCounterModalProps {
   carWashId: string;
@@ -37,15 +38,18 @@ export const StaffMembershipCounterModal: React.FC<StaffMembershipCounterModalPr
   const [foundVoucher, setFoundVoucher] = useState<MembershipRedemption | null>(null);
   const [confirmingVoucher, setConfirmingVoucher] = useState(false);
 
-  // Search Member
-  const handleSearchMember = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!memberInput.trim()) return;
+  // Camera QR Scanner state
+  const [cameraScannerMode, setCameraScannerMode] = useState<'member' | 'voucher' | null>(null);
+
+  // Modular Search Member
+  const lookupMember = async (inputStr: string) => {
+    const clean = inputStr.trim();
+    if (!clean) return;
     setSearchingMember(true);
     setFoundMember(null);
     try {
       const token = localStorage.getItem('cw_token');
-      const res = await fetch(`/api/membership/identify/${encodeURIComponent(memberInput.trim())}`, {
+      const res = await fetch(`/api/membership/identify/${encodeURIComponent(clean)}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
@@ -53,13 +57,18 @@ export const StaffMembershipCounterModal: React.FC<StaffMembershipCounterModalPr
         setFoundMember(data);
       } else {
         const err = await res.json();
-        showNotification(err.error || 'Member not found', 'error');
+        showNotification(err.error || 'Member not found with this code, phone or QR pass', 'error');
       }
     } catch (e: any) {
       showNotification(e.message || 'Error looking up member', 'error');
     } finally {
       setSearchingMember(false);
     }
+  };
+
+  const handleSearchMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    lookupMember(memberInput);
   };
 
   // Award Counter Points
@@ -99,15 +108,15 @@ export const StaffMembershipCounterModal: React.FC<StaffMembershipCounterModalPr
     }
   };
 
-  // Search Voucher
-  const handleSearchVoucher = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!voucherInput.trim()) return;
+  // Modular Inspect Voucher
+  const inspectVoucher = async (inputStr: string) => {
+    const clean = inputStr.trim();
+    if (!clean) return;
     setSearchingVoucher(true);
     setFoundVoucher(null);
     try {
       const token = localStorage.getItem('cw_token');
-      const res = await fetch(`/api/membership/voucher/${encodeURIComponent(voucherInput.trim())}`, {
+      const res = await fetch(`/api/membership/voucher/${encodeURIComponent(clean)}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
@@ -115,13 +124,18 @@ export const StaffMembershipCounterModal: React.FC<StaffMembershipCounterModalPr
         setFoundVoucher(data);
       } else {
         const err = await res.json();
-        showNotification(err.error || 'Voucher not found', 'error');
+        showNotification(err.error || 'Voucher not found with this code or QR barcode', 'error');
       }
     } catch (e: any) {
       showNotification(e.message || 'Error looking up voucher', 'error');
     } finally {
       setSearchingVoucher(false);
     }
+  };
+
+  const handleSearchVoucher = async (e: React.FormEvent) => {
+    e.preventDefault();
+    inspectVoucher(voucherInput);
   };
 
   // Confirm Redemption
@@ -214,31 +228,44 @@ export const StaffMembershipCounterModal: React.FC<StaffMembershipCounterModalPr
           {/* TAB 1: SCAN MEMBER / AWARD POINTS */}
           {activeTab === 'scan_member' && (
             <div className="space-y-4">
-              <form onSubmit={handleSearchMember} className="space-y-2">
-                <label className="block text-xs font-bold text-slate-700">
-                  Scan QR or Enter Member ID / Phone:
-                </label>
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <QrCode className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                    <input
-                      type="text"
-                      required
-                      value={memberInput}
-                      onChange={(e) => setMemberInput(e.target.value)}
-                      placeholder="e.g. ASH-104928 or scan QR..."
-                      className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-800"
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={searchingMember}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl cursor-pointer disabled:opacity-50"
-                  >
-                    {searchingMember ? 'Searching...' : 'Find Member'}
-                  </button>
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => setCameraScannerMode('member')}
+                  className="w-full py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 cursor-pointer shadow-sm transition-all"
+                >
+                  <Camera className="w-4 h-4" /> Scan Member QR with Camera
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-px bg-slate-200" />
+                  <span className="text-[10px] uppercase font-bold text-slate-400">or enter code / phone</span>
+                  <div className="flex-1 h-px bg-slate-200" />
                 </div>
-              </form>
+
+                <form onSubmit={handleSearchMember} className="space-y-2">
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <QrCode className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                      <input
+                        type="text"
+                        required
+                        value={memberInput}
+                        onChange={(e) => setMemberInput(e.target.value)}
+                        placeholder="e.g. ASH-104928 or scan QR..."
+                        className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-800"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={searchingMember}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl cursor-pointer disabled:opacity-50"
+                    >
+                      {searchingMember ? 'Searching...' : 'Find Member'}
+                    </button>
+                  </div>
+                </form>
+              </div>
 
               {foundMember && (
                 <div className="bg-gradient-to-br from-indigo-50/70 to-blue-50/50 border border-indigo-200 rounded-2xl p-4 space-y-4">
@@ -304,31 +331,44 @@ export const StaffMembershipCounterModal: React.FC<StaffMembershipCounterModalPr
           {/* TAB 2: REDEEM VOUCHER */}
           {activeTab === 'redeem_voucher' && (
             <div className="space-y-4">
-              <form onSubmit={handleSearchVoucher} className="space-y-2">
-                <label className="block text-xs font-bold text-slate-700">
-                  Scan Voucher QR or Enter Code (e.g. RED-1234):
-                </label>
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <Gift className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                    <input
-                      type="text"
-                      required
-                      value={voucherInput}
-                      onChange={(e) => setVoucherInput(e.target.value)}
-                      placeholder="e.g. RED-5829 or scan voucher token..."
-                      className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 font-mono uppercase"
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={searchingVoucher}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl cursor-pointer disabled:opacity-50"
-                  >
-                    {searchingVoucher ? 'Checking...' : 'Check Voucher'}
-                  </button>
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => setCameraScannerMode('voucher')}
+                  className="w-full py-2.5 bg-gradient-to-r from-indigo-600 to-violet-700 hover:from-indigo-500 hover:to-violet-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 cursor-pointer shadow-sm transition-all"
+                >
+                  <Camera className="w-4 h-4" /> Scan Voucher QR with Camera
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-px bg-slate-200" />
+                  <span className="text-[10px] uppercase font-bold text-slate-400">or enter voucher code</span>
+                  <div className="flex-1 h-px bg-slate-200" />
                 </div>
-              </form>
+
+                <form onSubmit={handleSearchVoucher} className="space-y-2">
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Gift className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                      <input
+                        type="text"
+                        required
+                        value={voucherInput}
+                        onChange={(e) => setVoucherInput(e.target.value)}
+                        placeholder="e.g. RED-5258 or scan voucher token..."
+                        className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 font-mono uppercase"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={searchingVoucher}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl cursor-pointer disabled:opacity-50"
+                    >
+                      {searchingVoucher ? 'Checking...' : 'Check Voucher'}
+                    </button>
+                  </div>
+                </form>
+              </div>
 
               {foundVoucher && (
                 <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
@@ -394,6 +434,30 @@ export const StaffMembershipCounterModal: React.FC<StaffMembershipCounterModalPr
         </div>
 
       </div>
+
+      {/* Camera QR Scanner Modal */}
+      <CameraQrScannerModal
+        isOpen={cameraScannerMode !== null}
+        onClose={() => setCameraScannerMode(null)}
+        onScan={(scanned) => {
+          const mode = cameraScannerMode;
+          setCameraScannerMode(null);
+          const clean = scanned.trim();
+          if (mode === 'member') {
+            setMemberInput(clean);
+            lookupMember(clean);
+          } else if (mode === 'voucher') {
+            setVoucherInput(clean);
+            inspectVoucher(clean);
+          }
+        }}
+        title={cameraScannerMode === 'member' ? 'Scan Customer Member QR' : 'Scan Reward Voucher QR'}
+        subtitle={
+          cameraScannerMode === 'member'
+            ? 'Point camera at customer’s Member Card QR pass'
+            : 'Point camera at customer’s voucher QR barcode'
+        }
+      />
     </div>
   );
 };

@@ -210,7 +210,10 @@ export const OwnerDashboard: React.FC = () => {
     if (!isOwnerQrCodeAllowed && activeTab === 'qrcode') {
       setActiveTab('overview');
     }
-  }, [isOwnerQrCodeAllowed, activeTab]);
+    if (!isMembershipEnabled && activeTab === 'loyalty') {
+      setActiveTab('overview');
+    }
+  }, [isOwnerQrCodeAllowed, isMembershipEnabled, activeTab]);
 
   // 🎯 Deep-link listener for notifications in Owner Dashboard
   useEffect(() => {
@@ -2119,27 +2122,22 @@ export const OwnerDashboard: React.FC = () => {
           </button>
         )}
 
-        {/* Loyalty & Rewards Tab */}
-        <button
-          type="button"
-          onClick={() => setActiveTab('loyalty')}
-          className={`flex flex-col md:flex-row items-center gap-1 md:gap-2 px-3 sm:px-4 py-1.5 rounded-xl transition-all cursor-pointer relative shrink-0 ${
-            activeTab === 'loyalty'
-              ? 'text-indigo-600 font-bold bg-indigo-50/85'
-              : 'text-slate-400 font-medium hover:text-slate-600 hover:bg-slate-50'
-          }`}
-          id="owner-tab-loyalty"
-        >
-          <Award className="h-5 w-5 md:h-4 md:w-4" />
-          <div className="flex items-center gap-1">
+        {/* Loyalty & Rewards Tab - Only visible when activated by Admin / Special User */}
+        {isMembershipEnabled && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('loyalty')}
+            className={`flex flex-col md:flex-row items-center gap-1 md:gap-2 px-3 sm:px-4 py-1.5 rounded-xl transition-all cursor-pointer relative shrink-0 ${
+              activeTab === 'loyalty'
+                ? 'text-indigo-600 font-bold bg-indigo-50/85'
+                : 'text-slate-400 font-medium hover:text-slate-600 hover:bg-slate-50'
+            }`}
+            id="owner-tab-loyalty"
+          >
+            <Award className="h-5 w-5 md:h-4 md:w-4" />
             <span className="text-[10px] md:text-xs font-semibold">Loyalty &amp; Rewards</span>
-            {!isMembershipEnabled && (
-              <span className="text-[8px] bg-slate-100 text-slate-500 border border-slate-200 px-1 rounded-sm uppercase font-bold tracking-tight">
-                Inactive
-              </span>
-            )}
-          </div>
-        </button>
+          </button>
+        )}
 
         <button
           type="button"
@@ -2157,128 +2155,88 @@ export const OwnerDashboard: React.FC = () => {
 
       {activeTab === 'overview' && (
         <div className="space-y-6 animate-fade-in">
-          {/* Station Direct Link & Booking Quick Banner */}
-          {selectedBusiness && (
-            <div className={`rounded-3xl p-5 sm:p-6 shadow-sm border flex flex-col md:flex-row items-start md:items-center justify-between gap-4 relative overflow-hidden ${
-              isOwnerQrCodeAllowed
-                ? 'bg-gradient-to-r from-sky-950 via-slate-900 to-indigo-950 text-white border-sky-800/40'
-                : 'bg-slate-100 border-slate-200 text-slate-700'
-            }`}>
+          {/* Station Direct Link & Booking Quick Banner - Only shown when allowed */}
+          {selectedBusiness && isOwnerQrCodeAllowed && (
+            <div className="rounded-3xl p-5 sm:p-6 shadow-sm border flex flex-col md:flex-row items-start md:items-center justify-between gap-4 relative overflow-hidden bg-gradient-to-r from-sky-950 via-slate-900 to-indigo-950 text-white border-sky-800/40">
               <div className="relative z-10 flex items-center gap-4">
-                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${
-                  isOwnerQrCodeAllowed
-                    ? 'bg-sky-500/20 border border-sky-400/30 text-sky-400'
-                    : 'bg-slate-200 border border-slate-300 text-slate-500'
-                }`}>
-                  {isOwnerQrCodeAllowed ? <QrCode className="w-6 h-6" /> : <Lock className="w-6 h-6" />}
+                <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 bg-sky-500/20 border border-sky-400/30 text-sky-400">
+                  <QrCode className="w-6 h-6" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h4 className={`font-bold text-base ${isOwnerQrCodeAllowed ? 'text-white' : 'text-slate-900'}`}>
-                      {isOwnerQrCodeAllowed ? 'Direct Booking Link & QR Active' : 'Direct Booking Page & QR Restricted'}
+                    <h4 className="font-bold text-base text-white">
+                      Direct Booking Link &amp; QR Active
                     </h4>
-                    <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full border ${
-                      isOwnerQrCodeAllowed
-                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/30'
-                        : 'bg-amber-100 text-amber-800 border-amber-200'
-                    }`}>
-                      {isOwnerQrCodeAllowed ? 'Live' : 'Hidden from Public'}
+                    <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full border bg-emerald-500/20 text-emerald-300 border-emerald-400/30">
+                      Live
                     </span>
                   </div>
-                  <p className={`text-xs mt-1 ${isOwnerQrCodeAllowed ? 'text-slate-300' : 'text-slate-500'}`}>
-                    {isOwnerQrCodeAllowed ? (
-                      <>
-                        Customers can book instantly without app download or login at <code className="bg-white/10 px-1.5 py-0.5 rounded text-sky-300 font-mono">/wash/{selectedBusiness.slug || selectedBusiness.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || selectedBusiness.id}</code>
-                      </>
-                    ) : (
-                      <>
-                        Direct public booking via <code className="bg-slate-200 px-1.5 py-0.5 rounded text-slate-700 font-mono">/wash/{selectedBusiness.slug || selectedBusiness.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || selectedBusiness.id}</code> and printable posters are currently hidden. Contact platform administration to activate.
-                      </>
-                    )}
+                  <p className="text-xs mt-1 text-slate-300">
+                    Customers can book instantly without app download or login at <code className="bg-white/10 px-1.5 py-0.5 rounded text-sky-300 font-mono">/wash/{selectedBusiness.slug || selectedBusiness.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || selectedBusiness.id}</code>
                   </p>
                 </div>
               </div>
               <div className="relative z-10 flex items-center gap-2.5 w-full md:w-auto">
-                {isOwnerQrCodeAllowed ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const slug = selectedBusiness.slug || selectedBusiness.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || selectedBusiness.id;
-                        window.history.pushState({ path: `/wash/${slug}` }, '', `/wash/${slug}`);
-                        window.dispatchEvent(new PopStateEvent('popstate'));
-                      }}
-                      className="flex-1 md:flex-initial px-4 py-2.5 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
-                      id="owner-preview-public-page-btn"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>Preview Page</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('qrcode')}
-                      className="flex-1 md:flex-initial px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
-                      id="owner-manage-qr-btn"
-                    >
-                      <QrCode className="w-3.5 h-3.5 text-sky-400" />
-                      <span>View Poster</span>
-                    </button>
-                  </>
-                ) : (
-                  <span className="text-xs text-slate-500 italic bg-white/70 px-3 py-1.5 rounded-lg border border-slate-200">
-                    Awaiting Admin / Special User Activation
-                  </span>
-                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const slug = selectedBusiness.slug || selectedBusiness.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || selectedBusiness.id;
+                    window.history.pushState({ path: `/wash/${slug}` }, '', `/wash/${slug}`);
+                    window.dispatchEvent(new PopStateEvent('popstate'));
+                  }}
+                  className="flex-1 md:flex-initial px-4 py-2.5 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                  id="owner-preview-public-page-btn"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>Preview Page</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('qrcode')}
+                  className="flex-1 md:flex-initial px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                  id="owner-manage-qr-btn"
+                >
+                  <QrCode className="w-3.5 h-3.5 text-sky-400" />
+                  <span>View Poster</span>
+                </button>
               </div>
             </div>
           )}
 
-          {/* Loyalty & Rewards Club Banner in Overview */}
-          <div className={`p-4 md:p-5 rounded-3xl border flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all relative overflow-hidden ${
-            isMembershipEnabled
-              ? 'bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border-indigo-500/30 text-white shadow-md'
-              : 'bg-indigo-50/50 border-indigo-100 text-slate-800'
-          }`}>
-            <div className="relative z-10 flex items-center gap-4">
-              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${
-                isMembershipEnabled
-                  ? 'bg-indigo-500/20 border border-indigo-400/30 text-indigo-400'
-                  : 'bg-white border border-indigo-200 text-indigo-600'
-              }`}>
-                <Award className="w-6 h-6" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h4 className={`font-bold text-base ${isMembershipEnabled ? 'text-white' : 'text-slate-900'}`}>
-                    VIP Loyalty &amp; Rewards Club
-                  </h4>
-                  <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full border ${
-                    isMembershipEnabled
-                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/30'
-                      : 'bg-amber-100 text-amber-800 border-amber-200'
-                  }`}>
-                    {isMembershipEnabled ? 'Active' : 'Inactive'}
-                  </span>
+          {/* Loyalty & Rewards Club Banner in Overview - Only shown when activated by Admin / Special User */}
+          {selectedBusiness && isMembershipEnabled && (
+            <div className="p-4 md:p-5 rounded-3xl border flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all relative overflow-hidden bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border-indigo-500/30 text-white shadow-md">
+              <div className="relative z-10 flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 bg-indigo-500/20 border border-indigo-400/30 text-indigo-400">
+                  <Award className="w-6 h-6" />
                 </div>
-                <p className={`text-xs mt-1 ${isMembershipEnabled ? 'text-slate-300' : 'text-slate-500'}`}>
-                  {isMembershipEnabled
-                    ? 'Reward points are automatically credited when wash bookings complete. Customers can join via digital QR passes and redeem rewards.'
-                    : 'Loyalty programme is currently inactive. Activate to reward regular customers with points and free detailing.'}
-                </p>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-bold text-base text-white">
+                      VIP Loyalty &amp; Rewards Club
+                    </h4>
+                    <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full border bg-emerald-500/20 text-emerald-300 border-emerald-400/30">
+                      Active
+                    </span>
+                  </div>
+                  <p className="text-xs mt-1 text-slate-300">
+                    Reward points are automatically credited when wash bookings complete. Customers can join via digital QR passes and redeem rewards.
+                  </p>
+                </div>
+              </div>
+              <div className="relative z-10 flex items-center gap-2.5 w-full md:w-auto">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('loyalty')}
+                  className="flex-1 md:flex-initial px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs bg-indigo-600 hover:bg-indigo-500 text-white"
+                  id="owner-manage-loyalty-banner-btn"
+                >
+                  <Award className="w-3.5 h-3.5" />
+                  <span>Manage Loyalty &amp; Points</span>
+                </button>
               </div>
             </div>
-            <div className="relative z-10 flex items-center gap-2.5 w-full md:w-auto">
-              <button
-                type="button"
-                onClick={() => setActiveTab('loyalty')}
-                className="flex-1 md:flex-initial px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs bg-indigo-600 hover:bg-indigo-500 text-white"
-                id="owner-manage-loyalty-banner-btn"
-              >
-                <Award className="w-3.5 h-3.5" />
-                <span>{isMembershipEnabled ? 'Manage Loyalty & Points' : 'Activate Loyalty Club'}</span>
-              </button>
-            </div>
-          </div>
+          )}
 
           {/* Analytics Bento Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
@@ -6056,69 +6014,15 @@ export const OwnerDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* 🌟 LOYALTY & REWARDS MANAGEMENT */}
-      {activeTab === 'loyalty' && selectedBusiness && (
-        isMembershipEnabled ? (
-          <div className="space-y-6 animate-fade-in" id="owner-loyalty-section">
-            <LoyaltyMembershipOwnerView
-              carWash={selectedBusiness}
-              token={token}
-              currentUser={user}
-            />
-          </div>
-        ) : (
-          <div className="bg-white border border-slate-200 rounded-3xl p-8 sm:p-12 text-center max-w-2xl mx-auto space-y-6 shadow-sm animate-fade-in" id="owner-loyalty-inactive-panel">
-            <div className="w-16 h-16 bg-indigo-50 border border-indigo-200 rounded-3xl flex items-center justify-center mx-auto text-indigo-600 shadow-xs">
-              <Award className="w-8 h-8" />
-            </div>
-
-            <div className="space-y-2">
-              <span className="px-3 py-1 bg-amber-50 text-amber-800 border border-amber-200 rounded-full text-xs font-black uppercase tracking-wider inline-block">
-                Programme Inactive
-              </span>
-              <h2 className="text-xl sm:text-2xl font-black text-slate-800">
-                Customer Loyalty &amp; Rewards Club
-              </h2>
-              <p className="text-xs sm:text-sm text-slate-500 leading-relaxed max-w-lg mx-auto">
-                Boost customer retention by automatically awarding loyalty points on every online booking and walk-in wash. Enrolled customers receive digital QR member passes and can redeem points for free washes and custom discounts.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-left">
-              <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100 space-y-1">
-                <span className="text-[10px] font-black uppercase text-indigo-600">Points Rules</span>
-                <p className="text-xs font-bold text-slate-700">Custom points per wash service</p>
-              </div>
-              <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100 space-y-1">
-                <span className="text-[10px] font-black uppercase text-indigo-600">Rewards Catalog</span>
-                <p className="text-xs font-bold text-slate-700">Free washes, discounts &amp; add-ons</p>
-              </div>
-              <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100 space-y-1">
-                <span className="text-[10px] font-black uppercase text-indigo-600">QR Counter Passes</span>
-                <p className="text-xs font-bold text-slate-700">Fast scan &amp; award at cashier counter</p>
-              </div>
-            </div>
-
-            <div className="pt-2">
-              <button
-                type="button"
-                onClick={async () => {
-                  const success = await updateLocationConfig(selectedBusiness.id, {
-                    membershipEnabled: true,
-                  });
-                  if (success) {
-                    showNotification('⭐ Loyalty & Rewards Programme activated for this branch!', 'success');
-                  }
-                }}
-                className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs uppercase tracking-wider rounded-2xl shadow-lg transition-all transform hover:-translate-y-0.5 cursor-pointer inline-flex items-center gap-2"
-                id="btn-activate-branch-loyalty"
-              >
-                <Sparkles className="w-4 h-4" />
-                <span>Activate Loyalty Programme Now</span>
-              </button>
-            </div>
-          </div>
-        )
+      {/* 🌟 LOYALTY & REWARDS MANAGEMENT - Only available when activated by Admin / Special User */}
+      {activeTab === 'loyalty' && selectedBusiness && isMembershipEnabled && (
+        <div className="space-y-6 animate-fade-in" id="owner-loyalty-section">
+          <LoyaltyMembershipOwnerView
+            carWash={selectedBusiness}
+            token={token}
+            currentUser={user}
+          />
+        </div>
       )}
 
       {showEmployeeModal && (

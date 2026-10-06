@@ -70,7 +70,7 @@ export const AdminDashboard: React.FC = () => {
   const [onboardBusinessDesc, setOnboardBusinessDesc] = useState('');
   const [onboardBusinessLat, setOnboardBusinessLat] = useState(4.8917);
   const [onboardBusinessLng, setOnboardBusinessLng] = useState(114.9401);
-  const [onboardMembership, setOnboardMembership] = useState(true);
+  const [onboardMembership, setOnboardMembership] = useState(false);
   const [onboardSubmitting, setOnboardSubmitting] = useState(false);
 
   // Edit Location State
@@ -674,107 +674,116 @@ export const AdminDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Sub Tabs Selection */}
-      <div className="border-b border-slate-200 flex gap-4 text-sm font-semibold">
+      {/* Sub Tabs Selection - Responsive Mobile Horizontal Scroll */}
+      <div className="border-b border-slate-200 flex items-center gap-1.5 sm:gap-4 text-xs sm:text-sm font-semibold overflow-x-auto no-scrollbar scrollbar-none py-1 -mx-4 px-4 sm:mx-0 sm:px-0 touch-pan-x">
         <button
           onClick={() => setActiveSubTab('users')}
-          className={`pb-3.5 px-1 border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
+          className={`pb-3 pt-1.5 px-2.5 sm:px-1 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap ${
             activeSubTab === 'users'
               ? 'border-red-600 text-red-600 font-bold'
               : 'border-transparent text-slate-500 hover:text-slate-700'
           }`}
           id="admin-subtab-users"
         >
-          <Users className="h-4 w-4" /> User Management
+          <Users className="h-4 w-4 shrink-0" />
+          <span>User Management</span>
         </button>
         <button
           onClick={() => setActiveSubTab('logs')}
-          className={`pb-3.5 px-1 border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
+          className={`pb-3 pt-1.5 px-2.5 sm:px-1 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap ${
             activeSubTab === 'logs'
               ? 'border-red-600 text-red-600 font-bold'
               : 'border-transparent text-slate-500 hover:text-slate-700'
           }`}
           id="admin-subtab-logs"
         >
-          <Activity className="h-4 w-4" /> System Audit Logs
+          <Activity className="h-4 w-4 shrink-0" />
+          <span>System Audit Logs</span>
         </button>
         <button
           onClick={() => setActiveSubTab('emails')}
-          className={`pb-3.5 px-1 border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
+          className={`pb-3 pt-1.5 px-2.5 sm:px-1 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap ${
             activeSubTab === 'emails'
               ? 'border-red-600 text-red-600 font-bold'
               : 'border-transparent text-slate-500 hover:text-slate-700'
           }`}
           id="admin-subtab-emails"
         >
-          <Mail className="h-4 w-4" /> Email Sandbox & Logs
+          <Mail className="h-4 w-4 shrink-0" />
+          <span>Email Sandbox &amp; Logs</span>
         </button>
         <button
           onClick={() => setActiveSubTab('businesses')}
-          className={`pb-3.5 px-1 border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
+          className={`pb-3 pt-1.5 px-2.5 sm:px-1 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap ${
             activeSubTab === 'businesses'
               ? 'border-red-600 text-red-600 font-bold'
               : 'border-transparent text-slate-500 hover:text-slate-700'
           }`}
           id="admin-subtab-businesses"
         >
-          <Sliders className="h-4 w-4" /> Business Locations
+          <Sliders className="h-4 w-4 shrink-0" />
+          <span>Business Locations</span>
         </button>
         <button
           onClick={() => setActiveSubTab('memberships')}
-          className={`pb-3.5 px-1 border-b-2 transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+          className={`pb-3 pt-1.5 px-2.5 sm:px-1 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap ${
             activeSubTab === 'memberships'
               ? 'border-red-600 text-red-600 font-bold'
               : 'border-transparent text-slate-500 hover:text-slate-700'
           }`}
           id="admin-subtab-memberships"
         >
-          <Award className="h-4 w-4" /> Loyalty Programmes
+          <Award className="h-4 w-4 shrink-0" />
+          <span>Loyalty Programmes</span>
         </button>
         <button
           onClick={() => setActiveSubTab('presets')}
-          className={`pb-3.5 px-1 border-b-2 transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+          className={`pb-3 pt-1.5 px-2.5 sm:px-1 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap ${
             activeSubTab === 'presets'
               ? 'border-red-600 text-red-600 font-bold'
               : 'border-transparent text-slate-500 hover:text-slate-700'
           }`}
           id="admin-subtab-presets"
         >
-          <Navigation className="h-4 w-4" /> Map Presets
+          <Navigation className="h-4 w-4 shrink-0" />
+          <span>Map Presets</span>
         </button>
         <button
           onClick={() => setActiveSubTab('info')}
-          className={`pb-3.5 px-1 border-b-2 transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+          className={`pb-3 pt-1.5 px-2.5 sm:px-1 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap ${
             activeSubTab === 'info'
               ? 'border-red-600 text-red-600 font-bold'
               : 'border-transparent text-slate-500 hover:text-slate-700'
           }`}
           id="admin-subtab-info"
         >
-          <Building className="h-4 w-4" /> Autoshine Information
+          <Building className="h-4 w-4 shrink-0" />
+          <span>Autoshine Information</span>
         </button>
         <button
           onClick={() => setActiveSubTab('system')}
-          className={`pb-3.5 px-1 border-b-2 transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+          className={`pb-3 pt-1.5 px-2.5 sm:px-1 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap ${
             activeSubTab === 'system'
               ? 'border-red-600 text-red-600 font-bold'
               : 'border-transparent text-slate-500 hover:text-slate-700'
           }`}
           id="admin-subtab-system"
         >
-          <Server className="h-4 w-4" /> Database & System Diagnostics
+          <Server className="h-4 w-4 shrink-0" />
+          <span>Database &amp; System Diagnostics</span>
         </button>
         {FEATURES.ENABLE_REVIEWS && (
           <button
             onClick={() => setActiveSubTab('reviews')}
-            className={`pb-3.5 px-1 border-b-2 transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+            className={`pb-3 pt-1.5 px-2.5 sm:px-1 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap ${
               activeSubTab === 'reviews'
                 ? 'border-red-600 text-red-600 font-bold'
                 : 'border-transparent text-slate-500 hover:text-slate-700'
             }`}
             id="admin-subtab-reviews"
           >
-            <Star className="h-4 w-4" /> Review Moderation
+            <Star className="h-4 w-4 shrink-0" />
+            <span>Review Moderation</span>
           </button>
         )}
       </div>

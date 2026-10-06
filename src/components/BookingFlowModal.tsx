@@ -28,6 +28,7 @@ import {
   Award
 } from 'lucide-react';
 import { CarWash, User, WashService, TimeSlotItem } from '../types.js';
+import { FEATURES } from '../config/features.js';
 import { useApp } from '../context/AppContext.js';
 import { useModalBack } from '../utils/useBackHandler.js';
 import { MapSimulation } from './MapSimulation.js';
@@ -78,12 +79,13 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
   const [selectedItems, setSelectedItems] = useState<any[]>([]);
   const [expandedServiceId, setExpandedServiceId] = useState<string | null>(null);
 
-  // Loyalty Membership status for this car wash
+  // Loyalty Membership status for this car wash (only active if enabled globally and by car wash)
+  const isLoyaltyEnabled = FEATURES.ENABLE_LOYALTY_PROGRAM && location.membershipEnabled;
   const [customerMembership, setCustomerMembership] = useState<any | null>(null);
   const [isJoiningLoyalty, setIsJoiningLoyalty] = useState(false);
 
   useEffect(() => {
-    if (location.membershipEnabled && user && token) {
+    if (isLoyaltyEnabled && user && token) {
       fetch(`/api/membership/my-membership/${location.id}`, {
         headers: { Authorization: `Bearer ${token}` }
       })
@@ -91,7 +93,7 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
         .then(data => setCustomerMembership(data))
         .catch(() => {});
     }
-  }, [location.id, location.membershipEnabled, user, token]);
+  }, [location.id, isLoyaltyEnabled, user, token]);
 
   const handleQuickJoinLoyalty = async () => {
     if (!token || !location.id) return;
@@ -747,7 +749,7 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
               {currentStep === 1 && (
                 <div className="space-y-4 animate-fade-in">
                   {/* VIP Loyalty Programme Banner */}
-                  {location.membershipEnabled && (
+                  {isLoyaltyEnabled && (
                     <div className="bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-indigo-500/10 border border-indigo-200/90 rounded-2xl p-3 sm:p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 text-white flex items-center justify-center shrink-0 shadow-xs">
@@ -1559,7 +1561,7 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                   </div>
 
                   {/* VIP Rewards Club Points Indicator */}
-                  {location.membershipEnabled && (
+                  {isLoyaltyEnabled && (
                     <div className="bg-indigo-50/70 border border-indigo-200/80 rounded-2xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
                       <div className="flex items-center gap-2.5">
                         <Award className="w-4 h-4 text-indigo-600 shrink-0" />
