@@ -20,6 +20,7 @@ import { CarWashOperationsModal } from '../components/CarWashOperationsModal.js'
 
 export const AdminDashboard: React.FC = () => {
   const {
+    user,
     adminUsersList,
     bookings,
     locations,
@@ -200,7 +201,7 @@ export const AdminDashboard: React.FC = () => {
     from: string;
     subject: string;
     html: string;
-    status: 'DELIVERED' | 'SIMULATED' | 'FAILED' | 'HELD_QUOTA';
+    status: 'DELIVERED' | 'SIMULATED' | 'FAILED' | 'HELD_QUOTA' | 'SKIPPED';
     provider: 'RESEND' | 'GMAIL_SMTP' | 'SANDBOX_CONSOLE';
     errorDetails?: string;
   }

@@ -264,6 +264,10 @@ async function dispatchGmailDirect(
     return true;
   }
 
+  const senderFrom = (settings.emailFromAddress && settings.emailFromAddress.trim())
+    ? formatResendFromAddress(settings.emailFromAddress)
+    : `AutoShine BN <${gmailUser}>`;
+
   try {
     const transporter = nodemailer.createTransport({
       service: 'gmail',
@@ -272,10 +276,6 @@ async function dispatchGmailDirect(
         pass: gmailPass.replace(/\s+/g, ''),
       },
     });
-
-    const senderFrom = (settings.emailFromAddress && settings.emailFromAddress.trim())
-      ? formatResendFromAddress(settings.emailFromAddress)
-      : `AutoShine BN <${gmailUser}>`;
 
     const mailOptions: Record<string, any> = {
       from: senderFrom,
