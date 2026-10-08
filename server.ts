@@ -3386,62 +3386,6 @@ async function startServer() {
     }
   );
 
-  // Admin: Test send email
-  app.post(
-    '/api/admin/test-email',
-    authenticateToken,
-    requireRoles([Role.ADMIN]),
-    async (req: AuthenticatedRequest, res) => {
-      try {
-        const { testEmail } = req.body;
-        if (!testEmail) {
-          res.status(400).json({ error: 'Recipient email address (testEmail) is required' });
-          return;
-        }
-
-        const isDbUsingPostgres = isUsingPostgres();
-        const dbType = isDbUsingPostgres ? 'PostgreSQL (Supabase)' : 'SQLite (Fallback Local DB)';
-
-        const subject = 'Test Dispatch: Autoshine BN System Diagnostics - Success';
-        const html = `
-          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff; color: #1e293b;">
-            <div style="text-align: center; margin-bottom: 24px;">
-              <h1 style="color: #0284c7; margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.025em;">Autoshine BN</h1>
-              <p style="color: #64748b; margin: 4px 0 0 0; font-size: 14px;">Platform Operator Room</p>
-            </div>
-            <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 24px 0;" />
-            <h2 style="color: #10b981; font-size: 20px; font-weight: 700; margin-top: 0; margin-bottom: 12px; text-align: center;">✅ Email Dispatch Working!</h2>
-            <p style="font-size: 15px; line-height: 1.6; color: #334155;">Hello Administrator,</p>
-            <p style="font-size: 15px; line-height: 1.6; color: #334155;">This is a system diagnostics email sent from your Autoshine BN deployment. If you are reading this message, your Resend SMTP API keys are properly integrated and fully operational!</p>
-            
-            <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 20px; border-radius: 12px; margin: 28px 0; font-size: 13px;">
-              <p style="margin: 4px 0; color: #475569;"><strong>System Status Details:</strong></p>
-              <p style="margin: 2px 0; color: #334155;">• Active Database: <strong style="color: #ef4444;">${dbType}</strong></p>
-              <p style="margin: 2px 0; color: #334155;">• Resend Service: <strong style="color: #10b981;">Fully Configured (API Key Verified)</strong></p>
-              <p style="margin: 2px 0; color: #334155;">• Timestamp: ${new Date().toLocaleString()}</p>
-            </div>
- 
-            <p style="font-size: 14px; line-height: 1.6; color: #475569;">You can now safely onboard customers, locations, and dispatch notifications with confidence.</p>
-            <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 30px 0;" />
-            <div style="text-align: center;">
-              <p style="color: #94a3b8; font-size: 11px; margin: 0;">&copy; ${new Date().getFullYear()} Autoshine BN. All rights reserved.</p>
-            </div>
-          </div>
-        `;
-
-        const sent = await sendEmail(testEmail, subject, html);
-        if (sent) {
-          await addAuditLog(req.user!.id, req.user!.email, 'TEST_EMAIL_DISPATCH', `Sent system diagnostics email to ${testEmail}`);
-          res.json({ success: true, message: `Test email successfully dispatched to ${testEmail}!` });
-        } else {
-          res.status(500).json({ error: 'Failed to send email. Check server console logs for exact provider rejection message.' });
-        }
-      } catch (error: any) {
-        res.status(500).json({ error: error.message || 'Internal server error' });
-      }
-    }
-  );
-
   // Admin: View all users
   app.get(
     '/api/admin/users',
@@ -3616,8 +3560,9 @@ async function startServer() {
     requireRoles([Role.ADMIN]),
     async (req: AuthenticatedRequest, res) => {
       try {
-        const { recipient, subject, body } = req.body;
-        if (!recipient || !isValidEmail(recipient)) {
+        const { recipient, testEmail, subject, body } = req.body;
+        const targetRecipient = (recipient || testEmail || '').trim();
+        if (!targetRecipient || !isValidEmail(targetRecipient)) {
           res.status(400).json({ error: 'Please provide a valid recipient email address.' });
           return;
         }
@@ -3634,7 +3579,8 @@ async function startServer() {
           </div>
         `;
 
-        const sent = await sendEmail(recipient, emailSubject, html);
+        const sent = await sendEmail(targetRecipient, emailSubject, html);
+        await addAuditLog(req.user!.id, req.user!.email, 'TEST_EMAIL_DISPATCH', `Dispatched test email to ${targetRecipient}`);
         const lastLog = getEmailLogs()[0];
         const failReason = (lastLog && (lastLog.status === 'FAILED' || lastLog.status === 'HELD_QUOTA'))
           ? (lastLog.errorDetails || 'Failed to dispatch email. Check configuration.')
@@ -3643,7 +3589,7 @@ async function startServer() {
         res.json({
           success: sent,
           message: sent
-            ? `Test email sent to ${recipient}.`
+            ? `Test email sent to ${targetRecipient}.`
             : failReason,
           errorDetails: sent ? undefined : failReason,
         });

@@ -240,7 +240,7 @@ export const AdminDashboard: React.FC = () => {
   const [emailLogs, setEmailLogs] = useState<EmailLogEntry[]>([]);
   const [emailLogsLoading, setEmailLogsLoading] = useState(false);
   const [selectedEmailPreview, setSelectedEmailPreview] = useState<EmailLogEntry | null>(null);
-  const [testEmailRecipient, setTestEmailRecipient] = useState('');
+  const [testEmailRecipient, setTestEmailRecipient] = useState(user?.email || 'suds.carwash.app@gmail.com');
   const [testEmailSubject, setTestEmailSubject] = useState('Autoshine BN Test Email');
   const [testEmailBody, setTestEmailBody] = useState('This is a test transactional email sent from your Autoshine BN administration console.');
   const [sendingTestEmail, setSendingTestEmail] = useState(false);
@@ -373,12 +373,14 @@ export const AdminDashboard: React.FC = () => {
       const data = await res.json();
       if (res.ok && data.success) {
         setTestEmailStatus({ type: 'success', message: data.message || 'Email dispatched successfully!' });
-        fetchEmailLogs();
       } else {
         setTestEmailStatus({ type: 'error', message: data.error || data.message || 'Failed to dispatch email.' });
       }
+      await fetchEmailLogs();
+      await fetchEmailSettings();
     } catch (err: any) {
       setTestEmailStatus({ type: 'error', message: err.message || 'Network error occurred while sending email.' });
+      await fetchEmailLogs();
     } finally {
       setSendingTestEmail(false);
     }
