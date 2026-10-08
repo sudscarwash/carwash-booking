@@ -19,7 +19,7 @@ export interface EmailLogEntry {
   from: string;
   subject: string;
   html: string;
-  status: 'DELIVERED' | 'SIMULATED' | 'FAILED' | 'HELD_QUOTA';
+  status: 'DELIVERED' | 'SIMULATED' | 'FAILED' | 'HELD_QUOTA' | 'SKIPPED';
   provider: EmailProvider;
   errorDetails?: string;
 }
@@ -55,8 +55,25 @@ interface DailyQuotaTracker {
 }
 
 const SETTINGS_FILE_PATH = path.resolve(process.cwd(), 'data', 'email_settings.json');
-const emailLogsMemory: EmailLogEntry[] = [];
+const LOGS_FILE_PATH = path.resolve(process.cwd(), 'data', 'email_logs.json');
 const MAX_LOGS = 100;
+
+function loadPersistedLogs(): EmailLogEntry[] {
+  try {
+    if (fs.existsSync(LOGS_FILE_PATH)) {
+      const raw = fs.readFileSync(LOGS_FILE_PATH, 'utf-8');
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.error('[EmailService] Error loading email logs from disk:', err);
+  }
+  return [];
+}
+
+const emailLogsMemory: EmailLogEntry[] = loadPersistedLogs();
 
 // Daily tracker memory
 let dailyTracker: DailyQuotaTracker = {
@@ -84,7 +101,7 @@ function ensureTodayTracker(): DailyQuotaTracker {
 // Default settings
 const DEFAULT_SETTINGS: EmailNotificationSettings = {
   masterEnabled: true,
-  notifyBookingConfirmed: false, // Default off to preserve quota for high-value alerts
+  notifyBookingConfirmed: true,  // Enabled by default so booking confirmations dispatch & log
   notifyWashCompleted: true,     // Default on: "Car Ready for Pick Up" has highest customer value
   notifyBookingCancelled: true,  // Default on: Urgent cancellation alerts
   notifyDailyOwnerDigest: false,
@@ -170,9 +187,16 @@ export function getEmailLogs(): EmailLogEntry[] {
 
 export function clearEmailLogs(): void {
   emailLogsMemory.length = 0;
+  try {
+    if (fs.existsSync(LOGS_FILE_PATH)) {
+      fs.writeFileSync(LOGS_FILE_PATH, JSON.stringify([], null, 2), 'utf-8');
+    }
+  } catch (err) {
+    console.error('[EmailService] Failed to clear email logs on disk:', err);
+  }
 }
 
-function recordEmailLog(entry: Omit<EmailLogEntry, 'id' | 'timestamp'>) {
+export function recordEmailLog(entry: Omit<EmailLogEntry, 'id' | 'timestamp'>) {
   const log: EmailLogEntry = {
     ...entry,
     id: `log_${Math.random().toString(36).substring(2, 9)}_${Date.now()}`,
@@ -181,6 +205,16 @@ function recordEmailLog(entry: Omit<EmailLogEntry, 'id' | 'timestamp'>) {
   emailLogsMemory.unshift(log);
   if (emailLogsMemory.length > MAX_LOGS) {
     emailLogsMemory.pop();
+  }
+
+  try {
+    const dir = path.dirname(LOGS_FILE_PATH);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(LOGS_FILE_PATH, JSON.stringify(emailLogsMemory, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('[EmailService] Failed to persist email logs to disk:', err);
   }
 }
 
@@ -682,6 +716,15 @@ export async function sendBookingConfirmationEmail(options: {
   const settings = getEmailSettings();
   if (!settings.notifyBookingConfirmed) {
     console.log('[EmailService] Skipped booking confirmation email (toggle is OFF).');
+    recordEmailLog({
+      to: options.customerEmail,
+      from: formatResendFromAddress(settings.emailFromAddress),
+      subject: `Booking Confirmed: ${options.businessName} - Autoshine BN`,
+      html: '<p>Skipped: "Booking Confirmed" notification is turned OFF in Admin Email Settings.</p>',
+      status: 'SKIPPED',
+      provider: settings.activeProvider,
+      errorDetails: 'Skipped: "Booking Confirmed Email" toggle is switched OFF in Admin Settings.',
+    });
     return false;
   }
 
@@ -774,6 +817,15 @@ export async function sendWashCompletedEmail(options: {
   const settings = getEmailSettings();
   if (!settings.notifyWashCompleted) {
     console.log('[EmailService] Skipped wash completed email (toggle is OFF).');
+    recordEmailLog({
+      to: options.customerEmail,
+      from: formatResendFromAddress(settings.emailFromAddress),
+      subject: `✨ Your Vehicle is Clean & Ready for Collection! - ${options.businessName}`,
+      html: '<p>Skipped: "Wash Completed / Car Ready" notification is turned OFF in Admin Email Settings.</p>',
+      status: 'SKIPPED',
+      provider: settings.activeProvider,
+      errorDetails: 'Skipped: "Wash Completed / Car Ready" toggle is switched OFF in Admin Settings.',
+    });
     return false;
   }
 
@@ -851,6 +903,15 @@ export async function sendBookingCancelledEmail(options: {
   const settings = getEmailSettings();
   if (!settings.notifyBookingCancelled) {
     console.log('[EmailService] Skipped booking cancellation email (toggle is OFF).');
+    recordEmailLog({
+      to: options.customerEmail,
+      from: formatResendFromAddress(settings.emailFromAddress),
+      subject: `⚠️ Reservation Cancelled - ${options.businessName} (Autoshine BN)`,
+      html: '<p>Skipped: "Booking Cancelled" notification is turned OFF in Admin Email Settings.</p>',
+      status: 'SKIPPED',
+      provider: settings.activeProvider,
+      errorDetails: 'Skipped: "Booking Cancelled Email" toggle is switched OFF in Admin Settings.',
+    });
     return false;
   }
 

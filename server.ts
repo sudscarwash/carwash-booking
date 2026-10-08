@@ -125,6 +125,7 @@ import {
   sendEmail,
   getEmailLogs,
   clearEmailLogs,
+  recordEmailLog,
   getEmailSettings,
   updateEmailSettings,
   getQuotaStatus
@@ -2142,21 +2143,36 @@ async function startServer() {
       );
 
       // Booking confirmation email is governed by admin notification toggle & quota circuit breaker
-      sendBookingConfirmationEmail({
-        customerEmail: newBooking.customerEmail,
-        customerName: newBooking.customerName,
-        bookingId: newBooking.id,
-        businessName: carWash.name,
-        address: carWash.address,
-        date: newBooking.date,
-        timeSlot: newBooking.timeSlot,
-        serviceName: newBooking.serviceName,
-        price: newBooking.price,
-        paymentBank: newBooking.paymentBank,
-        txnReference: newBooking.txnReference,
-      }).catch((err) => {
-        console.error('[EmailService] Failed to send booking confirmation email:', err);
-      });
+      const targetCustomerEmail = newBooking.customerEmail || req.user?.email;
+      const targetCustomerName = newBooking.customerName || req.user?.name || 'Customer';
+
+      if (targetCustomerEmail && !targetCustomerEmail.endsWith('@walkin.guest')) {
+        sendBookingConfirmationEmail({
+          customerEmail: targetCustomerEmail,
+          customerName: targetCustomerName,
+          bookingId: newBooking.id,
+          businessName: carWash.name,
+          address: carWash.address,
+          date: newBooking.date,
+          timeSlot: newBooking.timeSlot,
+          serviceName: newBooking.serviceName,
+          price: newBooking.price,
+          paymentBank: newBooking.paymentBank,
+          txnReference: newBooking.txnReference,
+        }).catch((err) => {
+          console.error('[EmailService] Failed to send booking confirmation email:', err);
+        });
+      } else {
+        recordEmailLog({
+          to: targetCustomerName,
+          from: 'System <notifications@autoshinebn.com>',
+          subject: `Booking Confirmed: ${carWash.name} - Autoshine BN`,
+          html: '<p>Skipped: No valid email address provided for this booking customer.</p>',
+          status: 'SKIPPED',
+          provider: getEmailSettings().activeProvider,
+          errorDetails: 'Skipped: No valid customer email address provided on booking creation.',
+        });
+      }
 
       res.status(201).json(newBooking);
     } catch (error: any) {
@@ -2289,6 +2305,39 @@ async function startServer() {
           'MANUAL_BOOKING_CREATE',
           `Created manual ${bookingSource || 'PHONE'} booking for ${customerName} (${customerPhone}) on ${date} ${timeSlot}`
         );
+
+        // Dispatch transactional email for manual bookings if a valid email is provided
+        if (customerEmail && !customerEmail.endsWith('@walkin.guest')) {
+          if (newManualBooking.status === BookingStatus.COMPLETED) {
+            sendWashCompletedEmail({
+              customerEmail,
+              customerName: customerName || 'Customer',
+              bookingId: newManualBooking.id,
+              businessName: carWash.name,
+              vehiclePlate: vehicleInfo,
+              serviceName,
+              totalAmount: newManualBooking.price,
+            }).catch((err) => {
+              console.error('[EmailService] Failed to send manual wash completion email:', err);
+            });
+          } else {
+            sendBookingConfirmationEmail({
+              customerEmail,
+              customerName: customerName || 'Customer',
+              bookingId: newManualBooking.id,
+              businessName: carWash.name,
+              address: carWash.address,
+              date: newManualBooking.date,
+              timeSlot: newManualBooking.timeSlot,
+              serviceName: newManualBooking.serviceName,
+              price: newManualBooking.price,
+              paymentBank: newManualBooking.paymentBank,
+              txnReference: newManualBooking.txnReference,
+            }).catch((err) => {
+              console.error('[EmailService] Failed to send manual booking confirmation email:', err);
+            });
+          }
+        }
 
         res.status(201).json(newManualBooking);
       } catch (error: any) {
@@ -2584,33 +2633,60 @@ async function startServer() {
         }
       }
 
-      // 📧 Dispatch optional transactional notification emails (controlled by admin toggle & quota buffer)
-      if (status === BookingStatus.COMPLETED && booking.customerEmail) {
-        const cw = carWashes.find((c) => c.id === booking.carWashId);
-        sendWashCompletedEmail({
-          customerEmail: booking.customerEmail,
-          customerName: booking.customerName || 'Customer',
-          bookingId: booking.id,
-          businessName: cw ? cw.name : 'Autoshine Car Wash',
-          vehiclePlate: booking.vehicleInfo,
-          serviceName: booking.serviceName,
-          totalAmount: booking.price,
-        }).catch((err) => {
-          console.error('[EmailService] Failed to send wash completion email:', err);
-        });
-      } else if ((status === BookingStatus.CANCELLED || status === BookingStatus.REJECTED) && booking.customerEmail) {
-        const cw = carWashes.find((c) => c.id === booking.carWashId);
-        sendBookingCancelledEmail({
-          customerEmail: booking.customerEmail,
-          customerName: booking.customerName || 'Customer',
-          bookingId: booking.id,
-          businessName: cw ? cw.name : 'Autoshine Car Wash',
-          date: booking.date,
-          timeSlot: booking.timeSlot,
-          reason: notes || undefined,
-        }).catch((err) => {
-          console.error('[EmailService] Failed to send cancellation email:', err);
-        });
+      // 📧 Dispatch transactional notification emails (controlled by admin toggle & quota buffer)
+      const targetCustomerEmail = booking.customerEmail || users.find((u) => u.id === booking.customerId)?.email;
+      const targetCustomerName = booking.customerName || users.find((u) => u.id === booking.customerId)?.name || 'Customer';
+
+      if (status === BookingStatus.COMPLETED) {
+        if (targetCustomerEmail && !targetCustomerEmail.endsWith('@walkin.guest')) {
+          const cw = carWashes.find((c) => c.id === booking.carWashId);
+          sendWashCompletedEmail({
+            customerEmail: targetCustomerEmail,
+            customerName: targetCustomerName,
+            bookingId: booking.id,
+            businessName: cw ? cw.name : 'Autoshine Car Wash',
+            vehiclePlate: booking.vehicleInfo,
+            serviceName: booking.serviceName,
+            totalAmount: booking.price,
+          }).catch((err) => {
+            console.error('[EmailService] Failed to send wash completion email:', err);
+          });
+        } else {
+          recordEmailLog({
+            to: targetCustomerName || 'Walk-in Customer',
+            from: 'System <notifications@autoshinebn.com>',
+            subject: '✨ Vehicle Clean & Ready for Collection Notification',
+            html: '<p>Wash completed notification skipped: No customer email address associated with this booking.</p>',
+            status: 'SKIPPED',
+            provider: getEmailSettings().activeProvider,
+            errorDetails: 'Skipped: No customer email address is attached to this booking.',
+          });
+        }
+      } else if (status === BookingStatus.CANCELLED || status === BookingStatus.REJECTED) {
+        if (targetCustomerEmail && !targetCustomerEmail.endsWith('@walkin.guest')) {
+          const cw = carWashes.find((c) => c.id === booking.carWashId);
+          sendBookingCancelledEmail({
+            customerEmail: targetCustomerEmail,
+            customerName: targetCustomerName,
+            bookingId: booking.id,
+            businessName: cw ? cw.name : 'Autoshine Car Wash',
+            date: booking.date,
+            timeSlot: booking.timeSlot,
+            reason: notes || undefined,
+          }).catch((err) => {
+            console.error('[EmailService] Failed to send cancellation email:', err);
+          });
+        } else {
+          recordEmailLog({
+            to: targetCustomerName || 'Customer',
+            from: 'System <notifications@autoshinebn.com>',
+            subject: '⚠️ Reservation Cancelled Notification',
+            html: '<p>Booking cancellation notification skipped: No customer email address associated with this booking.</p>',
+            status: 'SKIPPED',
+            provider: getEmailSettings().activeProvider,
+            errorDetails: 'Skipped: No customer email address is attached to this booking.',
+          });
+        }
       }
 
       await addAuditLog(

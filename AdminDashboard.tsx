@@ -1689,6 +1689,8 @@ export const AdminDashboard: React.FC = () => {
                                   ? 'bg-amber-100 text-amber-800'
                                   : log.status === 'HELD_QUOTA'
                                   ? 'bg-orange-100 text-orange-800'
+                                  : log.status === 'SKIPPED'
+                                  ? 'bg-slate-200 text-slate-700'
                                   : 'bg-rose-100 text-rose-800'
                               }`}>
                                 {log.status}
