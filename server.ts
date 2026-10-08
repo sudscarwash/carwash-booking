@@ -117,12 +117,17 @@ import {
 import {
   sendPasswordResetOTP,
   sendBookingConfirmationEmail,
+  sendWashCompletedEmail,
+  sendBookingCancelledEmail,
   sendRegistrationWelcomeEmail,
   sendEmailVerificationOTP,
   sendAdminLoginOtp,
   sendEmail,
   getEmailLogs,
-  clearEmailLogs
+  clearEmailLogs,
+  getEmailSettings,
+  updateEmailSettings,
+  getQuotaStatus
 } from './server/emailService.js';
 import { isValidEmail } from './server/validation.js';
 import { authenticateToken, requireRoles, generateToken, AuthenticatedRequest, verifyToken } from './server/auth.js';
@@ -138,7 +143,9 @@ dotenv.config();
 // Entering this code (default: '123456') directly bypasses and validates any
 // OTP challenge (Admin 2FA login, Registration email verification, Password reset)
 // ONLY in non-production environments (or if explicitly permitted via TEST_MASTER_OTP).
-const isProductionEnv = process.env.NODE_ENV === 'production';
+const isProductionEnv = process.env.NODE_ENV === 'production' && 
+  process.env.APP_ENV !== 'development' && 
+  process.env.ENABLE_DEV_OTP !== 'true';
 export const TEST_MASTER_OTP = process.env.TEST_MASTER_OTP || (!isProductionEnv ? '123456' : '');
 
 // Realtime Server-Sent Events (SSE) Hub for instant updates without page refresh
@@ -816,7 +823,7 @@ async function startServer() {
             `Admin 2FA login verification code dispatched to ${user.email} (Code: ${adminOtp}, Status: ${emailSent ? 'Delivered via Resend' : 'Sandbox/Simulated Fallback'})`
           );
 
-          const isDevOrSimulated = !emailSent || process.env.NODE_ENV !== 'production' || !process.env.RESEND_API_KEY;
+          const isDevOrSimulated = !emailSent || !isProductionEnv || !process.env.RESEND_API_KEY || Boolean(process.env.ENABLE_DEV_OTP);
 
           res.status(200).json({
             requireAdminOtp: true,
@@ -2134,26 +2141,22 @@ async function startServer() {
         `Booked slot ${timeSlot} on ${date} at ${carWash.name}${newBooking.txnReference ? ` with bank payment ref: ${newBooking.txnReference}` : ''}`
       );
 
-      // Customer booking confirmation emails are currently removed/disabled per preference.
-      // Important emails (password reset, email verification, account welcome) remain active.
-      // sendBookingConfirmationEmail is kept ready for potential future owner notifications.
-      if (process.env.ENABLE_CUSTOMER_BOOKING_EMAILS === 'true') {
-        sendBookingConfirmationEmail({
-          customerEmail: newBooking.customerEmail,
-          customerName: newBooking.customerName,
-          bookingId: newBooking.id,
-          businessName: carWash.name,
-          address: carWash.address,
-          date: newBooking.date,
-          timeSlot: newBooking.timeSlot,
-          serviceName: newBooking.serviceName,
-          price: newBooking.price,
-          paymentBank: newBooking.paymentBank,
-          txnReference: newBooking.txnReference,
-        }).catch((err) => {
-          console.error('[EmailService] Failed to send booking confirmation email:', err);
-        });
-      }
+      // Booking confirmation email is governed by admin notification toggle & quota circuit breaker
+      sendBookingConfirmationEmail({
+        customerEmail: newBooking.customerEmail,
+        customerName: newBooking.customerName,
+        bookingId: newBooking.id,
+        businessName: carWash.name,
+        address: carWash.address,
+        date: newBooking.date,
+        timeSlot: newBooking.timeSlot,
+        serviceName: newBooking.serviceName,
+        price: newBooking.price,
+        paymentBank: newBooking.paymentBank,
+        txnReference: newBooking.txnReference,
+      }).catch((err) => {
+        console.error('[EmailService] Failed to send booking confirmation email:', err);
+      });
 
       res.status(201).json(newBooking);
     } catch (error: any) {
@@ -2579,6 +2582,35 @@ async function startServer() {
         } catch (notifErr) {
           console.error('Failed to create customer status notification:', notifErr);
         }
+      }
+
+      // 📧 Dispatch optional transactional notification emails (controlled by admin toggle & quota buffer)
+      if (status === BookingStatus.COMPLETED && booking.customerEmail) {
+        const cw = carWashes.find((c) => c.id === booking.carWashId);
+        sendWashCompletedEmail({
+          customerEmail: booking.customerEmail,
+          customerName: booking.customerName || 'Customer',
+          bookingId: booking.id,
+          businessName: cw ? cw.name : 'Autoshine Car Wash',
+          vehiclePlate: booking.vehicleInfo,
+          serviceName: booking.serviceName,
+          totalAmount: booking.price,
+        }).catch((err) => {
+          console.error('[EmailService] Failed to send wash completion email:', err);
+        });
+      } else if ((status === BookingStatus.CANCELLED || status === BookingStatus.REJECTED) && booking.customerEmail) {
+        const cw = carWashes.find((c) => c.id === booking.carWashId);
+        sendBookingCancelledEmail({
+          customerEmail: booking.customerEmail,
+          customerName: booking.customerName || 'Customer',
+          bookingId: booking.id,
+          businessName: cw ? cw.name : 'Autoshine Car Wash',
+          date: booking.date,
+          timeSlot: booking.timeSlot,
+          reason: notes || undefined,
+        }).catch((err) => {
+          console.error('[EmailService] Failed to send cancellation email:', err);
+        });
       }
 
       await addAuditLog(
@@ -3527,14 +3559,58 @@ async function startServer() {
         `;
 
         const sent = await sendEmail(recipient, emailSubject, html);
+        const lastLog = getEmailLogs()[0];
+        const failReason = (lastLog && (lastLog.status === 'FAILED' || lastLog.status === 'HELD_QUOTA'))
+          ? (lastLog.errorDetails || 'Failed to dispatch email. Check configuration.')
+          : 'Failed to dispatch email. Check API and SMTP configuration.';
+
         res.json({
           success: sent,
           message: sent
             ? `Test email sent to ${recipient}.`
-            : `Failed to dispatch email to ${recipient}. Check API configuration.`
+            : failReason,
+          errorDetails: sent ? undefined : failReason,
         });
       } catch (error: any) {
         res.status(500).json({ error: error.message || 'Failed to send test email' });
+      }
+    }
+  );
+
+  // Admin: Get Email Notification Settings & Daily Quota Status
+  app.get(
+    '/api/admin/email-settings',
+    authenticateToken,
+    requireRoles([Role.ADMIN]),
+    async (_req: AuthenticatedRequest, res) => {
+      try {
+        const settings = getEmailSettings();
+        const quota = getQuotaStatus();
+        res.json({ settings, quota });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to fetch email settings' });
+      }
+    }
+  );
+
+  // Admin: Update Email Notification Settings (Toggles, Provider, Quotas)
+  app.put(
+    '/api/admin/email-settings',
+    authenticateToken,
+    requireRoles([Role.ADMIN]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const updated = updateEmailSettings(req.body);
+        const quota = getQuotaStatus();
+        await addAuditLog(
+          req.user!.id,
+          req.user!.email,
+          'EMAIL_SETTINGS_UPDATE',
+          `Updated email notification toggles and provider: ${updated.activeProvider} (Master Enabled: ${updated.masterEnabled})`
+        );
+        res.json({ success: true, settings: updated, quota });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to update email settings' });
       }
     }
   );

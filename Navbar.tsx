@@ -5,9 +5,9 @@
 
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext.js';
-import { LogOut, Shield, User as UserIcon, Calendar, Compass, Sliders, Briefcase, Sparkles, Key, Lock, X, ChevronDown, Bell, CheckCheck, Clock, MessageSquare } from 'lucide-react';
+import { LogOut, Shield, User as UserIcon, Calendar, Compass, Sliders, Briefcase, Sparkles, Key, Lock, X, ChevronDown, Bell, CheckCheck, Clock, MessageSquare, Smartphone, Volume2, Check } from 'lucide-react';
 import { Role } from '../types.js';
-import autoshineLogo from '../assets/images/autoshine_logo_1783916518342.jpg';
+import autoshineLogo from '../assets/images/autoshine_logo.jpg';
 
 interface NavbarProps {
   activeTab: string;
@@ -15,7 +15,18 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
-  const { user, logout, changePassword, appNotifications, unreadNotificationCount, markNotificationAsRead, markAllNotificationsAsRead } = useApp();
+  const {
+    user,
+    logout,
+    changePassword,
+    appNotifications,
+    unreadNotificationCount,
+    markNotificationAsRead,
+    markAllNotificationsAsRead,
+    deviceNotificationPermission,
+    requestDeviceNotificationPermission,
+    testDeviceNotification,
+  } = useApp();
 
   // Profile dropdown state
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -115,8 +126,8 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
         <div className="flex items-center justify-between h-16">
           {/* Logo Brand branding */}
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 flex items-center justify-center overflow-hidden rounded-xl bg-slate-50 border border-slate-150 shadow-xs">
-              <img src={autoshineLogo} alt="Autoshine BN Logo" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+            <div className="h-10 w-10 flex items-center justify-center overflow-hidden rounded-xl bg-[#0058E6] shadow-xs">
+              <img src={autoshineLogo} alt="Autoshine BN Logo" className="h-full w-full object-contain" referrerPolicy="no-referrer" />
             </div>
             <div>
               <span className="text-base font-black text-slate-800 tracking-tight block">
@@ -153,11 +164,11 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
                 {isNotifOpen && (
                   <>
                     <div
-                      className="fixed inset-0 z-30 cursor-default bg-transparent"
+                      className="fixed inset-0 z-40 cursor-default bg-slate-900/20 sm:bg-transparent backdrop-blur-[1px] sm:backdrop-blur-none transition-opacity"
                       onClick={() => setIsNotifOpen(false)}
                     />
-                    <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white border border-slate-200/90 rounded-2xl shadow-xl z-40 overflow-hidden py-2 animate-in fade-in slide-in-from-top-2 duration-150">
-                      <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                    <div className="fixed sm:absolute left-3 right-3 sm:left-auto sm:right-0 top-[4.25rem] sm:top-full sm:mt-2 w-auto sm:w-96 max-w-lg sm:max-w-none mx-auto sm:mx-0 bg-white border border-slate-200/90 rounded-2xl shadow-2xl z-50 overflow-hidden py-2 animate-in fade-in slide-in-from-top-2 duration-150">
+                      <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
                         <div className="flex items-center gap-2">
                           <Bell className="h-4 w-4 text-sky-600" />
                           <span className="text-xs font-black text-slate-800 uppercase tracking-wider">
@@ -169,17 +180,27 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
                             </span>
                           )}
                         </div>
-                        {unreadNotificationCount > 0 && (
+                        <div className="flex items-center gap-2">
+                          {unreadNotificationCount > 0 && (
+                            <button
+                              onClick={() => markAllNotificationsAsRead()}
+                              className="text-[11px] font-bold text-sky-600 hover:text-sky-800 flex items-center gap-1 cursor-pointer transition-colors"
+                            >
+                              <CheckCheck className="h-3.5 w-3.5" /> Mark all read
+                            </button>
+                          )}
                           <button
-                            onClick={() => markAllNotificationsAsRead()}
-                            className="text-[11px] font-bold text-sky-600 hover:text-sky-800 flex items-center gap-1 cursor-pointer transition-colors"
+                            type="button"
+                            onClick={() => setIsNotifOpen(false)}
+                            className="sm:hidden p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 rounded-lg transition-colors cursor-pointer"
+                            title="Close notifications"
                           >
-                            <CheckCheck className="h-3.5 w-3.5" /> Mark all read
+                            <X className="h-4 w-4" />
                           </button>
-                        )}
+                        </div>
                       </div>
 
-                      <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
+                      <div className="max-h-[60vh] sm:max-h-80 overflow-y-auto divide-y divide-slate-100 overscroll-contain">
                         {appNotifications.length === 0 ? (
                           <div className="p-6 text-center text-slate-400">
                             <Bell className="h-8 w-8 mx-auto mb-2 opacity-30" />
@@ -191,13 +212,22 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
                               key={n.id}
                               onClick={() => {
                                 if (!n.isRead) markNotificationAsRead(n.id);
+                                setIsNotifOpen(false);
+                                if (n.bookingId) {
+                                  // Dispatch global event for instant in-page tab switch & scroll
+                                  window.dispatchEvent(new CustomEvent('autoshine:navigate-booking', { detail: { bookingId: n.bookingId } }));
+                                  // Also update URL query without page reload
+                                  const url = new URL(window.location.href);
+                                  url.searchParams.set('bookingId', n.bookingId);
+                                  window.history.pushState({}, '', url.toString());
+                                }
                               }}
                               className={`p-3.5 text-left transition-colors cursor-pointer hover:bg-slate-50 flex gap-3 items-start ${
                                 !n.isRead ? 'bg-sky-50/40' : 'bg-white'
                               }`}
                             >
                               <div
-                                className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${
+                                className={`w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 ${
                                   !n.isRead ? 'bg-sky-500 ring-4 ring-sky-100' : 'bg-slate-200'
                                 }`}
                               />
@@ -213,6 +243,40 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
                               </div>
                             </div>
                           ))
+                        )}
+                      </div>
+
+                      {/* Device Pop-up Notification Controls */}
+                      <div className="p-3 bg-slate-50 border-t border-slate-100 flex flex-col gap-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 text-xs text-slate-700 font-semibold">
+                            <Smartphone className="h-4 w-4 text-sky-600 shrink-0" />
+                            <span>Phone / Device Pop-ups</span>
+                          </div>
+                          {deviceNotificationPermission === 'granted' ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                              <Check className="h-3 w-3" /> Enabled
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => requestDeviceNotificationPermission()}
+                              className="px-2.5 py-1 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-[11px] font-bold cursor-pointer transition-colors shadow-2xs"
+                            >
+                              Enable Pop-ups
+                            </button>
+                          )}
+                        </div>
+
+                        {deviceNotificationPermission === 'granted' && (
+                          <button
+                            type="button"
+                            onClick={() => testDeviceNotification()}
+                            className="w-full py-1 px-2 text-[11px] text-slate-600 hover:text-sky-700 hover:bg-white rounded-lg border border-slate-200 font-medium flex items-center justify-center gap-1.5 cursor-pointer transition-all shadow-2xs"
+                          >
+                            <Volume2 className="h-3.5 w-3.5 text-sky-600" />
+                            <span>Send Test Alert to This Device</span>
+                          </button>
                         )}
                       </div>
                     </div>
@@ -258,7 +322,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
               {/* Floating Dropdown Menu */}
               {isProfileOpen && (
                 <div
-                  className="absolute right-0 mt-2 w-64 bg-white border border-slate-200/80 rounded-2xl shadow-xl z-40 overflow-hidden py-1.5 animate-in fade-in slide-in-from-top-2 duration-150"
+                  className="absolute right-0 mt-2 w-64 max-w-[calc(100vw-1.5rem)] bg-white border border-slate-200/80 rounded-2xl shadow-xl z-50 overflow-hidden py-1.5 animate-in fade-in slide-in-from-top-2 duration-150"
                   id="user-profile-dropdown-menu"
                 >
                   {/* User Profile Header Info */}

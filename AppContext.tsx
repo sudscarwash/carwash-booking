@@ -3,26 +3,52 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { User, CarWash, Booking, AuditLog, Role, BookingStatus, AppNotification } from '../types.js';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { User, CarWash, Booking, AuditLog, Role, BookingStatus, AppNotification, PlatformInfo, CustomerMembership, CarWashMembershipConfig, MembershipReward, MembershipRedemption } from '../types.js';
+import {
+  isDeviceNotificationSupported,
+  getDeviceNotificationPermission,
+  requestDeviceNotificationPermission,
+  showDeviceNotification,
+  registerDeviceNotificationWorker,
+} from '../utils/deviceNotifications.js';
+import { flashTabTitle } from '../utils/tabFlasher.js';
+import {
+  calculateHaversineDistanceKm,
+  calculateHaversineDistanceMeters,
+  evaluateProximity,
+  isUserAtBay,
+  AT_BAY_DISTANCE_THRESHOLD_METERS,
+} from '../utils/haversine.js';
 
 interface AppContextType {
   user: User | null;
   token: string | null;
   locations: CarWash[];
+  carWashes: CarWash[];
   bookings: Booking[];
   employees: User[];
   logs: AuditLog[];
   appNotifications: AppNotification[];
   unreadNotificationCount: number;
+  platformInfo: PlatformInfo | null;
   loading: boolean;
-  notification: { message: string; type: 'success' | 'error' } | null;
-  showNotification: (message: string, type: 'success' | 'error') => void;
+  notification: { message: string; type: 'success' | 'error' | 'info' } | null;
+  showNotification: (message: string, type?: 'success' | 'error' | 'info') => void;
   clearNotification: () => void;
+  deviceNotificationPermission: NotificationPermission;
+  isDeviceNotificationSupported: boolean;
+  requestDeviceNotificationPermission: () => Promise<NotificationPermission>;
+  testDeviceNotification: () => Promise<void>;
+  fetchPlatformInfo: () => Promise<PlatformInfo | null>;
+  updatePlatformInfo: (data: Partial<PlatformInfo>) => Promise<boolean>;
   fetchAppNotifications: () => Promise<void>;
   markNotificationAsRead: (id: string) => Promise<void>;
   markAllNotificationsAsRead: () => Promise<void>;
-  login: (email: string, password: string) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<boolean | { requireOtp?: boolean; requireAdminOtp?: boolean; email: string; sandboxCode?: string; message?: string }>;
+  verifyAdminOtp: (email: string, otp: string) => Promise<boolean>;
+  resendAdminOtp: (email: string) => Promise<{ success: boolean; sandboxCode?: string }>;
+  toggleAdminOtpPolicy: (required: boolean) => Promise<boolean>;
   register: (
     email: string,
     password: string,
@@ -34,7 +60,9 @@ interface AppContextType {
       address?: string;
       phone?: string;
     }
-  ) => Promise<boolean>;
+  ) => Promise<{ success: boolean; requireOtp?: boolean; email?: string; sandboxCode?: string }>;
+  verifyRegistrationOtp: (email: string, otp: string) => Promise<boolean>;
+  resendRegistrationOtp: (email: string) => Promise<string | null>;
   updateProfile: (profileData: {
     name?: string;
     phone?: string;
@@ -49,10 +77,24 @@ interface AppContextType {
   changePassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
   deleteAccount: () => Promise<boolean>;
   fetchLocations: (search?: string, lat?: number, lng?: number, radius?: number) => Promise<void>;
-  fetchBookings: () => Promise<void>;
+  fetchLocationsConfig: (search?: string, lat?: number, lng?: number, radius?: number) => Promise<void>;
+  fetchBookings: (silent?: boolean) => Promise<void>;
+  lastSyncedAt: Date;
+  isLiveSyncing: boolean;
+  syncNow: () => Promise<void>;
   fetchEmployees: () => Promise<void>;
   fetchLogs: () => Promise<void>;
-  createBooking: (carWashId: string, date: string, timeSlot: string, notes?: string, serviceId?: string, serviceName?: string, price?: number) => Promise<boolean>;
+  createBooking: (
+    carWashId: string,
+    date: string,
+    timeSlot: string,
+    notes?: string,
+    serviceId?: string,
+    serviceName?: string,
+    price?: number,
+    customerPhone?: string,
+    vehicleInfo?: string
+  ) => Promise<{ success: boolean; error?: string }>;
   createManualBooking: (data: {
     carWashId: string;
     date: string;
@@ -67,10 +109,22 @@ interface AppContextType {
     price?: number;
     notes?: string;
     status?: BookingStatus;
+    paymentBank?: string;
+    txnReference?: string;
   }) => Promise<boolean>;
-  updateBookingStatus: (bookingId: string, status: string, notes?: string, employeeId?: string) => Promise<boolean>;
+  updateBookingStatus: (
+    bookingId: string,
+    status: string,
+    notes?: string,
+    employeeId?: string,
+    paymentBank?: string,
+    txnReference?: string
+  ) => Promise<boolean>;
+  updateBookingDetails: (bookingId: string, data: { serviceId?: string; serviceName?: string; price?: number; vehicleInfo?: string; notes?: string; paymentBank?: string; txnReference?: string }) => Promise<boolean>;
   rescheduleBooking: (bookingId: string, date: string, timeSlot: string) => Promise<boolean>;
-  createEmployee: (email: string, name: string, businessId: string) => Promise<boolean>;
+  reportProximity: (bookingId: string, lat: number, lng: number) => Promise<{ success: boolean; proximityStatus?: string; proximityDistanceKm?: number; proximityEtaMinutes?: number; message?: string }>;
+  requestBookingEta: (bookingId: string) => Promise<boolean>;
+  createEmployee: (email: string, name: string, businessId: string, password?: string) => Promise<boolean>;
   updateEmployee: (id: string, name: string, email: string, businessId: string) => Promise<boolean>;
   deleteEmployee: (id: string) => Promise<boolean>;
   createOwnerWithBusiness: (data: any) => Promise<boolean>;
@@ -80,6 +134,13 @@ interface AppContextType {
   adminUpdateUser: (id: string, data: any) => Promise<boolean>;
   adminUsersList: User[];
   fetchAdminUsers: () => Promise<void>;
+  myMemberships: CustomerMembership[];
+  fetchMyMemberships: () => Promise<void>;
+  toggleMembershipFeature: (carWashId: string, isEnabled: boolean) => Promise<boolean>;
+  joinCarWashMembership: (carWashId: string, consentGiven: boolean, joinMethod?: string) => Promise<CustomerMembership | null>;
+  leaveCarWashMembership: (carWashId: string) => Promise<boolean>;
+  redeemMembershipReward: (carWashId: string, rewardId: string) => Promise<{ redemption: MembershipRedemption; newBalance: number } | null>;
+  fetchCustomerRedemptions: () => Promise<MembershipRedemption[]>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -92,9 +153,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [employees, setEmployees] = useState<User[]>([]);
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [adminUsersList, setAdminUsersList] = useState<User[]>([]);
+  const [myMemberships, setMyMemberships] = useState<CustomerMembership[]>([]);
   const [appNotifications, setAppNotifications] = useState<AppNotification[]>([]);
+  const [platformInfo, setPlatformInfo] = useState<PlatformInfo | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date>(new Date());
+  const [isLiveSyncing, setIsLiveSyncing] = useState<boolean>(false);
+  const [deviceNotificationPermission, setDeviceNotificationPermission] = useState<NotificationPermission>(() => {
+    return getDeviceNotificationPermission();
+  });
+
+  // Auto-register service worker on startup
+  useEffect(() => {
+    registerDeviceNotificationWorker();
+  }, []);
+
+  const handleRequestDeviceNotificationPermission = async (): Promise<NotificationPermission> => {
+    const perm = await requestDeviceNotificationPermission();
+    setDeviceNotificationPermission(perm);
+    if (perm === 'granted') {
+      showNotification('Device notifications enabled successfully! 🔔', 'success');
+    } else if (perm === 'denied') {
+      showNotification('Notification permissions were blocked in your browser settings.', 'error');
+    }
+    return perm;
+  };
+
+  const testDeviceNotification = async () => {
+    if (deviceNotificationPermission !== 'granted') {
+      const perm = await handleRequestDeviceNotificationPermission();
+      if (perm !== 'granted') return;
+    }
+    showDeviceNotification({
+      title: '🚗 Autoshine Alert Test',
+      body: 'Device pop-up notifications and sound alerts are working perfectly on your device!',
+      sound: 'booking',
+      tag: 'test-alert',
+    });
+  };
 
   // Initialize Auth from LocalStorage and verify with server
   useEffect(() => {
@@ -142,6 +239,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Fetch initial data once logged in
   useEffect(() => {
+    fetchPlatformInfo();
     if (token) {
       fetchLocations();
       fetchBookings();
@@ -149,7 +247,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (user?.role === Role.OWNER || user?.role === Role.ADMIN) {
         fetchEmployees();
       }
-      if (user?.role === Role.ADMIN) {
+      if (user?.role === Role.ADMIN || user?.role === Role.SPECIAL) {
         fetchLogs();
         fetchAdminUsers();
       }
@@ -166,7 +264,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [token, user?.role]);
 
-  const showNotification = (message: string, type: 'success' | 'error') => {
+  const showNotification = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
     setNotification({ message, type });
     setTimeout(() => {
       setNotification(null);
@@ -182,8 +280,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (Array.isArray(data)) {
         setAppNotifications(data);
       }
-    } catch (err) {
-      console.error('Failed to fetch notifications:', err);
+    } catch (err: any) {
+      if (err?.message !== 'Failed to fetch') {
+        console.warn('Could not fetch notifications:', err?.message || err);
+      }
     }
   };
 
@@ -193,8 +293,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
       );
       await apiFetch(`/api/notifications/${id}/read`, { method: 'PATCH' });
-    } catch (err) {
-      console.error('Failed to mark notification as read:', err);
+    } catch (err: any) {
+      console.warn('Could not mark notification as read:', err?.message || err);
     }
   };
 
@@ -202,8 +302,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       setAppNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
       await apiFetch('/api/notifications/mark-all-read', { method: 'PATCH' });
-    } catch (err) {
-      console.error('Failed to mark all notifications as read:', err);
+    } catch (err: any) {
+      console.warn('Could not mark all notifications as read:', err?.message || err);
     }
   };
 
@@ -216,25 +316,61 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     headers.set('Content-Type', 'application/json');
 
-    const res = await fetch(endpoint, {
-      ...options,
-      headers,
-    });
+    let res: Response;
+    try {
+      res = await fetch(endpoint, {
+        ...options,
+        headers,
+      });
+    } catch (fetchErr) {
+      throw new Error('Failed to fetch');
+    }
 
-    const data = await res.json();
+    const contentType = res.headers.get('content-type');
+    let data: any = {};
+    if (contentType && contentType.includes('application/json')) {
+      data = await res.json().catch(() => ({}));
+    } else {
+      const text = await res.text().catch(() => '');
+      data = { error: text || `HTTP error ${res.status}` };
+    }
+
     if (!res.ok) {
-      throw new Error(data.error || 'Something went wrong');
+      if (res.status === 401) {
+        localStorage.removeItem('cw_user');
+        localStorage.removeItem('cw_token');
+        setUser(null);
+        setToken(null);
+      }
+      const err: any = new Error(data.error || `Request failed with status ${res.status}`);
+      err.data = data;
+      throw err;
     }
     return data;
   };
 
-  const login = async (email: string, password: string): Promise<boolean> => {
+  const login = async (
+    email: string,
+    password: string
+  ): Promise<boolean | { requireOtp?: boolean; requireAdminOtp?: boolean; email: string; sandboxCode?: string; message?: string }> => {
     try {
       setLoading(true);
       const data = await apiFetch('/api/auth/login', {
         method: 'POST',
         body: JSON.stringify({ email, password }),
       });
+
+      // Administrator 2FA OTP Challenge
+      if (data.requireAdminOtp) {
+        showNotification(data.message || 'Admin 2FA security passkey sent to your email.', 'info');
+        return {
+          requireAdminOtp: true,
+          email: data.email || email,
+          sandboxCode: data.sandboxCode,
+          message: data.message
+        };
+      }
+
       setUser(data.user);
       setToken(data.token);
       localStorage.setItem('cw_user', JSON.stringify(data.user));
@@ -242,7 +378,83 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       showNotification(`Welcome back, ${data.user.name}!`, 'success');
       return true;
     } catch (err: any) {
+      if (err.data?.requireAdminOtp) {
+        showNotification(err.message || 'Admin 2FA verification passkey required.', 'info');
+        return {
+          requireAdminOtp: true,
+          email: err.data.email || email,
+          sandboxCode: err.data.sandboxCode,
+          message: err.message
+        };
+      }
+      if (err.data?.requireOtp) {
+        showNotification(err.message || 'Please verify your email address before logging in.', 'error');
+        return {
+          requireOtp: true,
+          email: err.data.email || email,
+          sandboxCode: err.data.sandboxCode
+        };
+      }
       showNotification(err.message, 'error');
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const verifyAdminOtp = async (email: string, otp: string): Promise<boolean> => {
+    try {
+      setLoading(true);
+      const data = await apiFetch('/api/auth/verify-admin-otp', {
+        method: 'POST',
+        body: JSON.stringify({ email, otp }),
+      });
+      setUser(data.user);
+      setToken(data.token);
+      localStorage.setItem('cw_user', JSON.stringify(data.user));
+      localStorage.setItem('cw_token', data.token);
+      showNotification(`Administrator authenticated successfully. Welcome, ${data.user.name}!`, 'success');
+      return true;
+    } catch (err: any) {
+      showNotification(err.message || 'Failed to verify admin 2FA security passkey.', 'error');
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resendAdminOtp = async (email: string): Promise<{ success: boolean; sandboxCode?: string }> => {
+    try {
+      setLoading(true);
+      const data = await apiFetch('/api/auth/resend-admin-otp', {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      });
+      showNotification(data.message || 'New 2FA security code sent to your email.', 'success');
+      return { success: true, sandboxCode: data.sandboxCode };
+    } catch (err: any) {
+      showNotification(err.message || 'Failed to resend admin security code.', 'error');
+      return { success: false };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleAdminOtpPolicy = async (required: boolean): Promise<boolean> => {
+    try {
+      setLoading(true);
+      const data = await apiFetch('/api/admin/security/toggle-otp', {
+        method: 'POST',
+        body: JSON.stringify({ required }),
+      });
+      if (data.success) {
+        setPlatformInfo(prev => prev ? { ...prev, adminOtpRequired: data.adminOtpRequired } : prev);
+        showNotification(data.message || 'Admin 2FA policy updated successfully.', 'success');
+        return true;
+      }
+      return false;
+    } catch (err: any) {
+      showNotification(err.message || 'Failed to toggle admin 2FA policy.', 'error');
       return false;
     } finally {
       setLoading(false);
@@ -260,22 +472,72 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       address?: string;
       phone?: string;
     }
-  ): Promise<boolean> => {
+  ): Promise<{ success: boolean; requireOtp?: boolean; email?: string; sandboxCode?: string }> => {
     try {
       setLoading(true);
       const data = await apiFetch('/api/auth/register', {
         method: 'POST',
         body: JSON.stringify({ email, password, name, ...profileData }),
       });
+
+      if (data.requireOtp) {
+        showNotification(data.message || 'Verification code sent to your email address.', 'success');
+        return {
+          success: true,
+          requireOtp: true,
+          email: data.email,
+          sandboxCode: data.sandboxCode
+        };
+      }
+
       setUser(data.user);
       setToken(data.token);
       localStorage.setItem('cw_user', JSON.stringify(data.user));
       localStorage.setItem('cw_token', data.token);
       showNotification(`Account created successfully! Welcome, ${data.user.name}!`, 'success');
+      return { success: true };
+    } catch (err: any) {
+      showNotification(err.message, 'error');
+      return { success: false };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const verifyRegistrationOtp = async (email: string, otp: string): Promise<boolean> => {
+    try {
+      setLoading(true);
+      const data = await apiFetch('/api/auth/verify-registration-otp', {
+        method: 'POST',
+        body: JSON.stringify({ email, otp }),
+      });
+
+      setUser(data.user);
+      setToken(data.token);
+      localStorage.setItem('cw_user', JSON.stringify(data.user));
+      localStorage.setItem('cw_token', data.token);
+      showNotification(`Email verified! Welcome to Autoshine BN, ${data.user.name}!`, 'success');
       return true;
     } catch (err: any) {
       showNotification(err.message, 'error');
       return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resendRegistrationOtp = async (email: string): Promise<string | null> => {
+    try {
+      setLoading(true);
+      const data = await apiFetch('/api/auth/resend-registration-otp', {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      });
+      showNotification(data.message || 'Verification code resent successfully.', 'success');
+      return data.sandboxCode || null;
+    } catch (err: any) {
+      showNotification(err.message, 'error');
+      return null;
     } finally {
       setLoading(false);
     }
@@ -330,7 +592,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const fetchLocations = async (search?: string, lat?: number, lng?: number, radius?: number) => {
+  const fetchPlatformInfo = async (): Promise<PlatformInfo | null> => {
+    try {
+      const res = await fetch('/api/platform-info');
+      if (res.ok) {
+        const data = await res.json();
+        setPlatformInfo(data);
+        return data;
+      }
+    } catch (err: any) {
+      console.warn('Failed to fetch platform info:', err?.message || err);
+    }
+    return null;
+  };
+
+  const updatePlatformInfo = async (data: Partial<PlatformInfo>): Promise<boolean> => {
+    try {
+      setLoading(true);
+      const updated = await apiFetch('/api/admin/platform-info', {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      });
+      setPlatformInfo(updated);
+      showNotification('Autoshine platform information updated successfully!', 'success');
+      return true;
+    } catch (err: any) {
+      showNotification(err.message || 'Failed to update platform info', 'error');
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchLocations = async (search?: string, lat?: number, lng?: number, radius?: number, includeInactive?: boolean) => {
     try {
       let query = '';
       const params: string[] = [];
@@ -338,6 +632,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (lat !== undefined) params.push(`lat=${lat}`);
       if (lng !== undefined) params.push(`lng=${lng}`);
       if (radius !== undefined) params.push(`radius=${radius}`);
+      
+      // If user is Admin/Special or explicitly requested, include inactive locations
+      const shouldIncludeInactive = includeInactive !== undefined ? includeInactive : (user?.role === Role.ADMIN || user?.role === Role.SPECIAL);
+      if (shouldIncludeInactive) {
+        params.push('includeInactive=true');
+      }
 
       if (params.length > 0) {
         query = '?' + params.join('&');
@@ -346,19 +646,201 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const data = await apiFetch(`/api/car-washes${query}`);
       setLocations(data);
     } catch (err: any) {
-      console.error('Failed to fetch car wash locations:', err);
+      if (err?.message !== 'Failed to fetch') {
+        console.warn('Failed to fetch car wash locations:', err?.message || err);
+      }
     }
   };
 
-  const fetchBookings = async () => {
+  const fetchBookings = async (silent: boolean = false) => {
     if (!token) return;
     try {
+      if (!silent) setIsLiveSyncing(true);
       const data = await apiFetch('/api/bookings');
-      setBookings(data);
+      if (Array.isArray(data)) {
+        setBookings((prevBookings) => {
+          // Detect newly arrived bookings in real-time for business operators
+          if (prevBookings.length > 0 && (user?.role === Role.OWNER || user?.role === Role.EMPLOYEE)) {
+            const prevIds = new Set(prevBookings.map((b) => b.id));
+            const newOrders = data.filter((b) => !prevIds.has(b.id));
+            if (newOrders.length > 0) {
+              const latest = newOrders[0];
+              showNotification(
+                `🚗 New booking received: ${latest.customerName || 'Customer'} (${latest.serviceName || 'Car Wash'}) on ${latest.date} at ${latest.timeSlot}`,
+                'success'
+              );
+            }
+          }
+          return data;
+        });
+        setLastSyncedAt(new Date());
+      }
     } catch (err: any) {
-      console.error('Failed to fetch bookings:', err);
+      if (err?.message !== 'Failed to fetch') {
+        console.warn('Failed to fetch bookings:', err?.message || err);
+      }
+    } finally {
+      if (!silent) setIsLiveSyncing(false);
     }
   };
+
+  const syncNow = async () => {
+    setIsLiveSyncing(true);
+    try {
+      await Promise.all([
+        fetchBookings(false),
+        fetchAppNotifications(),
+        fetchLocations(),
+      ]);
+      setLastSyncedAt(new Date());
+      showNotification('Dashboard synchronized live with database', 'success');
+    } catch {
+      showNotification('Failed to sync live data', 'error');
+    } finally {
+      setIsLiveSyncing(false);
+    }
+  };
+
+  // 🔄 Real-time Server-Sent Events (SSE) stream for instantaneous live bookings without refresh
+  useEffect(() => {
+    if (!token) return;
+
+    let eventSource: EventSource | null = null;
+    let reconnectTimer: NodeJS.Timeout | null = null;
+    let isMounted = true;
+
+    const connectStream = () => {
+      if (!isMounted) return;
+      try {
+        const streamUrl = `/api/realtime/stream?token=${encodeURIComponent(token)}`;
+        eventSource = new EventSource(streamUrl);
+
+        eventSource.onopen = () => {
+          setLastSyncedAt(new Date());
+        };
+
+        eventSource.onmessage = (event) => {
+          if (!event.data) return;
+          try {
+            const payload = JSON.parse(event.data);
+            if (payload.type === 'BOOKING_CREATED') {
+              fetchBookings(true);
+              fetchAppNotifications();
+
+              // Trigger native device notification for owners/employees of this car wash
+              const isOwnerOrStaff = user?.role === Role.OWNER || user?.role === Role.EMPLOYEE || user?.role === Role.ADMIN;
+              const isAssignedStation = !payload.carWashId || (user?.role === Role.EMPLOYEE ? user?.businessId === payload.carWashId : true);
+
+              if (isOwnerOrStaff && isAssignedStation) {
+                const bData = payload.data || {};
+                const customerName = bData.customerName || 'A customer';
+                const serviceName = bData.serviceName || 'Car wash service';
+                const slot = bData.timeSlot ? ` for ${bData.timeSlot}` : '';
+
+                showDeviceNotification({
+                  title: '🚗 New Car Wash Booking!',
+                  body: `${customerName} booked ${serviceName}${slot}.`,
+                  sound: 'booking',
+                  tag: `booking-${payload.bookingId || Date.now()}`,
+                  url: payload.bookingId ? `/?bookingId=${encodeURIComponent(payload.bookingId)}` : '/',
+                });
+
+                // Flash tab title in background so user spots it across browser tabs
+                flashTabTitle(`🚗 New Booking from ${customerName}!`);
+              }
+            } else if (payload.type === 'BOOKING_UPDATED') {
+              fetchBookings(true);
+              fetchAppNotifications();
+
+              const bData = payload.data || {};
+              if (bData.status) {
+                // If this status update is for the logged in customer or station
+                const isMyCustomerBooking = user?.role === Role.CUSTOMER && bData.customerId === user?.id;
+                const isStationStaff = (user?.role === Role.OWNER || user?.role === Role.EMPLOYEE || user?.role === Role.ADMIN) &&
+                  (!payload.carWashId || (user?.role === Role.EMPLOYEE ? user?.businessId === payload.carWashId : true));
+
+                if (isMyCustomerBooking || isStationStaff) {
+                  const statusTitle = isMyCustomerBooking
+                    ? `Booking Update: ${bData.status} ✨`
+                    : `Booking Status Changed: ${bData.status}`;
+
+                  const statusBody = isMyCustomerBooking
+                    ? `Your car wash booking is now ${bData.status}.`
+                    : `Booking for ${bData.customerName || 'Customer'} updated to ${bData.status}.`;
+
+                  showDeviceNotification({
+                    title: statusTitle,
+                    body: statusBody,
+                    sound: 'status',
+                    tag: `status-${payload.bookingId || Date.now()}`,
+                    url: payload.bookingId ? `/?bookingId=${encodeURIComponent(payload.bookingId)}` : '/',
+                  });
+
+                  flashTabTitle(`Booking: ${bData.status}`);
+                }
+              }
+            } else if (payload.type === 'PROXIMITY_UPDATED') {
+              fetchBookings(true);
+            } else if (payload.type === 'NOTIFICATION_CREATED') {
+              fetchAppNotifications();
+            }
+          } catch {
+            // Heartbeat comment
+          }
+        };
+
+        eventSource.onerror = () => {
+          if (eventSource) {
+            eventSource.close();
+            eventSource = null;
+          }
+          if (isMounted) {
+            reconnectTimer = setTimeout(connectStream, 4000);
+          }
+        };
+      } catch (err) {
+        console.warn('Realtime SSE connection failed:', err);
+      }
+    };
+
+    connectStream();
+
+    return () => {
+      isMounted = false;
+      if (eventSource) eventSource.close();
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+    };
+  }, [token]);
+
+  // ⏱️ Active background sync fallback (every 4s) + auto-sync on window focus / tab switch
+  useEffect(() => {
+    if (!token) return;
+
+    const interval = setInterval(() => {
+      fetchBookings(true);
+    }, 4000);
+
+    const handleFocus = () => {
+      fetchBookings(true);
+      fetchAppNotifications();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchBookings(true);
+        fetchAppNotifications();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [token]);
 
   const fetchEmployees = async () => {
     if (!token) return;
@@ -366,7 +848,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const data = await apiFetch('/api/owner/employees');
       setEmployees(data);
     } catch (err: any) {
-      console.error('Failed to fetch employees:', err);
+      if (err?.message !== 'Failed to fetch') {
+        console.warn('Failed to fetch employees:', err?.message || err);
+      }
     }
   };
 
@@ -376,32 +860,57 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const data = await apiFetch('/api/admin/logs');
       setLogs(data);
     } catch (err: any) {
-      console.error('Failed to fetch logs:', err);
+      if (err?.message !== 'Failed to fetch') {
+        console.warn('Failed to fetch logs:', err?.message || err);
+      }
     }
   };
 
   const fetchAdminUsers = async () => {
-    if (!token || user?.role !== Role.ADMIN) return;
+    if (!token || (user?.role !== Role.ADMIN && user?.role !== Role.SPECIAL)) return;
     try {
       const data = await apiFetch('/api/admin/users');
       setAdminUsersList(data);
     } catch (err: any) {
-      console.error('Failed to fetch admin users:', err);
+      if (err?.message !== 'Failed to fetch') {
+        console.warn('Failed to fetch admin users:', err?.message || err);
+      }
     }
   };
 
-  const createBooking = async (carWashId: string, date: string, timeSlot: string, notes?: string, serviceId?: string, serviceName?: string, price?: number): Promise<boolean> => {
+  const createBooking = async (
+    carWashId: string,
+    date: string,
+    timeSlot: string,
+    notes?: string,
+    serviceId?: string,
+    serviceName?: string,
+    price?: number,
+    customerPhone?: string,
+    vehicleInfo?: string
+  ): Promise<{ success: boolean; error?: string }> => {
     try {
       await apiFetch('/api/bookings', {
         method: 'POST',
-        body: JSON.stringify({ carWashId, date, timeSlot, notes, serviceId, serviceName, price }),
+        body: JSON.stringify({
+          carWashId,
+          date,
+          timeSlot,
+          notes,
+          serviceId,
+          serviceName,
+          price,
+          customerPhone: customerPhone || user?.phone,
+          vehicleInfo,
+        }),
       });
       showNotification('Wash slot booked successfully!', 'success');
       fetchBookings();
-      return true;
+      return { success: true };
     } catch (err: any) {
-      showNotification(err.message, 'error');
-      return false;
+      const errorMsg = err.message || 'Failed to create booking. Please try again.';
+      showNotification(errorMsg, 'error');
+      return { success: false, error: errorMsg };
     }
   };
 
@@ -419,6 +928,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     price?: number;
     notes?: string;
     status?: BookingStatus;
+    paymentBank?: string;
+    txnReference?: string;
   }): Promise<boolean> => {
     try {
       await apiFetch('/api/owner/manual-booking', {
@@ -434,13 +945,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const updateBookingStatus = async (bookingId: string, status: string, notes?: string, employeeId?: string): Promise<boolean> => {
+  const updateBookingStatus = async (
+    bookingId: string,
+    status: string,
+    notes?: string,
+    employeeId?: string,
+    paymentBank?: string,
+    txnReference?: string
+  ): Promise<boolean> => {
     try {
       await apiFetch(`/api/bookings/${bookingId}/status`, {
         method: 'PUT',
-        body: JSON.stringify({ status, notes, employeeId }),
+        body: JSON.stringify({ status, notes, employeeId, paymentBank, txnReference }),
       });
       showNotification(`Booking status updated to ${status}`, 'success');
+      fetchBookings();
+      return true;
+    } catch (err: any) {
+      showNotification(err.message, 'error');
+      return false;
+    }
+  };
+
+  const updateBookingDetails = async (
+    bookingId: string,
+    data: { serviceId?: string; serviceName?: string; price?: number; vehicleInfo?: string; notes?: string; paymentBank?: string; txnReference?: string }
+  ): Promise<boolean> => {
+    try {
+      await apiFetch(`/api/bookings/${bookingId}/details`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      });
+      showNotification('Booking services & price updated successfully!', 'success');
       fetchBookings();
       return true;
     } catch (err: any) {
@@ -464,13 +1000,74 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const createEmployee = async (email: string, name: string, businessId: string): Promise<boolean> => {
+  const reportProximity = async (
+    bookingId: string,
+    lat: number,
+    lng: number
+  ): Promise<{ success: boolean; proximityStatus?: string; proximityDistanceKm?: number; proximityEtaMinutes?: number; message?: string }> => {
+    // 🎯 Accurately evaluate proximity in frontend app state before/alongside network request
+    const targetBooking = bookings.find(b => b.id === bookingId);
+    const targetCarWash = targetBooking ? locations.find(l => l.id === targetBooking.carWashId) : null;
+    
+    if (targetCarWash && targetCarWash.locationLat != null && targetCarWash.locationLng != null) {
+      const evaluation = evaluateProximity(
+        { lat, lng },
+        { lat: targetCarWash.locationLat, lng: targetCarWash.locationLng }
+      );
+
+      // Optimistically update booking in local state immediately so UI updates with 0 latency
+      setBookings(prev =>
+        prev.map(b =>
+          b.id === bookingId
+            ? {
+                ...b,
+                proximityStatus: evaluation.proximityStatus,
+                proximityDistanceKm: evaluation.distanceKm,
+                proximityEtaMinutes: evaluation.etaMinutes,
+                proximityUpdatedAt: new Date().toISOString(),
+              }
+            : b
+        )
+      );
+    }
+
     try {
+      const data = await apiFetch(`/api/bookings/${bookingId}/proximity`, {
+        method: 'PUT',
+        body: JSON.stringify({ lat, lng }),
+      });
+      if (data.success) {
+        showNotification(data.message || 'Location status transmitted!', 'success');
+        fetchBookings(true);
+      }
+      return data;
+    } catch (err: any) {
+      showNotification(err.message || 'Failed to report arrival status.', 'error');
+      return { success: false, message: err.message };
+    }
+  };
+
+  const requestBookingEta = async (bookingId: string): Promise<boolean> => {
+    try {
+      const data = await apiFetch(`/api/bookings/${bookingId}/request-eta`, {
+        method: 'POST',
+      });
+      showNotification(data.message || 'Sent arrival request ping to customer!', 'success');
+      return true;
+    } catch (err: any) {
+      showNotification(err.message || 'Failed to send ETA request.', 'error');
+      return false;
+    }
+  };
+
+  const createEmployee = async (email: string, name: string, businessId: string, password?: string): Promise<boolean> => {
+    try {
+      const initialPassword = password && password.trim() ? password.trim() : 'employee123';
       await apiFetch('/api/owner/employees', {
         method: 'POST',
-        body: JSON.stringify({ email, name, businessId, password: 'employee123' }), // standard initial password
+        body: JSON.stringify({ email, name, businessId, password: initialPassword }),
       });
-      showNotification(`Employee ${name} registered successfully. Default password is 'employee123'.`, 'success');
+      showNotification(`Employee ${name} registered successfully with assigned password.`, 'success');
       fetchEmployees();
       if (user?.role === Role.ADMIN) {
         fetchAdminUsers();
@@ -655,26 +1252,196 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const fetchMyMemberships = useCallback(async () => {
+    const currentToken = localStorage.getItem('cw_token');
+    if (!currentToken) {
+      setMyMemberships([]);
+      return;
+    }
+    try {
+      const res = await fetch('/api/membership/my-memberships', {
+        headers: { 'Authorization': `Bearer ${currentToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMyMemberships(data || []);
+      }
+    } catch (e) {
+      console.warn('Failed to fetch memberships:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (token) {
+      fetchMyMemberships();
+    } else {
+      setMyMemberships([]);
+    }
+  }, [token, fetchMyMemberships]);
+
+  const toggleMembershipFeature = async (carWashId: string, isEnabled: boolean) => {
+    const currentToken = localStorage.getItem('cw_token');
+    if (!currentToken) return false;
+    try {
+      const res = await fetch('/api/membership/feature-toggle', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentToken}`
+        },
+        body: JSON.stringify({ carWashId, isEnabled })
+      });
+      if (res.ok) {
+        showNotification(`Loyalty & Membership programme ${isEnabled ? 'enabled' : 'disabled'} successfully.`, 'success');
+        await fetchLocations();
+        return true;
+      } else {
+        const err = await res.json();
+        showNotification(err.error || 'Failed to update membership feature', 'error');
+        return false;
+      }
+    } catch (e: any) {
+      showNotification(e.message || 'Failed to update membership feature', 'error');
+      return false;
+    }
+  };
+
+  const joinCarWashMembership = async (carWashId: string, consentGiven: boolean, joinMethod = 'ONLINE_OPT_IN') => {
+    const currentToken = localStorage.getItem('cw_token');
+    if (!currentToken) {
+      showNotification('Please log in to join this membership programme.', 'error');
+      return null;
+    }
+    try {
+      const res = await fetch('/api/membership/join', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentToken}`
+        },
+        body: JSON.stringify({ carWashId, consentGiven, joinMethod })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        showNotification(`🎉 Congratulations! You are now a member of ${data.carWashName || 'this car wash'}!`, 'success');
+        await fetchMyMemberships();
+        return data;
+      } else {
+        const err = await res.json();
+        showNotification(err.error || 'Failed to join membership', 'error');
+        return null;
+      }
+    } catch (e: any) {
+      showNotification(e.message || 'Failed to join membership', 'error');
+      return null;
+    }
+  };
+
+  const leaveCarWashMembership = async (carWashId: string) => {
+    const currentToken = localStorage.getItem('cw_token');
+    if (!currentToken) return false;
+    try {
+      const res = await fetch('/api/membership/leave', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentToken}`
+        },
+        body: JSON.stringify({ carWashId })
+      });
+      if (res.ok) {
+        showNotification('You have left the loyalty programme. Your history remains saved.', 'info');
+        await fetchMyMemberships();
+        return true;
+      } else {
+        const err = await res.json();
+        showNotification(err.error || 'Failed to leave membership', 'error');
+        return false;
+      }
+    } catch (e: any) {
+      showNotification(e.message || 'Failed to leave membership', 'error');
+      return false;
+    }
+  };
+
+  const redeemMembershipReward = async (carWashId: string, rewardId: string) => {
+    const currentToken = localStorage.getItem('cw_token');
+    if (!currentToken) return null;
+    try {
+      const res = await fetch('/api/membership/redeem', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentToken}`
+        },
+        body: JSON.stringify({ carWashId, rewardId })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        showNotification(`🎁 Reward redeemed! Voucher code: ${data.redemption.redemptionCode}`, 'success');
+        await fetchMyMemberships();
+        return data;
+      } else {
+        const err = await res.json();
+        showNotification(err.error || 'Failed to redeem reward', 'error');
+        return null;
+      }
+    } catch (e: any) {
+      showNotification(e.message || 'Failed to redeem reward', 'error');
+      return null;
+    }
+  };
+
+  const fetchCustomerRedemptions = async (): Promise<MembershipRedemption[]> => {
+    const currentToken = localStorage.getItem('cw_token');
+    if (!currentToken) return [];
+    try {
+      const res = await fetch('/api/membership/my-redemptions', {
+        headers: { 'Authorization': `Bearer ${currentToken}` }
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+      return [];
+    } catch (e) {
+      console.warn('Failed to fetch redemptions:', e);
+      return [];
+    }
+  };
+
   return (
     <AppContext.Provider
       value={{
         user,
         token,
         locations,
+        carWashes: locations,
         bookings,
         employees,
         logs,
         appNotifications,
         unreadNotificationCount,
+        platformInfo,
         loading,
         notification,
         showNotification,
         clearNotification,
+        deviceNotificationPermission,
+        isDeviceNotificationSupported: isDeviceNotificationSupported(),
+        requestDeviceNotificationPermission: handleRequestDeviceNotificationPermission,
+        testDeviceNotification,
+        fetchPlatformInfo,
+        updatePlatformInfo,
         fetchAppNotifications,
         markNotificationAsRead,
         markAllNotificationsAsRead,
         login,
+        verifyAdminOtp,
+        resendAdminOtp,
+        toggleAdminOtpPolicy,
         register,
+        verifyRegistrationOtp,
+        resendRegistrationOtp,
         updateProfile,
         logout,
         forgotPassword,
@@ -682,13 +1449,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         changePassword,
         deleteAccount,
         fetchLocations,
+        fetchLocationsConfig: fetchLocations,
         fetchBookings,
+        lastSyncedAt,
+        isLiveSyncing,
+        syncNow,
         fetchEmployees,
         fetchLogs,
         createBooking,
         createManualBooking,
         updateBookingStatus,
+        updateBookingDetails,
         rescheduleBooking,
+        reportProximity,
+        requestBookingEta,
         createEmployee,
         updateEmployee,
         deleteEmployee,
@@ -699,6 +1473,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         adminUpdateUser,
         adminUsersList,
         fetchAdminUsers,
+        myMemberships,
+        fetchMyMemberships,
+        toggleMembershipFeature,
+        joinCarWashMembership,
+        leaveCarWashMembership,
+        redeemMembershipReward,
+        fetchCustomerRedemptions,
       }}
     >
       {children}

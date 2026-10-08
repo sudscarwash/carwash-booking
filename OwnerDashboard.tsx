@@ -10,9 +10,18 @@ import {
   DollarSign, Calendar, Users, Sliders, Check, X,
   Clock, MapPin, BarChart3, ChevronRight, Edit2, Plus, Info, Briefcase, Trash2, Edit, Lock, Key,
   Phone, Car, User as UserIcon, Search, ChevronLeft, Filter, ShieldCheck, CheckCircle2, AlertCircle, CalendarDays, ChevronDown,
-  FileText, Printer, Download, TrendingUp, PieChart, CreditCard, Package, FileSpreadsheet, Tag, Layers, RefreshCw, Bell, CheckCheck, MessageCircle, Mail
+  FileText, Printer, Download, TrendingUp, PieChart, CreditCard, Package, FileSpreadsheet, Tag, Layers, RefreshCw, Bell, CheckCheck, MessageCircle, Mail, Save, Sparkles, Pencil, Upload,
+  Star, CornerDownRight, MessageSquare, QrCode, Eye, Award, Coins
 } from 'lucide-react';
-import { BookingStatus, CarWash, Booking, WeeklySchedule, CustomPaymentMethod, WashService } from '../types.js';
+import { BookingStatus, CarWash, Booking, WeeklySchedule, CustomPaymentMethod, WashService, Role, Review, ReviewSummary } from '../types.js';
+import { EditBookingModal } from '../components/EditBookingModal.js';
+import { ServicePickerModal } from '../components/ServicePickerModal.js';
+import { SettlementConfirmationModal } from '../components/SettlementConfirmationModal.js';
+import { TransferProviderSelector } from '../components/TransferProviderSelector.js';
+import { QRCodeManager } from '../components/QRCodeManager.js';
+import { LoyaltyMembershipOwnerView } from '../components/LoyaltyMembershipOwnerView.js';
+import { FEATURES } from '../config/features.js';
+import { useModalBack, useTabBack } from '../utils/useBackHandler.js';
 
 const getTodayDateString = () => {
   const d = new Date();
@@ -22,8 +31,127 @@ const getTodayDateString = () => {
   return `${year}-${month}-${day}`;
 };
 
+const DEFAULT_MAIN_SERVICES: WashService[] = [
+  {
+    id: 'default_wash_standard',
+    name: 'Standard Car Wash & Vacuum',
+    price: 15.00,
+    duration: 45,
+    type: 'service',
+    description: 'Complete exterior water jet wash with high foam shampoo, tire shine, and interior deep vacuum cleaning.'
+  },
+  {
+    id: 'default_wash_express',
+    name: 'Express Jet Wash & Towel Dry',
+    price: 10.00,
+    duration: 20,
+    type: 'service',
+    description: 'Fast exterior water jet wash with soft microfiber hand dry.'
+  },
+  {
+    id: 'default_wash_deluxe',
+    name: 'Deluxe Foam Wash, Wax & Tyre Shine',
+    price: 25.00,
+    duration: 60,
+    type: 'service',
+    description: 'Full exterior foam wash, spray wax protection, deep interior vacuum, and tyre shine.'
+  },
+  {
+    id: 'default_wash_ceramic',
+    name: 'Premium Ceramic Coating & Deep Detailing',
+    price: 45.00,
+    duration: 90,
+    type: 'service',
+    description: 'Ultimate hand wash detailing with hydrophobic ceramic spray sealant.'
+  }
+];
+
+const DEFAULT_ADDONS: WashService[] = [
+  {
+    id: 'default_addon_headlight',
+    name: 'Headlight Polish & Lens Restoration',
+    price: 15.00,
+    duration: 15,
+    type: 'addon',
+    description: 'Professional headlight lens clarity restoration.'
+  },
+  {
+    id: 'default_addon_tyre',
+    name: 'Tyre Shine & Hydrophobic Rim Coating',
+    price: 5.00,
+    duration: 10,
+    type: 'addon',
+    description: 'Deep glossy tyre dressing and protective rim shine coat.'
+  },
+  {
+    id: 'default_addon_windscreen',
+    name: 'Windscreen Rain-Repellent Treatment',
+    price: 8.00,
+    duration: 10,
+    type: 'addon',
+    description: 'Hydrophobic glass coating that repels rain drops.'
+  },
+  {
+    id: 'default_addon_steam',
+    name: 'Interior Steam Sanitization & Deodorizer',
+    price: 12.00,
+    duration: 20,
+    type: 'addon',
+    description: 'High-temperature steam treatment targeting AC vents and seats.'
+  },
+  {
+    id: 'default_addon_engine',
+    name: 'Engine Bay Degreasing & Dressing',
+    price: 20.00,
+    duration: 25,
+    type: 'addon',
+    description: 'Safe engine compartment degreasing and protective dressing.'
+  }
+];
+
+const DEFAULT_PRODUCTS: WashService[] = [
+  {
+    id: 'default_product_microfiber',
+    name: 'Microfiber Detailing Towel Pack (3-pc)',
+    price: 6.00,
+    duration: 0,
+    type: 'product',
+    description: 'Ultra-soft 400GSM plush microfiber towels.'
+  },
+  {
+    id: 'default_product_shampoo',
+    name: 'PH-Neutral Auto Wash Shampoo 500ml',
+    price: 12.00,
+    duration: 0,
+    type: 'product',
+    description: 'Concentrated high-foaming car wash soap.'
+  },
+  {
+    id: 'default_product_ceramic_spray',
+    name: 'Hydrophobic Ceramic Guard Spray 300ml',
+    price: 18.00,
+    duration: 0,
+    type: 'product',
+    description: 'Easy spray-on ceramic sealant providing gloss and water beading.'
+  },
+  {
+    id: 'default_product_freshener',
+    name: 'Luxury Air Freshener Vent Clip',
+    price: 4.00,
+    duration: 0,
+    type: 'product',
+    description: 'Long-lasting premium fragrance vent clip.'
+  }
+];
+
+const getCatalogForLocation = (loc?: CarWash | null): WashService[] => {
+  if (!loc) return [];
+  return Array.isArray(loc.services) ? loc.services : [];
+};
+
 export const OwnerDashboard: React.FC = () => {
   const {
+    user,
     token,
     locations,
     bookings,
@@ -31,6 +159,7 @@ export const OwnerDashboard: React.FC = () => {
     fetchBookings,
     showNotification,
     updateBookingStatus,
+    requestBookingEta,
     updateLocationConfig,
     createEmployee,
     updateEmployee,
@@ -43,12 +172,241 @@ export const OwnerDashboard: React.FC = () => {
     markAllNotificationsAsRead,
   } = useApp();
 
+  // Filter locations to strictly those owned by the logged-in user
+  const ownerLocations = React.useMemo(() => {
+    if (!user) return [];
+    if (user.role === Role.ADMIN) return locations;
+    return locations.filter((loc) => loc.ownerId === user.id);
+  }, [locations, user]);
+
   // Selected owned business
   const [selectedBusiness, setSelectedBusiness] = useState<CarWash | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'bookings' | 'customers' | 'calendar' | 'settings'>('overview');
+
+  const selectedBusinessPaymentMethods = React.useMemo(() => {
+    if (!selectedBusiness) return [];
+    const methods: string[] = [];
+    if (selectedBusiness.bibdEnabled) methods.push('BIBD');
+    if (selectedBusiness.baiduriEnabled) methods.push('Baiduri');
+    if (selectedBusiness.customPaymentMethods) {
+      selectedBusiness.customPaymentMethods
+        .filter((m) => m.isEnabled)
+        .forEach((m) => {
+          if (m.providerName && !methods.includes(m.providerName)) {
+            methods.push(m.providerName);
+          }
+        });
+    }
+    return methods;
+  }, [selectedBusiness]);
+
+  const [activeTab, setActiveTab] = useState<'overview' | 'bookings' | 'customers' | 'calendar' | 'reviews' | 'qrcode' | 'settings' | 'loyalty'>('overview');
+  const [requestingEtaBookingId, setRequestingEtaBookingId] = useState<string | null>(null);
+  // QR Code access is controlled by Admin / Special User (hidden by default, all other navigation is always available)
+  const isOwnerQrCodeAllowed = selectedBusiness ? (selectedBusiness.ownerQrCodeEnabled === true) : false;
+  // Loyalty & Rewards membership feature enabled by Admin
+  const isMembershipEnabled = selectedBusiness ? (selectedBusiness.membershipEnabled === true) : false;
+
+  useEffect(() => {
+    if (!isOwnerQrCodeAllowed && activeTab === 'qrcode') {
+      setActiveTab('overview');
+    }
+    if (!isMembershipEnabled && activeTab === 'loyalty') {
+      setActiveTab('overview');
+    }
+  }, [isOwnerQrCodeAllowed, isMembershipEnabled, activeTab]);
+
+  // 🎯 Deep-link listener for notifications in Owner Dashboard
+  useEffect(() => {
+    const handleTargetBooking = (targetId: string) => {
+      if (!targetId) return;
+      setActiveTab('bookings');
+      setAccountingTimeframe('ALL');
+      setAccountingStatusFilter('ALL');
+      setTimeout(() => {
+        const el = document.getElementById(`owner-booking-${targetId}`) || document.getElementById(`owner-booking-m-${targetId}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 300);
+    };
+
+    const params = new URLSearchParams(window.location.search);
+    const queryBookingId = params.get('bookingId') || params.get('booking');
+    if (queryBookingId) {
+      handleTargetBooking(queryBookingId);
+    }
+
+    const customListener = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail && detail.bookingId) {
+        handleTargetBooking(detail.bookingId);
+      }
+    };
+    window.addEventListener('autoshine:navigate-booking', customListener);
+
+    return () => {
+      window.removeEventListener('autoshine:navigate-booking', customListener);
+    };
+  }, []);
+
   const [customerAlphabetFilter, setCustomerAlphabetFilter] = useState<string>('ALL');
   const [customerSearchQuery, setCustomerSearchQuery] = useState<string>('');
+  const [customerPage, setCustomerPage] = useState<number>(1);
+  const CUSTOMERS_PER_PAGE = 24;
   const [isSeedingLedger, setIsSeedingLedger] = useState(false);
+  const [serverCustomers, setServerCustomers] = useState<any[]>([]);
+  const [isLoadingCustomers, setIsLoadingCustomers] = useState(false);
+
+  // Reviews tab states
+  const [ownerReviews, setOwnerReviews] = useState<Review[]>([]);
+  const [ownerReviewSummary, setOwnerReviewSummary] = useState<ReviewSummary>({
+    averageRating: 0,
+    totalReviews: 0,
+    ratingCounts: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+  });
+  const [isLoadingReviews, setIsLoadingReviews] = useState(false);
+  const [reviewStatusFilter, setReviewStatusFilter] = useState<'ALL' | 'UNREPLIED' | 'REPLIED'>('ALL');
+  const [reviewStarFilter, setReviewStarFilter] = useState<number | 'ALL'>('ALL');
+  const [reviewSearchQuery, setReviewSearchQuery] = useState('');
+  const [activeReplyingReviewId, setActiveReplyingReviewId] = useState<string | null>(null);
+  const [ownerReplyComment, setOwnerReplyComment] = useState('');
+  const [isPostingReply, setIsPostingReply] = useState(false);
+
+  const fetchOwnerReviews = async () => {
+    if (!selectedBusiness) return;
+    setIsLoadingReviews(true);
+    try {
+      const [rRes, sRes] = await Promise.all([
+        fetch(`/api/reviews?carWashId=${selectedBusiness.id}`),
+        fetch(`/api/reviews/summary?carWashId=${selectedBusiness.id}`)
+      ]);
+      if (rRes.ok) {
+        const data = await rRes.json();
+        setOwnerReviews(Array.isArray(data) ? data : []);
+      }
+      if (sRes.ok) {
+        const sData = await sRes.json();
+        setOwnerReviewSummary(sData);
+      }
+    } catch (err) {
+      console.warn('Failed to load reviews for business:', err);
+    } finally {
+      setIsLoadingReviews(false);
+    }
+  };
+
+  const handleOwnerSubmitReply = async (reviewId: string) => {
+    if (!ownerReplyComment.trim()) return;
+    const authToken = token || localStorage.getItem('cw_token');
+    if (!authToken) return;
+
+    setIsPostingReply(true);
+    try {
+      const res = await fetch(`/api/reviews/${reviewId}/reply`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({ reply: ownerReplyComment.trim() }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to submit response');
+      }
+
+      showNotification('Your response has been published to the customer!', 'success');
+      setActiveReplyingReviewId(null);
+      setOwnerReplyComment('');
+      fetchOwnerReviews();
+    } catch (err: any) {
+      showNotification(err.message || 'Failed to submit reply', 'error');
+    } finally {
+      setIsPostingReply(false);
+    }
+  };
+
+  const handleOwnerDeleteReply = async (reviewId: string) => {
+    if (!window.confirm('Are you sure you want to remove your response to this review?')) return;
+    const authToken = token || localStorage.getItem('cw_token');
+    if (!authToken) return;
+
+    try {
+      const res = await fetch(`/api/reviews/${reviewId}/reply`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to delete reply');
+      }
+      showNotification('Response removed.', 'info');
+      fetchOwnerReviews();
+    } catch (err: any) {
+      showNotification(err.message || 'Failed to remove response', 'error');
+    }
+  };
+
+  const handleModeratorDeleteReview = async (reviewId: string) => {
+    if (!window.confirm('Moderator Action: Are you sure you want to permanently delete this review? This is intended for spam and inappropriate content.')) return;
+    const authToken = token || localStorage.getItem('cw_token');
+    if (!authToken) return;
+
+    try {
+      const res = await fetch(`/api/reviews/${reviewId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to delete review');
+      }
+      showNotification('Review deleted by moderator.', 'info');
+      fetchOwnerReviews();
+    } catch (err: any) {
+      showNotification(err.message || 'Failed to delete review', 'error');
+    }
+  };
+
+  useEffect(() => {
+    if (FEATURES.ENABLE_REVIEWS && selectedBusiness && (activeTab === 'reviews' || activeTab === 'overview')) {
+      fetchOwnerReviews();
+    }
+  }, [selectedBusiness?.id, activeTab]);
+
+  const fetchServerCustomers = async () => {
+    if (!token) return;
+    setIsLoadingCustomers(true);
+    try {
+      const queryParam = selectedBusiness?.id ? `?carWashId=${encodeURIComponent(selectedBusiness.id)}` : '';
+      const res = await fetch(`/api/owner/customers${queryParam}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setServerCustomers(data);
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to load server customers:', err);
+    } finally {
+      setIsLoadingCustomers(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'customers' || activeTab === 'overview') {
+      fetchServerCustomers();
+    }
+  }, [activeTab, selectedBusiness?.id, token]);
+
+  // Edit Booking Modal state
+  const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
+  const [showEditBookingModal, setShowEditBookingModal] = useState<boolean>(false);
 
   const openWhatsAppCustomer = (phone?: string, customerName?: string, date?: string, timeSlot?: string, serviceName?: string) => {
     if (!phone) {
@@ -85,10 +443,11 @@ export const OwnerDashboard: React.FC = () => {
   
   // Manual Booking Modal States
   const [showManualBookingModal, setShowManualBookingModal] = useState(false);
+  const [showServicePickerModal, setShowServicePickerModal] = useState(false);
+  const [mbSelectedItems, setMbSelectedItems] = useState<WashService[]>([]);
   const [mbSource, setMbSource] = useState<'PHONE' | 'WALK_IN' | 'ONLINE'>('PHONE');
   const [mbName, setMbName] = useState('');
   const [mbPhone, setMbPhone] = useState('');
-  const [mbEmail, setMbEmail] = useState('');
   const [mbVehicle, setMbVehicle] = useState('');
   const [mbDate, setMbDate] = useState<string>(getTodayDateString());
   const [mbTimeSlot, setMbTimeSlot] = useState<string>('09:00 - 09:30');
@@ -96,8 +455,41 @@ export const OwnerDashboard: React.FC = () => {
   const [mbPrice, setMbPrice] = useState<string>('15.00');
   const [mbNotes, setMbNotes] = useState('');
   const [mbStatus, setMbStatus] = useState<BookingStatus>(BookingStatus.COMPLETED);
+  const [mbPaymentMode, setMbPaymentMode] = useState<'Cash' | 'Transfer'>('Cash');
+  const [mbTransferProvider, setMbTransferProvider] = useState<string>('Bank Transfer');
+  const [mbTxnReference, setMbTxnReference] = useState('');
   const [mbAvailableSlots, setMbAvailableSlots] = useState<any[]>([]);
+  const [mbSelectedSlots, setMbSelectedSlots] = useState<string[]>([]);
   const [mbIsSubmitting, setMbIsSubmitting] = useState(false);
+  const [settlementBooking, setSettlementBooking] = useState<Booking | null>(null);
+  const [showSettlementModal, setShowSettlementModal] = useState<boolean>(false);
+
+  const getFormattedSlotSummary = (slots: string[]) => {
+    if (!slots || slots.length === 0) {
+      return 'Walk-in / Immediate (No Slot Reserved)';
+    }
+    const sorted = [...slots].sort((a, b) => {
+      const tA = a.split(' - ')[0];
+      const tB = b.split(' - ')[0];
+      return tA.localeCompare(tB);
+    });
+    if (sorted.length === 1) return sorted[0];
+
+    const isContiguous = sorted.every((s, i) => {
+      if (i === 0) return true;
+      const prevEnd = sorted[i - 1].split(' - ')[1];
+      const currStart = s.split(' - ')[0];
+      return prevEnd === currStart;
+    });
+
+    if (isContiguous) {
+      const start = sorted[0].split(' - ')[0];
+      const end = sorted[sorted.length - 1].split(' - ')[1];
+      const hrs = (sorted.length * 0.5).toFixed(1);
+      return `${start} - ${end} (${sorted.length} Slots / ${hrs} Hrs)`;
+    }
+    return sorted.join(', ');
+  };
 
   // Analytics states
   const [analytics, setAnalytics] = useState<any>({
@@ -109,6 +501,142 @@ export const OwnerDashboard: React.FC = () => {
     estimatedRevenue: 0,
     bookingsByDate: {},
   });
+
+  // Compute analytics dynamically from current state for zero-latency presentation
+  const computedAnalytics = React.useMemo(() => {
+    let relevantBookings = bookings;
+    if (selectedBusiness) {
+      relevantBookings = bookings.filter((b) => b.carWashId === selectedBusiness.id);
+    } else if (user) {
+      const ownedIds = ownerLocations.map((l) => l.id);
+      relevantBookings = bookings.filter((b) => ownedIds.includes(b.carWashId));
+    }
+
+    const completed = relevantBookings.filter((b) => b.status === BookingStatus.COMPLETED);
+    const pending = relevantBookings.filter((b) => b.status === BookingStatus.PENDING);
+    const inProgress = relevantBookings.filter((b) => b.status === BookingStatus.IN_PROGRESS);
+    const cancelled = relevantBookings.filter((b) => b.status === BookingStatus.CANCELLED);
+
+    return {
+      totalBookings: relevantBookings.length,
+      completedCount: completed.length,
+      pendingCount: pending.length,
+      inProgressCount: inProgress.length,
+      cancelledCount: cancelled.length,
+      estimatedRevenue: completed.length * 45,
+    };
+  }, [bookings, selectedBusiness, ownerLocations, user]);
+
+  // 🌴 Holiday & Closure Management States
+  const [showHolidayModal, setShowHolidayModal] = useState(false);
+  const [editingHolidayIndex, setEditingHolidayIndex] = useState<number | null>(null);
+  const [holidayDate, setHolidayDate] = useState<string>(getTodayDateString());
+  const [holidayType, setHolidayType] = useState<'FULL_DAY' | 'HALF_DAY_MORNING' | 'HALF_DAY_AFTERNOON' | 'CUSTOM_HOURS'>('FULL_DAY');
+  const [holidayReason, setHolidayReason] = useState<string>('');
+  const [holidayCustomStart, setHolidayCustomStart] = useState<string>('08:00');
+  const [holidayCustomEnd, setHolidayCustomEnd] = useState<string>('13:00');
+  const [isSavingHoliday, setIsSavingHoliday] = useState(false);
+
+  const getBusinessHolidays = (): any[] => {
+    if (!selectedBusiness) return [];
+    let overrides = selectedBusiness.scheduleOverrides;
+    if (!overrides && (selectedBusiness as any).scheduleOverridesJson) {
+      try {
+        overrides = typeof (selectedBusiness as any).scheduleOverridesJson === 'string'
+          ? JSON.parse((selectedBusiness as any).scheduleOverridesJson)
+          : (selectedBusiness as any).scheduleOverridesJson;
+      } catch {
+        overrides = [];
+      }
+    }
+    return Array.isArray(overrides) ? overrides : [];
+  };
+
+  const openAddHolidayModal = (prefillDate?: string) => {
+    setEditingHolidayIndex(null);
+    setHolidayDate(prefillDate || selectedCalendarDate || getTodayDateString());
+    setHolidayType('FULL_DAY');
+    setHolidayReason('');
+    setHolidayCustomStart('08:00');
+    setHolidayCustomEnd('13:00');
+    setShowHolidayModal(true);
+  };
+
+  const openEditHolidayModal = (override: any, index: number) => {
+    setEditingHolidayIndex(index);
+    setHolidayDate(override.date || getTodayDateString());
+    setHolidayType(override.type || 'FULL_DAY');
+    setHolidayReason(override.reason || '');
+    setHolidayCustomStart(override.customStartTime || '08:00');
+    setHolidayCustomEnd(override.customEndTime || '13:00');
+    setShowHolidayModal(true);
+  };
+
+  const handleSaveHoliday = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!selectedBusiness) return;
+    if (!holidayDate) {
+      showNotification('Please select a date for the holiday / closure.', 'error');
+      return;
+    }
+    setIsSavingHoliday(true);
+    try {
+      const current = [...getBusinessHolidays()];
+      const newOverride = {
+        date: holidayDate,
+        type: holidayType,
+        reason: holidayReason.trim() || (holidayType === 'FULL_DAY' ? 'Public Holiday Closure' : 'Half-Day Closure'),
+        customStartTime: holidayType === 'CUSTOM_HOURS' ? holidayCustomStart : holidayType === 'HALF_DAY_AFTERNOON' ? (holidayCustomStart || '13:00') : undefined,
+        customEndTime: holidayType === 'CUSTOM_HOURS' ? holidayCustomEnd : holidayType === 'HALF_DAY_MORNING' ? (holidayCustomEnd || '13:00') : undefined,
+      };
+
+      let updated: any[];
+      if (editingHolidayIndex !== null && editingHolidayIndex >= 0 && editingHolidayIndex < current.length) {
+        updated = [...current];
+        updated[editingHolidayIndex] = newOverride;
+      } else {
+        const existingIdx = current.findIndex(h => h.date === holidayDate);
+        if (existingIdx >= 0) {
+          updated = [...current];
+          updated[existingIdx] = newOverride;
+        } else {
+          updated = [...current, newOverride];
+        }
+      }
+
+      updated.sort((a, b) => a.date.localeCompare(b.date));
+
+      await updateLocationConfig(selectedBusiness.id, {
+        scheduleOverrides: updated,
+      });
+
+      showNotification(`Holiday / closure saved for ${holidayDate}!`, 'success');
+      setShowHolidayModal(false);
+      setEditingHolidayIndex(null);
+      setHolidayReason('');
+    } catch (err: any) {
+      showNotification(err.message || 'Failed to save holiday', 'error');
+    } finally {
+      setIsSavingHoliday(false);
+    }
+  };
+
+  const handleDeleteHoliday = async (dateToDelete: string) => {
+    if (!selectedBusiness) return;
+    if (!confirm(`Are you sure you want to remove the holiday/closure on ${dateToDelete}? Booking slots on this day will be restored.`)) {
+      return;
+    }
+    const current = getBusinessHolidays();
+    const updated = current.filter(h => h.date !== dateToDelete);
+    try {
+      await updateLocationConfig(selectedBusiness.id, {
+        scheduleOverrides: updated,
+      });
+      showNotification(`Holiday for ${dateToDelete} removed.`, 'success');
+    } catch (err: any) {
+      showNotification(err.message || 'Failed to remove holiday', 'error');
+    }
+  };
 
   // Business Edit Mode
   const [isEditingConfig, setIsEditingConfig] = useState(false);
@@ -122,6 +650,8 @@ export const OwnerDashboard: React.FC = () => {
   const [editSchedule, setEditSchedule] = useState<WeeklySchedule | null>(null);
   const [editPhone, setEditPhone] = useState('');
   const [editInstagram, setEditInstagram] = useState('');
+  const [editLogoUrl, setEditLogoUrl] = useState('');
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 
   // 🔒 Dynamic Brunei local bank config states
   const [editBibdAccountName, setEditBibdAccountName] = useState('');
@@ -141,9 +671,10 @@ export const OwnerDashboard: React.FC = () => {
   const [newServicePrice, setNewServicePrice] = useState('15.00');
   const [newServiceDuration, setNewServiceDuration] = useState('30');
   const [newServiceDesc, setNewServiceDesc] = useState('');
-  const [newServiceType, setNewServiceType] = useState<'service' | 'product'>('service');
+  const [newServiceType, setNewServiceType] = useState<'service' | 'product' | 'addon'>('service');
   const [newServiceVehicleType, setNewServiceVehicleType] = useState<string>('All');
   const [newServiceIsAvailable, setNewServiceIsAvailable] = useState<boolean>(true);
+  const [newServiceSlotsRequired, setNewServiceSlotsRequired] = useState<number>(1);
 
   // Add custom payment method quick-add states
   const [newProviderName, setNewProviderName] = useState('');
@@ -157,6 +688,8 @@ export const OwnerDashboard: React.FC = () => {
   const [showEmployeeModal, setShowEmployeeModal] = useState(false);
   const [empName, setEmpName] = useState('');
   const [empEmail, setEmpEmail] = useState('');
+  const [empPassword, setEmpPassword] = useState('');
+  const [showEmpPassword, setShowEmpPassword] = useState(false);
 
   // Edit/Delete Employee states
   const [editingEmployee, setEditingEmployee] = useState<any | null>(null);
@@ -164,6 +697,13 @@ export const OwnerDashboard: React.FC = () => {
   const [editEmpEmail, setEditEmpEmail] = useState('');
   const [editEmpBusinessId, setEditEmpBusinessId] = useState('');
   const [deletingEmployeeId, setDeletingEmployeeId] = useState<string | null>(null);
+
+  // 🔄 Navigation & Back button synchronization:
+  useTabBack(activeTab, setActiveTab, 'overview', 'ownerTab');
+  useModalBack(showEmployeeModal, () => setShowEmployeeModal(false), 'owner-add-employee-modal');
+  useModalBack(Boolean(editingEmployee), () => setEditingEmployee(null), 'owner-edit-employee-modal');
+  useModalBack(showManualBookingModal, () => setShowManualBookingModal(false), 'owner-manual-booking-modal');
+  useModalBack(showHolidayModal, () => setShowHolidayModal(false), 'owner-holiday-modal');
 
   // Focus Booking and Owner Audit Log States
   const [ownerLogs, setOwnerLogs] = useState<any[]>([]);
@@ -333,7 +873,7 @@ export const OwnerDashboard: React.FC = () => {
   const accTotalCount = accBookingsList.length;
   const accAvgTicket = accTotalCount > 0 ? accTotalRevenue / accTotalCount : 0;
 
-  const accServiceBreakdown: Record<string, { count: number; totalRevenue: number; type: 'service' | 'product' }> = {};
+  const accServiceBreakdown: Record<string, { count: number; totalRevenue: number; type: 'service' | 'product' | 'addon' }> = {};
   accBookingsList.forEach((b) => {
     if (b.status === BookingStatus.CANCELLED || b.status === BookingStatus.REJECTED) return;
     const name = b.serviceName || 'Standard Car Wash';
@@ -359,24 +899,58 @@ export const OwnerDashboard: React.FC = () => {
     }
   });
 
-  const accPaymentMap: Record<string, number> = {
-    Cash: 0,
-    BIBD: 0,
-    Baiduri: 0,
-    Other: 0,
+  const accPaymentMap: {
+    cash: { count: number; totalRevenue: number };
+    transfer: { count: number; totalRevenue: number };
+    transferBreakdown: Record<string, { count: number; totalRevenue: number }>;
+  } = {
+    cash: { count: 0, totalRevenue: 0 },
+    transfer: { count: 0, totalRevenue: 0 },
+    transferBreakdown: {},
+  };
+
+  accBookingsList.forEach((b) => {
+    if (b.status === BookingStatus.CANCELLED || b.status === BookingStatus.REJECTED) return;
+    const price = Number(b.price) || 15.0;
+    const rawBank = (b.paymentBank || '').trim();
+    const bankUpper = rawBank.toUpperCase();
+    if (!rawBank || bankUpper === 'CASH') {
+      accPaymentMap.cash.count += 1;
+      accPaymentMap.cash.totalRevenue += price;
+    } else {
+      accPaymentMap.transfer.count += 1;
+      accPaymentMap.transfer.totalRevenue += price;
+
+      let providerKey = rawBank;
+      if (bankUpper.includes('BIBD')) providerKey = 'BIBD';
+      else if (bankUpper.includes('BAIDURI')) providerKey = 'Baiduri';
+      else if (bankUpper.includes('TAIB')) providerKey = 'TAIB';
+      else if (bankUpper.includes('STANDARD') || bankUpper.includes('SCB')) providerKey = 'Standard Chartered';
+      else if (bankUpper.includes('POCKET')) providerKey = 'Pocket';
+      else if (bankUpper.includes('TRANSFER')) providerKey = 'Bank Transfer';
+
+      if (!accPaymentMap.transferBreakdown[providerKey]) {
+        accPaymentMap.transferBreakdown[providerKey] = { count: 0, totalRevenue: 0 };
+      }
+      accPaymentMap.transferBreakdown[providerKey].count += 1;
+      accPaymentMap.transferBreakdown[providerKey].totalRevenue += price;
+    }
+  });
+
+  const accSourceMap: Record<string, { count: number; totalRevenue: number }> = {
+    WALK_IN: { count: 0, totalRevenue: 0 },
+    PHONE: { count: 0, totalRevenue: 0 },
+    ONLINE: { count: 0, totalRevenue: 0 },
   };
   accBookingsList.forEach((b) => {
     if (b.status === BookingStatus.CANCELLED || b.status === BookingStatus.REJECTED) return;
     const price = Number(b.price) || 15.0;
-    if (!b.paymentBank) {
-      accPaymentMap['Cash'] += price;
-    } else if (b.paymentBank.toUpperCase().includes('BIBD')) {
-      accPaymentMap['BIBD'] += price;
-    } else if (b.paymentBank.toUpperCase().includes('BAIDURI')) {
-      accPaymentMap['Baiduri'] += price;
-    } else {
-      accPaymentMap['Other'] += price;
+    const src = b.bookingSource || 'ONLINE';
+    if (!accSourceMap[src]) {
+      accSourceMap[src] = { count: 0, totalRevenue: 0 };
     }
+    accSourceMap[src].count += 1;
+    accSourceMap[src].totalRevenue += price;
   });
 
   const handleExportPdfReport = () => {
@@ -390,9 +964,7 @@ export const OwnerDashboard: React.FC = () => {
     const periodLabel =
       accountingTimeframe === 'WEEKLY'
         ? `Weekly Report (${accWeekInfo.monFormatted} - ${accWeekInfo.sunFormatted})`
-        : accountingTimeframe === 'MONTHLY'
-        ? `Monthly Report (${accMonthInfo.monthName})`
-        : 'All-Time Sales Ledger';
+        : `Monthly Report (${accMonthInfo.monthName})`;
 
     const filterLabel = accountingStatusFilter === 'COMPLETED_ONLY' ? 'Completed Washes Only' : 'All Recorded Bookings';
     const generatedDate = new Date().toLocaleString();
@@ -593,11 +1165,41 @@ export const OwnerDashboard: React.FC = () => {
 
         <div class="summary-sections">
           <div class="summary-box">
-            <h4>Payment Method Breakdown</h4>
-            <div class="row-item"><span>💵 Cash on Site</span><strong>BND $${accPaymentMap['Cash'].toFixed(2)}</strong></div>
-            <div class="row-item"><span>🏦 BIBD Transfer</span><strong>BND $${accPaymentMap['BIBD'].toFixed(2)}</strong></div>
-            <div class="row-item"><span>🏦 Baiduri Transfer</span><strong>BND $${accPaymentMap['Baiduri'].toFixed(2)}</strong></div>
-            <div class="row-item"><span>💳 Custom / Other</span><strong>BND $${accPaymentMap['Other'].toFixed(2)}</strong></div>
+            <h4>Payment Settlement Breakdown</h4>
+            <div class="row-item">
+              <span>💵 Pay on Site (Cash) <small style="color:#64748b;">(${accPaymentMap.cash.count}x)</small></span>
+              <strong>BND $${accPaymentMap.cash.totalRevenue.toFixed(2)}</strong>
+            </div>
+            ${
+              accPaymentMap.transfer.count > 0
+                ? `
+            <div class="row-item">
+              <span>📱 Pay on Site (Bank/Digital Transfer) <small style="color:#64748b;">(${accPaymentMap.transfer.count}x)</small></span>
+              <strong>BND $${accPaymentMap.transfer.totalRevenue.toFixed(2)}</strong>
+            </div>
+            ${Object.entries(accPaymentMap.transferBreakdown)
+              .map(
+                ([provider, data]) => `
+              <div class="row-item" style="padding-left: 14px; font-size: 10px; color: #475569;">
+                <span>↳ ${provider} (${data.count}x)</span>
+                <strong>BND $${data.totalRevenue.toFixed(2)}</strong>
+              </div>
+            `
+              )
+              .join('')}
+            `
+                : ''
+            }
+            <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed #cbd5e1; font-size: 8.5px; color: #64748b; line-height: 1.35;">
+              ℹ️ <strong>Settlement Policy:</strong> 100% Pay on Site upon arrival (Cash or direct counter Bank/App Transfer). No remote bank transfer data is collected in-app.
+            </div>
+          </div>
+
+          <div class="summary-box">
+            <h4>Booking Source Channels</h4>
+            <div class="row-item"><span>🚗 Walk-In (${accSourceMap['WALK_IN']?.count || 0})</span><strong>BND $${(accSourceMap['WALK_IN']?.totalRevenue || 0).toFixed(2)}</strong></div>
+            <div class="row-item"><span>📞 Phone Calls (${accSourceMap['PHONE']?.count || 0})</span><strong>BND $${(accSourceMap['PHONE']?.totalRevenue || 0).toFixed(2)}</strong></div>
+            <div class="row-item"><span>🌐 App / Online (${accSourceMap['ONLINE']?.count || 0})</span><strong>BND $${(accSourceMap['ONLINE']?.totalRevenue || 0).toFixed(2)}</strong></div>
           </div>
 
           <div class="summary-box">
@@ -646,7 +1248,17 @@ export const OwnerDashboard: React.FC = () => {
                 <td><span class="badge badge-${(bk.bookingSource || 'ONLINE').toLowerCase().replace('_', '')}">${
                         bk.bookingSource || 'ONLINE'
                       }</span></td>
-                <td>${bk.paymentBank ? `${bk.paymentBank} Transfer` : 'Cash on Site'}</td>
+                <td>${(() => {
+                  const bank = (bk.paymentBank || '').toUpperCase();
+                  if (bank.includes('BIBD')) {
+                    return `Pay on Site (BIBD QR)${bk.txnReference ? `<br/><span style="font-size:8.5px;color:#64748b;font-family:monospace;">Ref: #${bk.txnReference}</span>` : ''}`;
+                  } else if (bank.includes('BAIDURI')) {
+                    return `Pay on Site (Baiduri QR)${bk.txnReference ? `<br/><span style="font-size:8.5px;color:#64748b;font-family:monospace;">Ref: #${bk.txnReference}</span>` : ''}`;
+                  } else if (bk.paymentBank && bank !== 'CASH') {
+                    return `Pay on Site (${bk.paymentBank})${bk.txnReference ? `<br/><span style="font-size:8.5px;color:#64748b;font-family:monospace;">Ref: #${bk.txnReference}</span>` : ''}`;
+                  }
+                  return 'Pay on Site (Cash)';
+                })()}</td>
                 <td><strong style="color: ${bk.status === 'COMPLETED' ? '#166534' : '#854d0e'};">${bk.status}</strong></td>
                 <td style="text-align: right; font-family: monospace; font-weight: bold;">$${(
                   Number(bk.price) || 15.0
@@ -747,11 +1359,22 @@ export const OwnerDashboard: React.FC = () => {
   };
 
   useEffect(() => {
-    // Select first owned location if not already selected
-    if (locations.length > 0 && !selectedBusiness) {
-      setSelectedBusiness(locations[0]);
+    // Select first owned location if not already selected, or sync with fresh location data
+    if (ownerLocations.length > 0) {
+      if (!selectedBusiness) {
+        setSelectedBusiness(ownerLocations[0]);
+      } else {
+        const fresh = ownerLocations.find((loc) => loc.id === selectedBusiness.id);
+        if (fresh) {
+          setSelectedBusiness(fresh);
+        } else {
+          setSelectedBusiness(ownerLocations[0]);
+        }
+      }
+    } else {
+      setSelectedBusiness(null);
     }
-  }, [locations]);
+  }, [ownerLocations]);
 
   // Auto-select focused booking when selectedBusiness or bookings change
   useEffect(() => {
@@ -766,10 +1389,59 @@ export const OwnerDashboard: React.FC = () => {
     }
   }, [selectedBusiness, bookings]);
 
+  const handleNotificationDetailsClick = (n: any) => {
+    if (!n.isRead) markNotificationAsRead(n.id);
+
+    if (n.bookingId) {
+      const found = bookings.find((b) => b.id === n.bookingId);
+      if (found) {
+        setEditingBooking(found);
+        setShowEditBookingModal(true);
+        return;
+      }
+    }
+
+    const msgLower = (n.message || '').toLowerCase();
+    const matchedBooking = bookings.find(
+      (b) =>
+        (b.customerName && msgLower.includes(b.customerName.toLowerCase())) ||
+        (b.customerEmail && msgLower.includes(b.customerEmail.toLowerCase())) ||
+        (b.id && msgLower.includes(b.id.toLowerCase()))
+    );
+
+    if (matchedBooking) {
+      setEditingBooking(matchedBooking);
+      setShowEditBookingModal(true);
+    } else {
+      setActiveTab('bookings');
+      showNotification('Switched to Bookings tab to review all live orders.', 'info');
+    }
+  };
+
+  // Auto set initial service price when service selected for manual booking
+  useEffect(() => {
+    if (selectedBusiness) {
+      const catalog = getCatalogForLocation(selectedBusiness);
+      if (catalog.length > 0) {
+        if (mbSelectedItems.length === 0) {
+          setMbSelectedItems([catalog[0]]);
+          setMbSelectedServiceId(catalog[0].id);
+          setMbPrice(catalog[0].price.toFixed(2));
+        } else if (!mbSelectedServiceId) {
+          setMbSelectedServiceId(catalog[0].id);
+        }
+      }
+    }
+  }, [selectedBusiness, showManualBookingModal]);
+
   // Fetch available slots for manual booking date
+  const mbTotalDuration = mbSelectedItems.length > 0
+    ? mbSelectedItems.filter((i) => i.type !== 'product').reduce((sum, item) => sum + (Number(item.duration) || 30), 0) || 30
+    : 30;
+
   useEffect(() => {
     if (selectedBusiness && mbDate) {
-      fetch(`/api/bookings/available-slots?carWashId=${selectedBusiness.id}&date=${mbDate}`)
+      fetch(`/api/bookings/available-slots?carWashId=${selectedBusiness.id}&date=${mbDate}&duration=${mbTotalDuration}`)
         .then((res) => res.json())
         .then((data) => {
           if (Array.isArray(data)) {
@@ -779,33 +1451,44 @@ export const OwnerDashboard: React.FC = () => {
             }
           }
         })
-        .catch((err) => console.error('Error fetching slots for manual booking:', err));
+        .catch((err) => console.warn('Could not fetch slots for manual booking:', err));
     }
-  }, [selectedBusiness, mbDate]);
+  }, [selectedBusiness, mbDate, mbTotalDuration]);
 
   const handleManualBookingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedBusiness || !mbName.trim() || !mbPhone.trim() || !mbDate || !mbTimeSlot) {
+    if (!selectedBusiness || !mbName.trim() || !mbPhone.trim() || !mbDate) {
       return;
     }
 
     setMbIsSubmitting(true);
-    const selectedSvc = selectedBusiness.services?.find((s) => s.id === mbSelectedServiceId);
+    const catalog = getCatalogForLocation(selectedBusiness);
     
+    const combinedName = mbSelectedItems.length > 0
+      ? mbSelectedItems.map((i) => i.name).join(' + ')
+      : 'Standard Car Wash & Vacuum';
+
+    const calculatedPrice = mbSelectedItems.length > 0
+      ? mbSelectedItems.reduce((sum, item) => sum + (Number(item.price) || 0), 0)
+      : (parseFloat(mbPrice) || 15.00);
+
+    const finalSlot = getFormattedSlotSummary(mbSelectedSlots);
+
     const success = await createManualBooking({
       carWashId: selectedBusiness.id,
       date: mbDate,
-      timeSlot: mbTimeSlot,
+      timeSlot: finalSlot,
       customerName: mbName.trim(),
       customerPhone: mbPhone.trim(),
-      customerEmail: mbEmail.trim() || undefined,
       vehicleInfo: mbVehicle.trim() || undefined,
       bookingSource: mbSource,
-      serviceId: selectedSvc?.id,
-      serviceName: selectedSvc?.name || 'Standard Wash',
-      price: parseFloat(mbPrice) || selectedSvc?.price || 15.00,
+      serviceId: mbSelectedItems.length > 0 ? mbSelectedItems[0].id : catalog[0]?.id,
+      serviceName: combinedName,
+      price: calculatedPrice,
       notes: mbNotes.trim() || undefined,
       status: mbStatus,
+      paymentBank: mbPaymentMode === 'Cash' ? 'Cash' : (mbTransferProvider.trim() || 'Bank Transfer'),
+      txnReference: mbPaymentMode === 'Transfer' ? mbTxnReference.trim() || undefined : undefined,
     });
 
     setMbIsSubmitting(false);
@@ -814,41 +1497,52 @@ export const OwnerDashboard: React.FC = () => {
       setShowManualBookingModal(false);
       setMbName('');
       setMbPhone('');
-      setMbEmail('');
       setMbVehicle('');
       setMbNotes('');
+      setMbPaymentMode('Cash');
+      setMbTransferProvider('Bank Transfer');
+      setMbTxnReference('');
+      setMbSelectedSlots([]);
+      setMbSelectedItems([]);
     }
   };
 
-  // Load analytics and logs
+  // Load analytics and logs with resilient fallback
   useEffect(() => {
     fetchAnalytics();
     fetchOwnerLogs();
-  }, [bookings, locations]);
+  }, [bookings, locations, token, selectedBusiness]);
 
   const fetchOwnerLogs = async () => {
+    const authToken = token || localStorage.getItem('cw_token');
+    if (!authToken) return;
     try {
       const res = await fetch('/api/owner/logs', {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('cw_token')}`,
+          'Authorization': `Bearer ${authToken}`,
         },
       });
       if (res.ok) {
         const data = await res.json();
-        // Sort by timestamp descending
-        data.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-        setOwnerLogs(data);
+        if (Array.isArray(data)) {
+          // Sort by timestamp descending
+          data.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+          setOwnerLogs(data);
+        }
       }
     } catch (error) {
-      console.error('Error fetching owner logs:', error);
+      // Graceful fallback without raising unhandled console errors
+      console.warn('Owner logs unavailable:', error);
     }
   };
 
   const fetchAnalytics = async () => {
+    const authToken = token || localStorage.getItem('cw_token');
+    if (!authToken) return;
     try {
       const res = await fetch('/api/owner/analytics', {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('cw_token')}`,
+          'Authorization': `Bearer ${authToken}`,
         },
       });
       if (res.ok) {
@@ -856,7 +1550,8 @@ export const OwnerDashboard: React.FC = () => {
         setAnalytics(data);
       }
     } catch (error) {
-      console.error('Error fetching owner analytics:', error);
+      // Graceful fallback to client-computed analytics without raising unhandled console errors
+      console.warn('Owner analytics endpoint unavailable, using live local analytics:', error);
     }
   };
 
@@ -872,6 +1567,7 @@ export const OwnerDashboard: React.FC = () => {
     setEditSchedule(JSON.parse(JSON.stringify(selectedBusiness.openingHours)));
     setEditPhone(selectedBusiness.phone || '');
     setEditInstagram(selectedBusiness.instagram || '');
+    setEditLogoUrl(selectedBusiness.logoUrl || '');
     setEditBibdAccountName(selectedBusiness.bibdAccountName || '');
     setEditBibdAccountNo(selectedBusiness.bibdAccountNo || '');
     setEditBibdEnabled(!!selectedBusiness.bibdEnabled);
@@ -886,29 +1582,98 @@ export const OwnerDashboard: React.FC = () => {
     setIsEditingConfig(true);
   };
 
-  const handleQrUpload = async (file: File, type: 'bibd' | 'baiduri' | 'custom') => {
-    const formData = new FormData();
-    formData.append('image', file);
-    try {
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('cw_token')}`,
-        },
-        body: formData,
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (type === 'bibd') {
-          setEditBibdQrImageUrl(data.url);
-        } else if (type === 'baiduri') {
-          setEditBaiduriQrImageUrl(data.url);
-        } else {
-          setNewQrImageUrl(data.url);
-        }
-      } else {
-        alert('Failed to upload QR code image. Please make sure it is a JPG/PNG under 3MB.');
+  const compressLogoToMax100KB = (file: File): Promise<Blob> => {
+    return new Promise((resolve) => {
+      if (file.type === 'image/svg+xml') {
+        resolve(file);
+        return;
       }
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          const MAX_DIM = 300;
+          if (width > MAX_DIM || height > MAX_DIM) {
+            if (width > height) {
+              height = Math.round((height * MAX_DIM) / width);
+              width = MAX_DIM;
+            } else {
+              width = Math.round((width * MAX_DIM) / height);
+              height = MAX_DIM;
+            }
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0, width, height);
+
+          canvas.toBlob(
+            (blob) => {
+              resolve(blob || file);
+            },
+            'image/jpeg',
+            0.85
+          );
+        };
+        img.onerror = () => resolve(file);
+      };
+      reader.onerror = () => resolve(file);
+    });
+  };
+
+  const handleLogoUpload = async (file: File) => {
+    setIsUploadingLogo(true);
+    try {
+      const compressedBlob = await compressLogoToMax100KB(file);
+      
+      // Convert compressed blob into a persistent Data URL (<100KB) stored directly in database
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const dataUrl = e.target?.result as string;
+        if (dataUrl) {
+          setEditLogoUrl(dataUrl);
+          showNotification('Business logo uploaded & compressed under 100KB! Click "Save Changes" to apply.', 'success');
+        }
+        setIsUploadingLogo(false);
+      };
+      reader.onerror = () => {
+        alert('Error processing business logo.');
+        setIsUploadingLogo(false);
+      };
+      reader.readAsDataURL(compressedBlob);
+    } catch (err) {
+      console.error('Error uploading logo:', err);
+      alert('Error uploading business logo.');
+      setIsUploadingLogo(false);
+    }
+  };
+
+  const handleQrUpload = async (file: File, type: 'bibd' | 'baiduri' | 'custom') => {
+    try {
+      const compressedBlob = await compressLogoToMax100KB(file);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const dataUrl = e.target?.result as string;
+        if (dataUrl) {
+          if (type === 'bibd') {
+            setEditBibdQrImageUrl(dataUrl);
+          } else if (type === 'baiduri') {
+            setEditBaiduriQrImageUrl(dataUrl);
+          } else {
+            setNewQrImageUrl(dataUrl);
+          }
+          showNotification('QR code processed & ready! Click "Save Changes" to apply.', 'success');
+        }
+      };
+      reader.onerror = () => {
+        alert('Error processing QR code image.');
+      };
+      reader.readAsDataURL(compressedBlob);
     } catch (error) {
       console.error('Error uploading QR code:', error);
       alert('An error occurred during QR upload.');
@@ -941,6 +1706,7 @@ export const OwnerDashboard: React.FC = () => {
       customPaymentsJson: JSON.stringify(editCustomPaymentMethods),
       paymentPolicy: editPaymentPolicy,
       services: editServices,
+      logoUrl: editLogoUrl,
     };
 
     const success = await updateLocationConfig(selectedBusiness.id, data);
@@ -960,10 +1726,11 @@ export const OwnerDashboard: React.FC = () => {
     e.preventDefault();
     if (!selectedBusiness || !empEmail || !empName) return;
 
-    const success = await createEmployee(empEmail, empName, selectedBusiness.id);
+    const success = await createEmployee(empEmail, empName, selectedBusiness.id, empPassword);
     if (success) {
       setEmpName('');
       setEmpEmail('');
+      setEmpPassword('');
       setShowEmployeeModal(false);
     }
   };
@@ -1035,7 +1802,28 @@ export const OwnerDashboard: React.FC = () => {
 
 
   const handleStatusChange = async (bookingId: string, status: BookingStatus) => {
+    if (status === BookingStatus.COMPLETED) {
+      const targetBooking = bookings.find((b) => b.id === bookingId);
+      if (targetBooking) {
+        setSettlementBooking(targetBooking);
+        setShowSettlementModal(true);
+        return;
+      }
+    }
     await updateBookingStatus(bookingId, status);
+  };
+
+  const handleConfirmSettlement = async (bookingId: string, paymentMethod: string, txnReference?: string) => {
+    await updateBookingStatus(
+      bookingId,
+      BookingStatus.COMPLETED,
+      undefined,
+      undefined,
+      paymentMethod,
+      txnReference
+    );
+    setShowSettlementModal(false);
+    setSettlementBooking(null);
   };
 
   // Filter bookings for selected business
@@ -1047,6 +1835,7 @@ export const OwnerDashboard: React.FC = () => {
   // Customer Directory Map Calculation
   const customerMap = new Map<string, {
     id: string;
+    customerId?: string;
     name: string;
     phone: string;
     email?: string;
@@ -1056,14 +1845,68 @@ export const OwnerDashboard: React.FC = () => {
     totalSpent: number;
     lastBookingDate: string;
     firstLetter: string;
+    isMember?: boolean;
+    membershipNumber?: string;
+    tier?: string;
+    pointsBalance?: number;
   }>();
 
+  // Helper to sanitize phone strings
+  const sanitizePhone = (phone?: string): string => {
+    if (!phone) return '';
+    const clean = phone.trim();
+    if (clean.toUpperCase() === 'NA' || clean.toUpperCase() === 'N/A' || clean === '-') return '';
+    return clean;
+  };
+
+  // Pre-seed with server customers if available (strictly patrons who booked or joined this location)
+  serverCustomers.forEach((sc) => {
+    const rawName = (sc.name || 'Customer').trim();
+    const cleanPhone = sanitizePhone(sc.phone);
+    const key = (sc.customerId || sc.id || sc.email || cleanPhone || rawName).toLowerCase();
+    
+    let letter = rawName.charAt(0).toUpperCase();
+    if (!/^[A-Z]$/i.test(letter)) {
+      letter = '#';
+    }
+
+    customerMap.set(key, {
+      id: sc.id || sc.customerId || key,
+      customerId: sc.customerId || sc.id,
+      name: rawName,
+      phone: cleanPhone,
+      email: sc.email || undefined,
+      vehicles: Array.isArray(sc.vehicles) ? sc.vehicles : [],
+      totalBookings: Number(sc.totalBookings) || 0,
+      completedBookings: Number(sc.completedBookings) || 0,
+      totalSpent: Number(sc.totalSpent) || 0,
+      lastBookingDate: sc.lastBookingDate || '',
+      firstLetter: letter,
+      isMember: sc.isMember,
+      membershipNumber: sc.membershipNumber,
+      tier: sc.tier,
+      pointsBalance: sc.pointsBalance,
+    });
+  });
+
+  // Supplement or build from bookings
   filteredBookings.forEach((b) => {
     const rawName = (b.customerName || 'Anonymous Customer').trim();
-    const rawPhone = (b.customerPhone || '').trim();
-    const key = (rawPhone || rawName).toLowerCase();
+    const rawPhone = sanitizePhone(b.customerPhone);
+    const rawEmail = (b.customerEmail || '').trim().toLowerCase();
 
-    const existing = customerMap.get(key);
+    // Look for existing by customerId, email, phone, or name
+    let existing: any = null;
+    if (b.customerId && customerMap.has(b.customerId.toLowerCase())) {
+      existing = customerMap.get(b.customerId.toLowerCase());
+    } else if (rawEmail && customerMap.has(rawEmail)) {
+      existing = customerMap.get(rawEmail);
+    } else if (rawPhone && customerMap.has(rawPhone.toLowerCase())) {
+      existing = customerMap.get(rawPhone.toLowerCase());
+    } else if (customerMap.has(rawName.toLowerCase())) {
+      existing = customerMap.get(rawName.toLowerCase());
+    }
+
     const bPrice = Number(b.price) || 0;
     const isCompleted = b.status === BookingStatus.COMPLETED;
     const vehicleStr = b.vehicleInfo ? b.vehicleInfo.trim() : '';
@@ -1073,11 +1916,13 @@ export const OwnerDashboard: React.FC = () => {
       if (!/^[A-Z]$/i.test(letter)) {
         letter = '#';
       }
+      const key = (b.customerId || rawEmail || rawPhone || rawName).toLowerCase();
       customerMap.set(key, {
-        id: key,
+        id: b.customerId || key,
+        customerId: b.customerId,
         name: rawName,
         phone: rawPhone,
-        email: b.customerEmail || '',
+        email: rawEmail || undefined,
         vehicles: vehicleStr ? [vehicleStr] : [],
         totalBookings: 1,
         completedBookings: isCompleted ? 1 : 0,
@@ -1086,19 +1931,25 @@ export const OwnerDashboard: React.FC = () => {
         firstLetter: letter,
       });
     } else {
-      existing.totalBookings += 1;
-      if (isCompleted) {
-        existing.completedBookings += 1;
-        existing.totalSpent += bPrice;
+      // If server customers wasn't loaded, increment counts
+      if (serverCustomers.length === 0) {
+        existing.totalBookings += 1;
+        if (isCompleted) {
+          existing.completedBookings += 1;
+          existing.totalSpent += bPrice;
+        }
+      }
+      if (rawPhone && (!existing.phone || existing.phone.toUpperCase() === 'NA')) {
+        existing.phone = rawPhone;
+      }
+      if (rawEmail && !existing.email) {
+        existing.email = rawEmail;
       }
       if (vehicleStr && !existing.vehicles.includes(vehicleStr)) {
         existing.vehicles.push(vehicleStr);
       }
-      if (b.date && b.date > existing.lastBookingDate) {
+      if (b.date && (!existing.lastBookingDate || b.date > existing.lastBookingDate)) {
         existing.lastBookingDate = b.date;
-      }
-      if (b.customerEmail && !existing.email) {
-        existing.email = b.customerEmail;
       }
     }
   });
@@ -1119,12 +1970,17 @@ export const OwnerDashboard: React.FC = () => {
       const q = customerSearchQuery.toLowerCase();
       const matchName = cust.name.toLowerCase().includes(q);
       const matchPhone = cust.phone.toLowerCase().includes(q);
-      const matchEmail = cust.email?.toLowerCase().includes(q);
       const matchVehicle = cust.vehicles.some((v) => v.toLowerCase().includes(q));
-      if (!matchName && !matchPhone && !matchEmail && !matchVehicle) return false;
+      if (!matchName && !matchPhone && !matchVehicle) return false;
     }
     return true;
   });
+
+  const totalCustomerPages = Math.ceil(filteredCustomersList.length / CUSTOMERS_PER_PAGE) || 1;
+  const paginatedCustomersList = filteredCustomersList.slice(
+    (customerPage - 1) * CUSTOMERS_PER_PAGE,
+    customerPage * CUSTOMERS_PER_PAGE
+  );
 
   return (
     <div className="space-y-8 animate-fade-in pb-24 md:pb-6">
@@ -1145,13 +2001,13 @@ export const OwnerDashboard: React.FC = () => {
           <select
             value={selectedBusiness?.id || ''}
             onChange={(e) => {
-              const b = locations.find((loc) => loc.id === e.target.value);
+              const b = ownerLocations.find((loc) => loc.id === e.target.value);
               if (b) setSelectedBusiness(b);
             }}
             className="bg-white border border-slate-200 text-slate-700 text-sm font-semibold rounded-xl px-3 py-1.5 outline-none focus:border-indigo-500 shadow-xs"
             id="owner-business-selector"
           >
-            {locations.map((loc) => (
+            {ownerLocations.map((loc) => (
               <option key={loc.id} value={loc.id}>{loc.name}</option>
             ))}
           </select>
@@ -1178,12 +2034,12 @@ export const OwnerDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* Responsive Bottom Navigation Bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-150 shadow-[0_-8px_30px_rgba(0,0,0,0.06)] px-4 py-2 flex justify-around items-center md:sticky md:top-4 md:bottom-auto md:left-auto md:right-auto md:z-30 md:bg-slate-50/90 md:border md:border-slate-200/60 md:shadow-xs md:rounded-2xl md:py-2 md:px-3 md:w-max md:mx-auto md:mb-6 md:gap-1.5 animate-fade-in">
+      {/* Responsive Bottom Navigation Bar - All operational tabs always accessible */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-150 shadow-[0_-8px_30px_rgba(0,0,0,0.06)] px-2 sm:px-4 py-2 flex items-center overflow-x-auto no-scrollbar justify-start sm:justify-around md:sticky md:top-4 md:bottom-auto md:left-auto md:right-auto md:z-30 md:bg-slate-50/90 md:border md:border-slate-200/60 md:shadow-xs md:rounded-2xl md:py-2 md:px-3 md:w-max md:mx-auto md:mb-6 md:gap-1.5 animate-fade-in">
         <button
           type="button"
           onClick={() => setActiveTab('overview')}
-          className={`flex flex-col md:flex-row items-center gap-1 md:gap-2 px-4 py-1.5 rounded-xl transition-all cursor-pointer ${
+          className={`flex flex-col md:flex-row items-center gap-1 md:gap-2 px-3 sm:px-4 py-1.5 rounded-xl transition-all cursor-pointer shrink-0 ${
             activeTab === 'overview'
               ? 'text-indigo-600 font-bold bg-indigo-50/85'
               : 'text-slate-400 font-medium hover:text-slate-600 hover:bg-slate-50'
@@ -1196,7 +2052,7 @@ export const OwnerDashboard: React.FC = () => {
         <button
           type="button"
           onClick={() => setActiveTab('bookings')}
-          className={`flex flex-col md:flex-row items-center gap-1 md:gap-2 px-4 py-1.5 rounded-xl transition-all cursor-pointer ${
+          className={`flex flex-col md:flex-row items-center gap-1 md:gap-2 px-3 sm:px-4 py-1.5 rounded-xl transition-all cursor-pointer shrink-0 ${
             activeTab === 'bookings'
               ? 'text-indigo-600 font-bold bg-indigo-50/85'
               : 'text-slate-400 font-medium hover:text-slate-600 hover:bg-slate-50'
@@ -1209,7 +2065,7 @@ export const OwnerDashboard: React.FC = () => {
         <button
           type="button"
           onClick={() => setActiveTab('customers')}
-          className={`flex flex-col md:flex-row items-center gap-1 md:gap-2 px-4 py-1.5 rounded-xl transition-all cursor-pointer ${
+          className={`flex flex-col md:flex-row items-center gap-1 md:gap-2 px-3 sm:px-4 py-1.5 rounded-xl transition-all cursor-pointer shrink-0 ${
             activeTab === 'customers'
               ? 'text-indigo-600 font-bold bg-indigo-50/85'
               : 'text-slate-400 font-medium hover:text-slate-600 hover:bg-slate-50'
@@ -1223,7 +2079,7 @@ export const OwnerDashboard: React.FC = () => {
         <button
           type="button"
           onClick={() => setActiveTab('calendar')}
-          className={`flex flex-col md:flex-row items-center gap-1 md:gap-2 px-4 py-1.5 rounded-xl transition-all cursor-pointer ${
+          className={`flex flex-col md:flex-row items-center gap-1 md:gap-2 px-3 sm:px-4 py-1.5 rounded-xl transition-all cursor-pointer shrink-0 ${
             activeTab === 'calendar'
               ? 'text-indigo-600 font-bold bg-indigo-50/85'
               : 'text-slate-400 font-medium hover:text-slate-600 hover:bg-slate-50'
@@ -1233,10 +2089,60 @@ export const OwnerDashboard: React.FC = () => {
           <span className="text-[10px] md:text-xs font-semibold">Calendar & Slots</span>
         </button>
 
+        {FEATURES.ENABLE_REVIEWS && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('reviews')}
+            className={`flex flex-col md:flex-row items-center gap-1 md:gap-2 px-3 sm:px-4 py-1.5 rounded-xl transition-all cursor-pointer shrink-0 ${
+              activeTab === 'reviews'
+                ? 'text-indigo-600 font-bold bg-indigo-50/85'
+                : 'text-slate-400 font-medium hover:text-slate-600 hover:bg-slate-50'
+            }`}
+            id="owner-tab-reviews"
+          >
+            <Star className="h-5 w-5 md:h-4 md:w-4" />
+            <span className="text-[10px] md:text-xs font-semibold">Reviews & Ratings</span>
+          </button>
+        )}
+
+        {/* QR Code Tab - Only visible when permitted by Admin / Special User */}
+        {isOwnerQrCodeAllowed && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('qrcode')}
+            className={`flex flex-col md:flex-row items-center gap-1 md:gap-2 px-3 sm:px-4 py-1.5 rounded-xl transition-all cursor-pointer shrink-0 ${
+              activeTab === 'qrcode'
+                ? 'text-indigo-600 font-bold bg-indigo-50/85'
+                : 'text-slate-400 font-medium hover:text-slate-600 hover:bg-slate-50'
+            }`}
+            id="owner-tab-qrcode"
+          >
+            <QrCode className="h-5 w-5 md:h-4 md:w-4" />
+            <span className="text-[10px] md:text-xs font-semibold">QR Code & Link</span>
+          </button>
+        )}
+
+        {/* Loyalty & Rewards Tab - Only visible when activated by Admin / Special User */}
+        {isMembershipEnabled && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('loyalty')}
+            className={`flex flex-col md:flex-row items-center gap-1 md:gap-2 px-3 sm:px-4 py-1.5 rounded-xl transition-all cursor-pointer relative shrink-0 ${
+              activeTab === 'loyalty'
+                ? 'text-indigo-600 font-bold bg-indigo-50/85'
+                : 'text-slate-400 font-medium hover:text-slate-600 hover:bg-slate-50'
+            }`}
+            id="owner-tab-loyalty"
+          >
+            <Award className="h-5 w-5 md:h-4 md:w-4" />
+            <span className="text-[10px] md:text-xs font-semibold">Loyalty &amp; Rewards</span>
+          </button>
+        )}
+
         <button
           type="button"
           onClick={() => setActiveTab('settings')}
-          className={`flex flex-col md:flex-row items-center gap-1 md:gap-2 px-4 py-1.5 rounded-xl transition-all cursor-pointer ${
+          className={`flex flex-col md:flex-row items-center gap-1 md:gap-2 px-3 sm:px-4 py-1.5 rounded-xl transition-all cursor-pointer shrink-0 ${
             activeTab === 'settings'
               ? 'text-indigo-600 font-bold bg-indigo-50/85'
               : 'text-slate-400 font-medium hover:text-slate-600 hover:bg-slate-50'
@@ -1249,6 +2155,89 @@ export const OwnerDashboard: React.FC = () => {
 
       {activeTab === 'overview' && (
         <div className="space-y-6 animate-fade-in">
+          {/* Station Direct Link & Booking Quick Banner - Only shown when allowed */}
+          {selectedBusiness && isOwnerQrCodeAllowed && (
+            <div className="rounded-3xl p-5 sm:p-6 shadow-sm border flex flex-col md:flex-row items-start md:items-center justify-between gap-4 relative overflow-hidden bg-gradient-to-r from-sky-950 via-slate-900 to-indigo-950 text-white border-sky-800/40">
+              <div className="relative z-10 flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 bg-sky-500/20 border border-sky-400/30 text-sky-400">
+                  <QrCode className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-bold text-base text-white">
+                      Direct Booking Link &amp; QR Active
+                    </h4>
+                    <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full border bg-emerald-500/20 text-emerald-300 border-emerald-400/30">
+                      Live
+                    </span>
+                  </div>
+                  <p className="text-xs mt-1 text-slate-300">
+                    Customers can book instantly without app download or login at <code className="bg-white/10 px-1.5 py-0.5 rounded text-sky-300 font-mono">/wash/{selectedBusiness.slug || selectedBusiness.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || selectedBusiness.id}</code>
+                  </p>
+                </div>
+              </div>
+              <div className="relative z-10 flex items-center gap-2.5 w-full md:w-auto">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const slug = selectedBusiness.slug || selectedBusiness.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || selectedBusiness.id;
+                    window.history.pushState({ path: `/wash/${slug}` }, '', `/wash/${slug}`);
+                    window.dispatchEvent(new PopStateEvent('popstate'));
+                  }}
+                  className="flex-1 md:flex-initial px-4 py-2.5 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                  id="owner-preview-public-page-btn"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>Preview Page</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('qrcode')}
+                  className="flex-1 md:flex-initial px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                  id="owner-manage-qr-btn"
+                >
+                  <QrCode className="w-3.5 h-3.5 text-sky-400" />
+                  <span>View Poster</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Loyalty & Rewards Club Banner in Overview - Only shown when activated by Admin / Special User */}
+          {selectedBusiness && isMembershipEnabled && (
+            <div className="p-4 md:p-5 rounded-3xl border flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all relative overflow-hidden bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border-indigo-500/30 text-white shadow-md">
+              <div className="relative z-10 flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 bg-indigo-500/20 border border-indigo-400/30 text-indigo-400">
+                  <Award className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-bold text-base text-white">
+                      VIP Loyalty &amp; Rewards Club
+                    </h4>
+                    <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full border bg-emerald-500/20 text-emerald-300 border-emerald-400/30">
+                      Active
+                    </span>
+                  </div>
+                  <p className="text-xs mt-1 text-slate-300">
+                    Reward points are automatically credited when wash bookings complete. Customers can join via digital QR passes and redeem rewards.
+                  </p>
+                </div>
+              </div>
+              <div className="relative z-10 flex items-center gap-2.5 w-full md:w-auto">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('loyalty')}
+                  className="flex-1 md:flex-initial px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs bg-indigo-600 hover:bg-indigo-500 text-white"
+                  id="owner-manage-loyalty-banner-btn"
+                >
+                  <Award className="w-3.5 h-3.5" />
+                  <span>Manage Loyalty &amp; Points</span>
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Analytics Bento Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
             <div className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-xs flex items-center gap-4">
@@ -1270,7 +2259,7 @@ export const OwnerDashboard: React.FC = () => {
               <div>
                 <span className="text-xs text-slate-400 font-medium block">Total Slots Booked</span>
                 <span className="text-2xl font-black text-slate-800 font-mono">
-                  {analytics.totalBookings}
+                  {analytics.totalBookings || computedAnalytics.totalBookings}
                 </span>
               </div>
             </div>
@@ -1282,7 +2271,7 @@ export const OwnerDashboard: React.FC = () => {
               <div>
                 <span className="text-xs text-slate-400 font-medium block">Completed Cleanings</span>
                 <span className="text-2xl font-black text-slate-800 font-mono">
-                  {analytics.completedCount}
+                  {analytics.completedCount ?? computedAnalytics.completedCount}
                 </span>
               </div>
             </div>
@@ -1294,7 +2283,7 @@ export const OwnerDashboard: React.FC = () => {
               <div>
                 <span className="text-xs text-slate-400 font-medium block">Pending Approvals</span>
                 <span className="text-2xl font-black text-slate-800 font-mono">
-                  {analytics.pendingCount}
+                  {analytics.pendingCount ?? computedAnalytics.pendingCount}
                 </span>
               </div>
             </div>
@@ -1302,7 +2291,7 @@ export const OwnerDashboard: React.FC = () => {
 
           {/* 🔔 In-App Live Notifications & Activity Feed Widget */}
           <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 text-white rounded-3xl p-5 sm:p-6 shadow-md border border-slate-800 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-700/60">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-3 border-b border-slate-700/60">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 bg-sky-500/20 text-sky-400 rounded-xl border border-sky-500/30">
                   <Bell className="h-5 w-5 animate-bounce" />
@@ -1341,9 +2330,7 @@ export const OwnerDashboard: React.FC = () => {
                 appNotifications.slice(0, 6).map((n) => (
                   <div
                     key={n.id}
-                    onClick={() => {
-                      if (!n.isRead) markNotificationAsRead(n.id);
-                    }}
+                    onClick={() => handleNotificationDetailsClick(n)}
                     className={`p-3.5 rounded-2xl border transition-all cursor-pointer relative flex flex-col justify-between ${
                       !n.isRead
                         ? 'bg-slate-800/90 border-sky-500/50 shadow-sm ring-1 ring-sky-500/30'
@@ -1366,9 +2353,16 @@ export const OwnerDashboard: React.FC = () => {
                     </div>
 
                     <div className="mt-3 pt-2 border-t border-slate-700/40 flex items-center justify-between text-[11px]">
-                      <span className="text-sky-400 font-bold hover:underline">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleNotificationDetailsClick(n);
+                        }}
+                        className="text-sky-400 font-bold hover:underline cursor-pointer flex items-center gap-1"
+                      >
                         View Details →
-                      </span>
+                      </button>
                       {!n.isRead && (
                         <span className="text-[10px] font-extrabold text-sky-300 bg-sky-950/80 px-2 py-0.5 rounded-md border border-sky-800/50">
                           Unread
@@ -1444,15 +2438,6 @@ export const OwnerDashboard: React.FC = () => {
                     }`}
                   >
                     Monthly
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAccountingTimeframe('ALL')}
-                    className={`px-2.5 sm:px-3 py-2 sm:py-1.5 rounded-lg transition-all cursor-pointer text-center text-[11px] sm:text-xs ${
-                      accountingTimeframe === 'ALL' ? 'bg-indigo-600 text-white shadow-2xs font-extrabold' : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    All-Time
                   </button>
                 </div>
 
@@ -1690,24 +2675,41 @@ export const OwnerDashboard: React.FC = () => {
               </div>
             </div>
 
-            {/* Payment Method Breakdown & Search Bar Row */}
+            {/* Payment Method & Booking Source Breakdown Row */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-center">
-              <div className="lg:col-span-8 flex flex-wrap items-center gap-1.5">
-                <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider mr-1 w-full sm:w-auto block sm:inline">Payment Breakdown:</span>
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 border border-slate-200 rounded-xl text-[11px] font-bold text-slate-700">
-                  💵 Cash: <strong className="font-mono text-slate-900">${accPaymentMap['Cash'].toFixed(2)}</strong>
-                </span>
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-sky-50 border border-sky-200 rounded-xl text-[11px] font-bold text-sky-800">
-                  🏦 BIBD: <strong className="font-mono text-sky-950">${accPaymentMap['BIBD'].toFixed(2)}</strong>
-                </span>
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-purple-50 border border-purple-200 rounded-xl text-[11px] font-bold text-purple-800">
-                  🏦 Baiduri: <strong className="font-mono text-purple-950">${accPaymentMap['Baiduri'].toFixed(2)}</strong>
-                </span>
-                {accPaymentMap['Other'] > 0 && (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 border border-amber-200 rounded-xl text-[11px] font-bold text-amber-800">
-                    💳 Other: <strong className="font-mono text-amber-950">${accPaymentMap['Other'].toFixed(2)}</strong>
+              <div className="lg:col-span-8 space-y-2">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mr-1 w-full sm:w-auto block sm:inline">Payment:</span>
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 border border-emerald-200 rounded-xl text-[11px] font-bold text-emerald-800" title="Settled in cash at counter upon arrival">
+                    💵 Cash: <strong className="font-mono text-emerald-950">${accPaymentMap.cash.totalRevenue.toFixed(2)}</strong>
                   </span>
-                )}
+                  {accPaymentMap.transfer.count > 0 && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-sky-50 border border-sky-200 rounded-xl text-[11px] font-bold text-sky-800" title="Settled via Bank Transfer, Pocket, Taurus, or QR on site">
+                      📱 Bank / Digital Transfer: <strong className="font-mono text-sky-950">${accPaymentMap.transfer.totalRevenue.toFixed(2)}</strong>
+                    </span>
+                  )}
+                  {Object.entries(accPaymentMap.transferBreakdown).map(([provider, data]) => (
+                    <span key={provider} className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 border border-slate-200 rounded-lg text-[10px] font-semibold text-slate-700">
+                      {provider}: <strong className="font-mono text-slate-900">${data.totalRevenue.toFixed(2)}</strong>
+                    </span>
+                  ))}
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 text-slate-600 rounded-lg text-[10px] font-medium border border-slate-200">
+                    🛡️ 100% On-Site Settlement
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mr-1 w-full sm:w-auto block sm:inline">Channel:</span>
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 border border-emerald-200/90 rounded-xl text-[11px] font-bold text-emerald-800">
+                    🚗 Walk-In: <strong className="font-mono text-emerald-950">{accSourceMap['WALK_IN']?.count || 0}</strong> <span className="text-[10px] text-emerald-700 font-mono">(${ (accSourceMap['WALK_IN']?.totalRevenue || 0).toFixed(2) })</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 border border-amber-200/90 rounded-xl text-[11px] font-bold text-amber-800">
+                    📞 Phone: <strong className="font-mono text-amber-950">{accSourceMap['PHONE']?.count || 0}</strong> <span className="text-[10px] text-amber-700 font-mono">(${ (accSourceMap['PHONE']?.totalRevenue || 0).toFixed(2) })</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-sky-50 border border-sky-200/90 rounded-xl text-[11px] font-bold text-sky-800">
+                    🌐 App: <strong className="font-mono text-sky-950">{accSourceMap['ONLINE']?.count || 0}</strong> <span className="text-[10px] text-sky-700 font-mono">(${ (accSourceMap['ONLINE']?.totalRevenue || 0).toFixed(2) })</span>
+                  </span>
+                </div>
               </div>
 
               {/* Search Bar */}
@@ -1746,6 +2748,7 @@ export const OwnerDashboard: React.FC = () => {
                       <th className="p-3">Source</th>
                       <th className="p-3">Payment</th>
                       <th className="p-3">Status</th>
+                      <th className="p-3">Action</th>
                       <th className="p-3 pr-4 text-right">Amount (BND)</th>
                     </tr>
                   </thead>
@@ -1758,7 +2761,7 @@ export const OwnerDashboard: React.FC = () => {
                         const isProduct = matchedSvc?.type === 'product';
 
                         return (
-                          <tr key={bk.id} className="hover:bg-slate-50/80 transition-colors">
+                          <tr key={bk.id} id={`owner-booking-${bk.id}`} className="hover:bg-slate-50/80 transition-colors">
                             <td className="p-3 pl-4 font-mono font-bold text-slate-400">{idx + 1}</td>
                             <td className="p-3">
                               <span className="font-extrabold text-slate-800 block">{bk.date}</span>
@@ -1768,6 +2771,13 @@ export const OwnerDashboard: React.FC = () => {
                               <div className="flex items-center justify-between gap-2">
                                 <div>
                                   <span className="font-bold text-slate-900 block">{bk.customerName}</span>
+                                  {bk.customerPhone && bk.customerPhone.trim() !== '' && bk.customerPhone.trim().toUpperCase() !== 'NA' && bk.customerPhone.trim().toUpperCase() !== 'N/A' && (
+                                    <span className="text-[11px] text-slate-600 flex items-center gap-1 mt-0.5 font-mono font-bold">
+                                      <Phone className="w-3 h-3 text-emerald-600 shrink-0" />
+                                      <span className="text-[10px] text-slate-400 font-sans uppercase font-bold">Phone:</span>
+                                      <a href={`tel:${bk.customerPhone}`} className="hover:text-indigo-600 hover:underline">{bk.customerPhone}</a>
+                                    </span>
+                                  )}
                                   <span className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
                                     <Car className="w-3 h-3 text-slate-400 shrink-0" />
                                     <span>{bk.vehicleInfo || 'N/A'}</span>
@@ -1815,30 +2825,53 @@ export const OwnerDashboard: React.FC = () => {
                               )}
                             </td>
                             <td className="p-3">
-                              {bk.paymentBank ? (
-                                <span className="font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded text-[11px]">
-                                  {bk.paymentBank} Transfer
-                                </span>
+                              {bk.paymentBank && bk.paymentBank.trim().length > 0 && bk.paymentBank.toUpperCase() !== 'CASH' ? (
+                                <div className="flex flex-col items-start gap-0.5">
+                                  <span className="font-semibold text-sky-800 bg-sky-50 border border-sky-200/80 px-2 py-0.5 rounded text-[11px] flex items-center gap-1">
+                                    <span>📱</span> Pay on Site ({bk.paymentBank})
+                                  </span>
+                                  {bk.txnReference && (
+                                    <span className="text-[10px] font-mono text-slate-500 pl-0.5">
+                                      Ref: #{bk.txnReference}
+                                    </span>
+                                  )}
+                                </div>
                               ) : (
-                                <span className="font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded text-[11px]">
-                                  Cash on Site
+                                <span className="font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded text-[11px] flex items-center gap-1">
+                                  <span>💵</span> Pay on Site (Cash)
                                 </span>
                               )}
                             </td>
                             <td className="p-3">
-                              <span
-                                className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase ${
-                                  bk.status === BookingStatus.COMPLETED
-                                    ? 'bg-emerald-100 text-emerald-800'
-                                    : bk.status === BookingStatus.IN_PROGRESS
-                                    ? 'bg-sky-100 text-sky-800'
-                                    : bk.status === BookingStatus.PENDING
-                                    ? 'bg-amber-100 text-amber-800'
-                                    : 'bg-rose-100 text-rose-800'
-                                }`}
+                              <div className="flex flex-col items-start gap-1">
+                                <span
+                                  className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase ${
+                                    bk.status === BookingStatus.COMPLETED
+                                      ? 'bg-emerald-100 text-emerald-800'
+                                      : bk.status === BookingStatus.IN_PROGRESS
+                                      ? 'bg-sky-100 text-sky-800'
+                                      : bk.status === BookingStatus.PENDING
+                                      ? 'bg-amber-100 text-amber-800'
+                                      : 'bg-rose-100 text-rose-800'
+                                  }`}
+                                >
+                                  {bk.status}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="p-3">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingBooking(bk);
+                                  setShowEditBookingModal(true);
+                                }}
+                                className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 rounded-lg text-[10px] font-extrabold flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
+                                title="Edit Services, Add-ons & Total Price"
                               >
-                                {bk.status}
-                              </span>
+                                <Pencil className="w-3 h-3 text-indigo-600" />
+                                <span>Edit</span>
+                              </button>
                             </td>
                             <td className="p-3 pr-4 text-right font-mono font-black text-slate-900 text-sm">
                               ${(Number(bk.price) || 15.0).toFixed(2)}
@@ -1848,7 +2881,7 @@ export const OwnerDashboard: React.FC = () => {
                       })
                     ) : (
                       <tr>
-                        <td colSpan={8} className="p-8 text-center text-slate-400">
+                        <td colSpan={9} className="p-8 text-center text-slate-400">
                           No accounting records found matching current criteria.
                         </td>
                       </tr>
@@ -1858,7 +2891,7 @@ export const OwnerDashboard: React.FC = () => {
                   {accBookingsList.length > 0 && (
                     <tfoot>
                       <tr className="bg-indigo-50/90 border-t-2 border-indigo-500/30 text-indigo-950 font-black text-xs">
-                        <td colSpan={7} className="p-3.5 pl-4 uppercase tracking-wider">
+                        <td colSpan={8} className="p-3.5 pl-4 uppercase tracking-wider">
                           Accounting Summary ({accBookingsList.length} total entries)
                         </td>
                         <td className="p-3.5 pr-4 text-right font-mono text-base text-emerald-700">
@@ -1880,7 +2913,7 @@ export const OwnerDashboard: React.FC = () => {
                     const isProduct = matchedSvc?.type === 'product';
 
                     return (
-                      <div key={bk.id} className="p-3.5 space-y-2.5 bg-white hover:bg-slate-50/60 transition-colors">
+                      <div key={bk.id} id={`owner-booking-m-${bk.id}`} className="p-3.5 space-y-2.5 bg-white hover:bg-slate-50/60 transition-colors">
                         {/* Top row: Index + Service/Product Name & Price */}
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex items-start gap-2">
@@ -1905,6 +2938,13 @@ export const OwnerDashboard: React.FC = () => {
                               <span className="text-xs text-slate-600 font-semibold block mt-0.5">
                                 {bk.customerName}
                               </span>
+                              {bk.customerPhone && bk.customerPhone.trim() !== '' && bk.customerPhone.trim().toUpperCase() !== 'NA' && bk.customerPhone.trim().toUpperCase() !== 'N/A' && (
+                                <span className="text-[11px] text-slate-600 flex items-center gap-1 mt-0.5 font-mono font-bold">
+                                  <Phone className="w-3 h-3 text-emerald-600 shrink-0" />
+                                  <span className="text-[10px] text-slate-400 font-sans uppercase font-bold">Phone:</span>
+                                  <a href={`tel:${bk.customerPhone}`} className="hover:text-indigo-600 hover:underline">{bk.customerPhone}</a>
+                                </span>
+                              )}
                             </div>
                           </div>
 
@@ -1958,16 +2998,29 @@ export const OwnerDashboard: React.FC = () => {
                             )}
                           </div>
 
-                          <div>
-                            {bk.paymentBank ? (
-                              <span className="font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded text-[10px]">
-                                🏦 {bk.paymentBank} Transfer
+                          <div className="flex items-center gap-2">
+                            {bk.paymentBank && bk.paymentBank.trim().length > 0 && bk.paymentBank.toUpperCase() !== 'CASH' ? (
+                              <span className="font-bold text-sky-800 bg-sky-50 border border-sky-200/60 px-2 py-0.5 rounded text-[10px] flex items-center gap-1">
+                                <span>📱</span> Pay on Site ({bk.paymentBank}){bk.txnReference ? ` • #${bk.txnReference}` : ''}
                               </span>
                             ) : (
-                              <span className="font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded text-[10px]">
-                                💵 Cash on Site
+                              <span className="font-bold text-emerald-800 bg-emerald-50 border border-emerald-200/60 px-2 py-0.5 rounded text-[10px] flex items-center gap-1">
+                                <span>💵</span> Pay on Site (Cash)
                               </span>
                             )}
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingBooking(bk);
+                                setShowEditBookingModal(true);
+                              }}
+                              className="px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 rounded-md text-[10px] font-extrabold flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
+                              title="Edit Services, Add-ons & Total Price"
+                            >
+                              <Pencil className="w-3 h-3 text-indigo-600" />
+                              <span>Edit</span>
+                            </button>
                           </div>
                         </div>
                       </div>
@@ -2005,7 +3058,7 @@ export const OwnerDashboard: React.FC = () => {
                       Customer Directory & CRM
                     </h2>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      Alphabetically organized client directory with A-Z index, quick contact tools, and vehicle logs
+                      Directory of clients who have booked services or enrolled in loyalty membership at your car wash
                     </p>
                   </div>
                 </div>
@@ -2017,7 +3070,6 @@ export const OwnerDashboard: React.FC = () => {
                   setMbName('');
                   setMbPhone('');
                   setMbVehicle('');
-                  setMbEmail('');
                   setMbNotes('');
                   setShowManualBookingModal(true);
                 }}
@@ -2070,13 +3122,19 @@ export const OwnerDashboard: React.FC = () => {
                     type="text"
                     placeholder="Search name, phone, plate..."
                     value={customerSearchQuery}
-                    onChange={(e) => setCustomerSearchQuery(e.target.value)}
+                    onChange={(e) => {
+                      setCustomerSearchQuery(e.target.value);
+                      setCustomerPage(1);
+                    }}
                     className="w-full pl-9 pr-8 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-indigo-500 shadow-2xs"
                   />
                   {customerSearchQuery && (
                     <button
                       type="button"
-                      onClick={() => setCustomerSearchQuery('')}
+                      onClick={() => {
+                        setCustomerSearchQuery('');
+                        setCustomerPage(1);
+                      }}
                       className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
                     >
                       <X className="w-3.5 h-3.5" />
@@ -2100,7 +3158,10 @@ export const OwnerDashboard: React.FC = () => {
                     <button
                       key={letter}
                       type="button"
-                      onClick={() => setCustomerAlphabetFilter(letter)}
+                      onClick={() => {
+                        setCustomerAlphabetFilter(letter);
+                        setCustomerPage(1);
+                      }}
                       className={`min-w-8 h-8 px-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center justify-center gap-1 shrink-0 ${
                         isSelected
                           ? 'bg-indigo-600 text-white shadow-xs ring-2 ring-indigo-600/30'
@@ -2131,95 +3192,199 @@ export const OwnerDashboard: React.FC = () => {
                   <p className="text-[11px] text-slate-400 mt-1">Try selecting 'ALL' or clearing search terms.</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                  {filteredCustomersList.map((cust) => {
-                    return (
-                      <div
-                        key={cust.id}
-                        className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs hover:shadow-md hover:border-slate-300 transition-all flex flex-col justify-between space-y-3"
-                      >
-                        <div>
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex items-center gap-2.5">
-                              <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-700 font-black text-sm flex items-center justify-center shrink-0">
-                                {cust.name.charAt(0).toUpperCase() || 'C'}
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                    {paginatedCustomersList.map((cust) => {
+                      const hasValidPhone = cust.phone && cust.phone.trim() !== '' && cust.phone.trim().toUpperCase() !== 'NA' && cust.phone.trim().toUpperCase() !== 'N/A';
+                      return (
+                        <div
+                          key={cust.id}
+                          className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs hover:shadow-md hover:border-slate-300 transition-all flex flex-col justify-between space-y-3"
+                        >
+                          <div>
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-700 font-black text-sm flex items-center justify-center shrink-0">
+                                  {cust.name.charAt(0).toUpperCase() || 'C'}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <h3 className="font-extrabold text-slate-900 text-sm leading-snug truncate">
+                                      {cust.name}
+                                    </h3>
+                                    {cust.isMember && (
+                                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-black bg-amber-50 text-amber-800 border border-amber-200/80">
+                                        <Award className="w-2.5 h-2.5 text-amber-600" />
+                                        <span>VIP Member</span>
+                                      </span>
+                                    )}
+                                  </div>
+                                  {hasValidPhone ? (
+                                    <a
+                                      href={`tel:${cust.phone}`}
+                                      className="text-[11px] text-slate-600 hover:text-indigo-600 font-mono font-bold flex items-center gap-1 mt-0.5"
+                                      title="Call Customer"
+                                    >
+                                      <Phone className="w-3 h-3 text-emerald-600 shrink-0" />
+                                      <span className="text-[10px] text-slate-400 font-sans uppercase font-bold">Phone:</span>
+                                      <span>{cust.phone}</span>
+                                    </a>
+                                  ) : (
+                                    <span className="text-[10px] text-slate-400 font-medium italic mt-0.5 block">
+                                      No Phone Recorded
+                                    </span>
+                                  )}
+                                  {cust.email && (
+                                    <p className="text-[10px] text-slate-400 truncate mt-0.5" title={cust.email}>
+                                      {cust.email}
+                                    </p>
+                                  )}
+                                </div>
                               </div>
-                              <div>
-                                <h3 className="font-extrabold text-slate-900 text-sm leading-snug">
-                                  {cust.name}
-                                </h3>
-                                <p className="text-[11px] text-slate-500 font-mono">
-                                  {cust.phone || 'No Phone Recorded'}
-                                </p>
-                              </div>
-                            </div>
 
-                            <span className="px-2 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200/80 rounded-lg text-[10px] font-black font-mono shrink-0">
-                              ${cust.totalSpent.toFixed(2)}
-                            </span>
-                          </div>
-
-                          {/* Vehicles & Email */}
-                          <div className="mt-3 space-y-1.5 text-xs text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                            <div className="flex items-center gap-1.5 text-[11px]">
-                              <Car className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                              <span className="font-bold text-slate-800">Vehicles:</span>
-                              <span className="truncate text-slate-600 font-mono">
-                                {cust.vehicles.length > 0 ? cust.vehicles.join(', ') : 'N/A'}
+                              <span className="px-2 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200/80 rounded-lg text-[10px] font-black font-mono shrink-0">
+                                ${cust.totalSpent.toFixed(2)}
                               </span>
                             </div>
-                            {cust.email && (
-                              <div className="flex items-center gap-1.5 text-[11px] truncate">
-                                <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                                <span className="truncate font-mono text-slate-500">{cust.email}</span>
+
+                            {/* Vehicles */}
+                            <div className="mt-3 space-y-1.5 text-xs text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                              <div className="flex items-center gap-1.5 text-[11px]">
+                                <Car className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                <span className="font-bold text-slate-800">Vehicles:</span>
+                                <span className="truncate text-slate-600 font-mono">
+                                  {cust.vehicles.length > 0 ? cust.vehicles.join(', ') : 'None registered'}
+                                </span>
                               </div>
-                            )}
-                            <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-200/60">
-                              <span>Total Washes: <strong className="text-slate-700 font-bold">{cust.totalBookings}</strong></span>
-                              <span>Last Visit: <strong className="text-slate-700 font-bold">{cust.lastBookingDate || 'N/A'}</strong></span>
+                              <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-200/60">
+                                <span>Total Washes: <strong className="text-slate-700 font-bold">{cust.totalBookings}</strong></span>
+                                <span>Last Visit: <strong className="text-slate-700 font-bold">{cust.lastBookingDate || 'Never'}</strong></span>
+                              </div>
                             </div>
                           </div>
-                        </div>
 
-                        {/* Quick Contact & Booking Buttons */}
-                        <div className="pt-2 border-t border-slate-100 flex items-center gap-2">
-                          {cust.phone && (
+                          {/* Quick Contact & Booking Buttons */}
+                          <div className="pt-2 border-t border-slate-100 flex items-center gap-1.5">
+                            {hasValidPhone && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => openWhatsAppCustomer(cust.phone, cust.name)}
+                                  className="flex-1 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/80 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
+                                  title="Chat on WhatsApp"
+                                >
+                                  <MessageCircle className="w-3.5 h-3.5 fill-emerald-600 text-emerald-600" />
+                                  <span>WhatsApp</span>
+                                </button>
+                                <a
+                                  href={`tel:${cust.phone}`}
+                                  className="px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer shrink-0"
+                                  title="Direct Phone Call"
+                                >
+                                  <Phone className="w-3.5 h-3.5 text-slate-600" />
+                                  <span>Call</span>
+                                </a>
+                              </>
+                            )}
                             <button
                               type="button"
-                              onClick={() => openWhatsAppCustomer(cust.phone, cust.name)}
-                              className="flex-1 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/80 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
+                              onClick={() => {
+                                setMbName(cust.name);
+                                setMbPhone(hasValidPhone ? cust.phone : '');
+                                setMbVehicle(cust.vehicles[0] || '');
+                                setShowManualBookingModal(true);
+                              }}
+                              className="flex-1 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
                             >
-                              <MessageCircle className="w-3.5 h-3.5 fill-emerald-600 text-emerald-600" />
-                              <span>WhatsApp</span>
+                              <Plus className="w-3.5 h-3.5 text-slate-500" />
+                              <span>Quick Book</span>
                             </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setMbName(cust.name);
-                              setMbPhone(cust.phone);
-                              setMbVehicle(cust.vehicles[0] || '');
-                              setMbEmail(cust.email || '');
-                              setShowManualBookingModal(true);
-                            }}
-                            className="flex-1 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
-                          >
-                            <Plus className="w-3.5 h-3.5 text-slate-500" />
-                            <span>Quick Book</span>
-                          </button>
+                          </div>
                         </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Customer Directory Pagination Controls */}
+                  {totalCustomerPages > 1 && (
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-slate-100 mt-2 text-xs font-semibold text-slate-500">
+                      <div>
+                        Showing <strong className="text-slate-800">{(customerPage - 1) * CUSTOMERS_PER_PAGE + 1}</strong> to <strong className="text-slate-800">{Math.min(customerPage * CUSTOMERS_PER_PAGE, filteredCustomersList.length)}</strong> of <strong className="text-slate-800">{filteredCustomersList.length}</strong> clients
                       </div>
-                    );
-                  })}
-                </div>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setCustomerPage((prev) => Math.max(prev - 1, 1))}
+                          disabled={customerPage === 1}
+                          className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-2xs font-bold text-slate-700"
+                        >
+                          Previous
+                        </button>
+                        <span className="px-3 py-1.5 bg-slate-50 border border-slate-200/80 rounded-xl font-mono text-[11px] font-bold text-slate-700">
+                          Page {customerPage} of {totalCustomerPages}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setCustomerPage((prev) => Math.min(prev + 1, totalCustomerPages))}
+                          disabled={customerPage === totalCustomerPages}
+                          className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-2xs font-bold text-slate-700"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
         </div>
       )}
 
+      {activeTab === 'qrcode' && isOwnerQrCodeAllowed && (
+        <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
+          {selectedBusiness && (
+            <QRCodeManager
+              carWash={selectedBusiness}
+              onUpdateSlug={async (newSlug: string) => {
+                const success = await updateLocationConfig(selectedBusiness.id, {
+                  ...selectedBusiness,
+                  slug: newSlug,
+                });
+                if (success) {
+                  setSelectedBusiness({
+                    ...selectedBusiness,
+                    slug: newSlug,
+                  });
+                }
+                return success;
+              }}
+            />
+          )}
+        </div>
+      )}
+
       {activeTab === 'settings' && (
         <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
+          {selectedBusiness && isOwnerQrCodeAllowed && (
+            <QRCodeManager
+              carWash={selectedBusiness}
+              onUpdateSlug={async (newSlug: string) => {
+                const success = await updateLocationConfig(selectedBusiness.id, {
+                  ...selectedBusiness,
+                  slug: newSlug,
+                });
+                if (success) {
+                  setSelectedBusiness({
+                    ...selectedBusiness,
+                    slug: newSlug,
+                  });
+                }
+                return success;
+              }}
+            />
+          )}
+
           {selectedBusiness && (
             <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
               <div className="flex items-center justify-between pb-4 border-b border-slate-100">
@@ -2240,6 +3405,35 @@ export const OwnerDashboard: React.FC = () => {
 
               {!isEditingConfig ? (
                 <div className="mt-4 space-y-4 text-sm text-slate-600">
+                  {selectedBusiness.logoUrl ? (
+                    <div className="flex items-center gap-3.5 bg-slate-50 border border-slate-200/80 p-3.5 rounded-2xl">
+                      <img
+                        src={selectedBusiness.logoUrl}
+                        alt={selectedBusiness.name}
+                        className="w-14 h-14 object-cover rounded-xl border border-slate-200 shadow-xs shrink-0"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                        }}
+                      />
+                      <div>
+                        <span className="text-xs font-bold text-slate-800 block">Official Business Logo</span>
+                        <span className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1 mt-0.5">
+                          <CheckCheck className="w-3.5 h-3.5" /> Displayed on customer portal & receipts
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-3.5 bg-slate-50/60 border border-dashed border-slate-200 p-3.5 rounded-2xl">
+                      <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-black text-xs shrink-0">
+                        Logo
+                      </div>
+                      <div>
+                        <span className="text-xs font-bold text-slate-700 block">No Business Logo Uploaded</span>
+                        <span className="text-[10px] text-slate-400 block">Click "Edit Config" to upload your brand logo (&lt;100KB)</span>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="bg-slate-50 border border-slate-150 p-4 rounded-xl space-y-2">
                     <div className="flex justify-between">
                       <span className="text-slate-400 font-medium">Business Name</span>
@@ -2283,6 +3477,51 @@ export const OwnerDashboard: React.FC = () => {
                 </div>
               ) : (
                 <form onSubmit={handleSaveConfig} className="mt-4 space-y-4">
+                  <div className="bg-slate-50 border border-slate-200/80 p-4 rounded-2xl space-y-2 text-left">
+                    <label className="block text-xs font-bold text-slate-700 uppercase">
+                      Business Branding Logo (Enforced &lt;100KB)
+                    </label>
+                    <p className="text-[10px] text-slate-400 leading-relaxed">
+                      Upload your car wash logo. Images are automatically resized and compressed client-side to ensure the file size stays under 100KB.
+                    </p>
+                    <div className="flex items-center gap-4 pt-1">
+                      {editLogoUrl ? (
+                        <div className="flex items-center gap-3 bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
+                          <img src={editLogoUrl} className="w-14 h-14 object-cover rounded-lg border border-slate-200 shadow-xs" alt="Business Logo" />
+                          <div className="text-left">
+                            <span className="text-xs font-bold text-slate-800 block">Logo Uploaded</span>
+                            <span className="text-[10px] text-emerald-600 font-bold block">Optimized &lt;100KB</span>
+                            <button
+                              type="button"
+                              onClick={() => setEditLogoUrl('')}
+                              className="text-[10px] text-rose-600 hover:text-rose-700 font-bold hover:underline cursor-pointer mt-0.5"
+                            >
+                              Remove Logo
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <label className="flex-1 flex items-center justify-center border-2 border-dashed border-slate-200 hover:border-indigo-400 bg-white hover:bg-indigo-50/20 cursor-pointer rounded-2xl py-3 px-4 text-center transition-all">
+                          <span className="text-xs text-slate-700 font-bold flex items-center gap-2">
+                            <Upload className="w-4 h-4 text-indigo-600" />
+                            {isUploadingLogo ? 'Compressing & Uploading Logo...' : 'Upload Business Logo (Auto-Compress <100KB)'}
+                          </span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            disabled={isUploadingLogo}
+                            className="hidden"
+                            onChange={(e) => {
+                              if (e.target.files && e.target.files[0]) {
+                                handleLogoUpload(e.target.files[0]);
+                              }
+                            }}
+                          />
+                        </label>
+                      )}
+                    </div>
+                  </div>
+
                   <div>
                     <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Business Name</label>
                     <input
@@ -2341,46 +3580,20 @@ export const OwnerDashboard: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => setEditPaymentPolicy('PAY_ON_SITE')}
-                        className={`p-3 rounded-xl border text-left flex flex-col justify-between transition-all cursor-pointer ${
-                          editPaymentPolicy === 'PAY_ON_SITE'
-                            ? 'bg-emerald-50 border-emerald-500 text-emerald-900 ring-2 ring-emerald-50'
-                            : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
-                        }`}
-                      >
+                    <div className="pt-1">
+                      <div className="p-3 rounded-xl border bg-emerald-50 border-emerald-500 text-emerald-900 ring-2 ring-emerald-50 text-left flex flex-col justify-between">
                         <div className="flex items-center gap-1.5 mb-1">
                           <span className="h-2 w-2 rounded-full bg-emerald-500" />
                           <span className="text-xs font-bold">Flexible / Pay on Site</span>
                         </div>
-                        <p className="text-[10px] text-slate-400 leading-relaxed font-normal">
-                          Allow customers to choose between Cash (Pay on Site) and manual Bank Transfer prepaid screenshots.
+                        <p className="text-[10px] text-slate-500 leading-relaxed font-normal">
+                          Customers pay on site (Pay at Counter / Cash upon arrival at the car wash).
                         </p>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setEditPaymentPolicy('PRE_PAYMENT')}
-                        className={`p-3 rounded-xl border text-left flex flex-col justify-between transition-all cursor-pointer ${
-                          editPaymentPolicy === 'PRE_PAYMENT'
-                            ? 'bg-indigo-50 border-indigo-500 text-indigo-900 ring-2 ring-indigo-50'
-                            : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
-                        }`}
-                      >
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <span className="h-2 w-2 rounded-full bg-indigo-500" />
-                          <span className="text-xs font-bold">Prepayment Only</span>
-                        </div>
-                        <p className="text-[10px] text-slate-400 leading-relaxed font-normal">
-                          Enforce upfront bank transfer (BIBD/Baiduri) prepayments. Customers must upload screenshots to confirm.
-                        </p>
-                      </button>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Brunei Local Bank Payment Information Settings */}
+                  {/* Bank transfer settings commented out for now - using Pay at Counter on site
                   <div className="bg-sky-50/50 border border-sky-100 rounded-2xl p-4 space-y-4">
                     <div className="flex items-center gap-2">
                       <div className="p-1.5 bg-sky-100 rounded-lg text-sky-700">
@@ -2393,7 +3606,6 @@ export const OwnerDashboard: React.FC = () => {
                     </div>
 
                     <div className="space-y-3">
-                      {/* BIBD */}
                       <div className="bg-white border border-slate-200/80 p-3 rounded-xl space-y-2.5">
                         <div className="flex items-center justify-between">
                           <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5 cursor-pointer">
@@ -2475,7 +3687,6 @@ export const OwnerDashboard: React.FC = () => {
                         )}
                       </div>
 
-                      {/* Baiduri */}
                       <div className="bg-white border border-slate-200/80 p-3 rounded-xl space-y-2.5">
                         <div className="flex items-center justify-between">
                           <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5 cursor-pointer">
@@ -2557,7 +3768,6 @@ export const OwnerDashboard: React.FC = () => {
                         )}
                       </div>
 
-                      {/* Custom & Other Banks / E-Wallets */}
                       <div className="border-t border-slate-100 pt-3 mt-3">
                         <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                           Other Brunei Local Banks & E-Wallets
@@ -2566,7 +3776,6 @@ export const OwnerDashboard: React.FC = () => {
                           Add custom local payment options such as <strong>TARUS Instant Transfer</strong>, <strong>DST Pocket</strong>, <strong>Progresif Pay</strong>, Standard Chartered, or Maybank.
                         </p>
 
-                        {/* Existing Custom Methods List */}
                         {editCustomPaymentMethods.length > 0 && (
                           <div className="space-y-2 mb-4">
                             {editCustomPaymentMethods.map((method) => (
@@ -2607,7 +3816,6 @@ export const OwnerDashboard: React.FC = () => {
                           </div>
                         )}
 
-                        {/* Quick Add Form */}
                         <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2.5">
                           <span className="text-[10px] font-bold text-slate-700 block uppercase tracking-wider">Add a New Local Payment Method</span>
                           
@@ -2620,15 +3828,15 @@ export const OwnerDashboard: React.FC = () => {
                                 className="w-full px-2 py-1.5 border border-slate-200 bg-white rounded-lg text-xs"
                               >
                                 <option value="">-- Select Provider --</option>
-                                <option value="TARUS Instant Transfer">TARUS Instant Transfer</option>
+                                <option value="BIBD QuickPay / Bank Transfer">BIBD QuickPay / Bank Transfer</option>
+                                <option value="Baiduri Qpay / Bank Transfer">Baiduri Qpay / Bank Transfer</option>
+                                <option value="TAIB (Perbadanan Tabung Amanah Islam Brunei)">TAIB (Perbadanan Tabung Amanah Islam Brunei)</option>
+                                <option value="Standard Chartered Brunei">Standard Chartered Brunei</option>
                                 <option value="DST Pocket e-Wallet">DST Pocket e-Wallet</option>
                                 <option value="Progresif Pay">Progresif Pay</option>
-                                <option value="Standard Chartered Brunei">Standard Chartered Brunei</option>
                                 <option value="Maybank Brunei">Maybank Brunei</option>
                                 <option value="RHB Bank Brunei">RHB Bank Brunei</option>
-                                <option value="Baiduri Qpay">Baiduri Qpay</option>
-                                <option value="BIBD QuickPay">BIBD QuickPay</option>
-                                <option value="Custom Method">Other / Custom Method</option>
+                                <option value="Custom Method">Other / Custom Bank or Transfer</option>
                               </select>
                             </div>
                             {newProviderName === 'Custom Method' && (
@@ -2725,6 +3933,7 @@ export const OwnerDashboard: React.FC = () => {
                       </div>
                     </div>
                   </div>
+                  */}
 
 
                   <div className="h-[480px] sm:h-[400px] relative rounded-xl border border-slate-200 overflow-hidden">
@@ -2747,11 +3956,14 @@ export const OwnerDashboard: React.FC = () => {
                       <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Latitude (GPS Coordinate)</label>
                       <input
                         type="number"
-                        step="0.0001"
+                        step="any"
                         min="-90"
                         max="90"
                         value={editLat}
-                        onChange={(e) => setEditLat(parseFloat(e.target.value) || 4.8917)}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          if (!isNaN(val)) setEditLat(val);
+                        }}
                         className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-mono font-bold bg-white"
                         required
                       />
@@ -2760,43 +3972,69 @@ export const OwnerDashboard: React.FC = () => {
                       <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Longitude (GPS Coordinate)</label>
                       <input
                         type="number"
-                        step="0.0001"
+                        step="any"
                         min="-180"
                         max="180"
                         value={editLng}
-                        onChange={(e) => setEditLng(parseFloat(e.target.value) || 114.9401)}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          if (!isNaN(val)) setEditLng(val);
+                        }}
                         className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-mono font-bold bg-white"
                         required
                       />
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Duration (min)</label>
+                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                        Base Slot Interval (Grid Step)
+                      </label>
                       <select
                         value={editDuration}
                         onChange={(e) => setEditDuration(parseInt(e.target.value))}
-                        className="w-full px-3 py-1.5 border border-slate-200 rounded-xl text-sm"
+                        className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium bg-white"
                       >
-                        <option value="15">15 mins</option>
-                        <option value="30">30 mins</option>
-                        <option value="45">45 mins</option>
-                        <option value="60">60 mins</option>
+                        <option value="30">30 mins (Standard Half-Hour Grid • Recommended)</option>
+                        <option value="60">60 mins (1 Hour • Hourly Grid)</option>
                       </select>
+                      <p className="text-[10px] text-slate-400 mt-1">Defines the atomic time grid for customer booking slots.</p>
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Capacity / Slot</label>
+                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                        Wash Bay Capacity / Slot
+                      </label>
                       <input
                         type="number"
                         min="1"
-                        max="10"
+                        max="20"
                         value={editCapacity}
                         onChange={(e) => setEditCapacity(parseInt(e.target.value))}
-                        className="w-full px-3 py-1.5 border border-slate-200 rounded-xl text-sm"
+                        className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm font-mono font-bold"
                         required
                       />
+                      <p className="text-[10px] text-slate-400 mt-1">Max concurrent vehicle bookings allowed per time slot.</p>
                     </div>
+                  </div>
+
+                  {/* Operational Guide Card for Owner */}
+                  <div className="bg-sky-50/70 border border-sky-150 rounded-xl p-3.5 space-y-2 text-xs text-sky-950">
+                    <div className="font-bold text-sky-900 flex items-center gap-1.5 text-xs">
+                      <Sparkles className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                      <span>How Slot Interval & Bay Capacity Work Together</span>
+                    </div>
+                    <ul className="list-disc list-inside space-y-1 text-[11px] text-slate-600 leading-relaxed">
+                      <li>
+                        <strong>Base Grid ({editDuration || 30} mins):</strong> Slots are offered at fixed {editDuration || 30}-min start times (e.g. 08:00, 08:30, 09:00).
+                      </li>
+                      <li>
+                        <strong>Bay Capacity ({editCapacity || 2} bays):</strong> Each {editDuration || 30}-min window allows up to {editCapacity || 2} simultaneous vehicles.
+                      </li>
+                      <li>
+                        <strong>Multi-Slot Services (e.g. 60 mins):</strong> A 1-hour service reserves 2 consecutive {editDuration || 30}-min intervals. Customers cannot book if a subsequent interval is full, or if it crosses into closing time or scheduled lunch/prayer breaks.
+                      </li>
+                    </ul>
                   </div>
 
                   <div className="space-y-3">
@@ -2881,26 +4119,54 @@ export const OwnerDashboard: React.FC = () => {
 
                   {/* Dynamic Services Creator Section */}
                   <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-4">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 bg-indigo-100 text-indigo-700 rounded-lg">
-                        <Briefcase className="w-4 h-4" />
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 bg-indigo-100 text-indigo-700 rounded-lg">
+                          <Briefcase className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-xs text-slate-800 uppercase tracking-wider">Dynamic Services, Add-ons & Products</h4>
+                          <p className="text-[10px] text-slate-400">Define customized wash services, add-ons (headlight polish, engine wash) and products for your business.</p>
+                        </div>
                       </div>
-                      <div>
-                        <h4 className="font-bold text-xs text-slate-800 uppercase tracking-wider">Dynamic Products & Services</h4>
-                        <p className="text-[10px] text-slate-400">Define the customized wash services and products (e.g. shampoo, wax) customers can buy or book.</p>
-                      </div>
+
+                      {selectedBusiness && (
+                        <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200/80 rounded-xl text-xs font-bold shadow-2xs">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Direct Auto-Save Active</span>
+                        </div>
+                      )}
                     </div>
 
                     {/* Services List */}
                     <div className="space-y-2">
                       {editServices.length === 0 ? (
-                        <div className="text-center py-4 bg-white rounded-xl border border-dashed border-slate-200 text-[11px] text-slate-400">
-                          No customized services or products added yet. Add your first item below!
+                        <div className="text-center py-5 bg-slate-50/80 rounded-xl border border-dashed border-slate-200 p-4 space-y-2">
+                          <p className="text-xs text-slate-500 font-medium">No customized services or products added yet. Add your first item below or load the standard template!</p>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const templateList = [...DEFAULT_MAIN_SERVICES, ...DEFAULT_ADDONS, ...DEFAULT_PRODUCTS];
+                              setEditServices(templateList);
+                              if (selectedBusiness) {
+                                await updateLocationConfig(selectedBusiness.id, {
+                                  ...selectedBusiness,
+                                  services: templateList,
+                                });
+                                showNotification('Standard wash catalog loaded & saved to database!', 'success');
+                              }
+                            }}
+                            className="px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold rounded-xl transition-all cursor-pointer inline-flex items-center gap-1.5 shadow-2xs"
+                          >
+                            <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                            <span>⚡ Load Standard Catalog Template</span>
+                          </button>
                         </div>
                       ) : (
                         <div className="grid grid-cols-1 gap-2 max-h-60 overflow-y-auto pr-1 text-left">
                           {editServices.map((svc) => {
                             const isProduct = svc.type === 'product';
+                            const isAddon = svc.type === 'addon';
                             const isAvailable = svc.isAvailable !== false;
                             return (
                               <div key={svc.id} className="bg-white border border-slate-200/80 p-3 rounded-xl flex items-center justify-between gap-4">
@@ -2909,6 +4175,8 @@ export const OwnerDashboard: React.FC = () => {
                                     <span className="font-bold text-slate-700 text-xs">{svc.name}</span>
                                     {isProduct ? (
                                       <span className="bg-emerald-50 text-emerald-700 border border-emerald-100 font-extrabold text-[9px] px-1.5 py-0.5 rounded-md uppercase">Product</span>
+                                    ) : isAddon ? (
+                                      <span className="bg-purple-50 text-purple-700 border border-purple-100 font-extrabold text-[9px] px-1.5 py-0.5 rounded-md uppercase">Add-on</span>
                                     ) : (
                                       <span className="bg-blue-50 text-blue-700 border border-blue-100 font-extrabold text-[9px] px-1.5 py-0.5 rounded-md uppercase">Service</span>
                                     )}
@@ -2923,16 +4191,32 @@ export const OwnerDashboard: React.FC = () => {
                                   </div>
                                   {svc.description && <span className="text-[10px] text-slate-400 block mt-0.5 line-clamp-1">{svc.description}</span>}
                                   {!isProduct ? (
-                                    <span className="text-[10px] text-slate-500 font-mono mt-0.5 block">{svc.duration} min duration</span>
+                                    <span className="text-[10px] text-slate-500 font-mono mt-0.5 flex items-center gap-1.5 flex-wrap">
+                                      <span>{svc.duration} min duration</span>
+                                      <span>•</span>
+                                      <span className="font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">
+                                        {svc.slotsRequired === 0 ? '0 Slots (Retail / Flex)' : `Takes 1 Bay • ${svc.slotsRequired || Math.ceil((svc.duration || 30) / 30)} slot(s)`}
+                                      </span>
+                                    </span>
                                   ) : (
-                                    <span className="text-[10px] text-emerald-600 font-medium mt-0.5 block">Physical Product</span>
+                                    <span className="text-[10px] text-emerald-600 font-medium mt-0.5 block">Physical Product (0 Bay Slots)</span>
                                   )}
                                 </div>
                                 <div className="flex items-center gap-3 shrink-0">
                                   <span className="font-extrabold text-xs text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg">BND ${svc.price.toFixed(2)}</span>
                                   <button
                                     type="button"
-                                    onClick={() => setEditServices(editServices.filter((s) => s.id !== svc.id))}
+                                    onClick={async () => {
+                                      const updatedList = editServices.filter((s) => s.id !== svc.id);
+                                      setEditServices(updatedList);
+                                      if (selectedBusiness) {
+                                        await updateLocationConfig(selectedBusiness.id, {
+                                          ...selectedBusiness,
+                                          services: updatedList,
+                                        });
+                                        showNotification(`"${svc.name}" removed and database updated!`, 'info');
+                                      }
+                                    }}
                                     className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
                                     title="Delete item"
                                   >
@@ -2948,35 +4232,55 @@ export const OwnerDashboard: React.FC = () => {
 
                     {/* Quick-Add Service Form */}
                     <div className="bg-white border border-slate-200 p-3.5 rounded-xl space-y-3 text-left">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Add New Customized Service or Product</span>
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Add New Customized Service, Add-on or Product</span>
                       
                       {/* Item Type Toggle */}
                       <div>
-                        <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Item Type</label>
-                        <div className="grid grid-cols-2 gap-2">
+                        <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Item Category / Type</label>
+                        <div className="grid grid-cols-3 gap-2">
                           <button
                             type="button"
                             onClick={() => {
                               setNewServiceType('service');
                               setNewServiceVehicleType('All');
                             }}
-                            className={`py-1.5 px-3 border rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                            className={`py-1.5 px-2 border rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${
                               newServiceType === 'service'
-                                ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
+                                ? 'border-blue-500 bg-blue-50 text-blue-700'
                                 : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
                             }`}
                           >
-                            Service
+                            Main Service
                           </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNewServiceType('addon');
+                              setNewServiceVehicleType('All');
+                              setNewServiceDuration('30');
+                              setNewServiceSlotsRequired(1);
+                            }}
+                            className={`py-1.5 px-2 border rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                              newServiceType === 'addon'
+                                ? 'border-purple-500 bg-purple-50 text-purple-700'
+                                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                            }`}
+                          >
+                            Add-on / Extra
+                          </button>
+
                           <button
                             type="button"
                             onClick={() => {
                               setNewServiceType('product');
                               setNewServiceVehicleType('N/A');
+                              setNewServiceDuration('0');
+                              setNewServiceSlotsRequired(0);
                             }}
-                            className={`py-1.5 px-3 border rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                            className={`py-1.5 px-2 border rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${
                               newServiceType === 'product'
-                                ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
+                                ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
                                 : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
                             }`}
                           >
@@ -2991,10 +4295,16 @@ export const OwnerDashboard: React.FC = () => {
                           <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5">Item Name</label>
                           <input
                             type="text"
-                            placeholder={newServiceType === 'service' ? "e.g. Premium Clay Bar Detail" : "e.g. Microfiber Drying Towel"}
+                            placeholder={
+                              newServiceType === 'service'
+                                ? "e.g. Executive Polish & Wax"
+                                : newServiceType === 'addon'
+                                ? "e.g. Headlight Polish, Engine Wash, Tyre Wax"
+                                : "e.g. Microfiber Drying Towel"
+                            }
                             value={newServiceName}
                             onChange={(e) => setNewServiceName(e.target.value)}
-                            className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs"
+                            className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-medium"
                           />
                         </div>
 
@@ -3014,19 +4324,32 @@ export const OwnerDashboard: React.FC = () => {
                         {/* Duration (Hidden/Set to 0 if product) */}
                         <div className="sm:col-span-6">
                           <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5">
-                            {newServiceType === 'service' ? "Duration (minutes)" : "Duration (N/A)"}
+                            {newServiceType === 'product' ? "Duration (N/A for Retail)" : "Duration (30-min intervals)"}
                           </label>
-                          <input
-                            type="number"
-                            placeholder="Duration (min)"
+                          <select
                             disabled={newServiceType === 'product'}
                             value={newServiceType === 'product' ? '0' : newServiceDuration}
-                            onChange={(e) => setNewServiceDuration(e.target.value)}
-                            className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-mono disabled:bg-slate-50 disabled:text-slate-400"
-                          />
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setNewServiceDuration(val);
+                              if (newServiceType !== 'product') {
+                                const slots = val === '0' ? 0 : Math.max(1, Math.round(parseInt(val, 10) / 30));
+                                setNewServiceSlotsRequired(slots);
+                              }
+                            }}
+                            className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-medium bg-white text-slate-700 disabled:bg-slate-50 disabled:text-slate-400"
+                          >
+                            <option value="0">0 mins (Instant / Retail Product)</option>
+                            <option value="30">30 mins (0.5 hr • 1 Slot)</option>
+                            <option value="60">60 mins (1.0 hr • 2 Slots)</option>
+                            <option value="90">90 mins (1.5 hrs • 3 Slots)</option>
+                            <option value="120">120 mins (2.0 hrs • 4 Slots)</option>
+                            <option value="150">150 mins (2.5 hrs • 5 Slots)</option>
+                            <option value="180">180 mins (3.0 hrs • 6 Slots)</option>
+                          </select>
                         </div>
 
-                        {/* Vehicle Type (Only useful for services, or products specifically for one type) */}
+                        {/* Vehicle Type */}
                         <div className="sm:col-span-6">
                           <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5">Vehicle Compatibility</label>
                           <select
@@ -3040,6 +4363,28 @@ export const OwnerDashboard: React.FC = () => {
                             <option value="Motorcycle">Motorcycle Only</option>
                             <option value="N/A">Not Applicable (N/A)</option>
                           </select>
+                        </div>
+
+                        {/* Auto-Calculated Bay Reservation */}
+                        <div className="sm:col-span-6">
+                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5">
+                            Bay Reservation (Auto-Calculated)
+                          </label>
+                          <div className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs bg-slate-50/90 text-slate-700 font-medium flex items-center justify-between">
+                            <span className="font-semibold text-slate-800">
+                              {newServiceType === 'product' || newServiceDuration === '0'
+                                ? '⚡ 0 Slots • Retail Product (No bay time)'
+                                : `⏱️ ${Math.max(1, Math.round(parseInt(newServiceDuration || '30', 10) / 30))} slot(s) in 1 bay (${newServiceDuration} mins)`}
+                            </span>
+                            <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100 shrink-0">
+                              {newServiceType === 'product' || newServiceDuration === '0' ? 'No Bay' : 'Takes 1 Bay'}
+                            </span>
+                          </div>
+                          <p className="text-[9px] text-slate-400 mt-1">
+                            {newServiceType === 'product' || newServiceDuration === '0'
+                              ? 'Instant retail product. Customers do not take up wash bay capacity.'
+                              : `Automatically calculated from duration. Reserves 1 wash bay for ${Math.max(1, Math.round(parseInt(newServiceDuration || '30', 10) / 30))} consecutive 30-min window(s).`}
+                          </p>
                         </div>
 
                         {/* Availability Toggle */}
@@ -3070,7 +4415,7 @@ export const OwnerDashboard: React.FC = () => {
 
                       <button
                         type="button"
-                        onClick={() => {
+                        onClick={async () => {
                           if (!newServiceName.trim()) return;
                           const priceNum = parseFloat(newServicePrice);
                           const durNum = newServiceType === 'product' ? 0 : parseInt(newServiceDuration, 10);
@@ -3085,20 +4430,31 @@ export const OwnerDashboard: React.FC = () => {
                             type: newServiceType,
                             vehicleType: newServiceVehicleType,
                             isAvailable: newServiceIsAvailable,
+                            slotsRequired: newServiceType === 'product' || durNum === 0 ? 0 : Math.max(1, Math.round(durNum / 30)),
                           };
 
-                          setEditServices([...editServices, newSvc]);
+                          const updatedList = [...editServices, newSvc];
+                          setEditServices(updatedList);
+
+                          // Auto-persist if selectedBusiness exists
+                          if (selectedBusiness) {
+                            await updateLocationConfig(selectedBusiness.id, {
+                              ...selectedBusiness,
+                              services: updatedList,
+                            });
+                          }
+
                           setNewServiceName('');
                           setNewServicePrice('15.00');
                           setNewServiceDuration('30');
+                          setNewServiceSlotsRequired(1);
                           setNewServiceDesc('');
-                          // Keep type as selected, but reset default compatibility if needed
                           setNewServiceIsAvailable(true);
                         }}
-                        className="w-full py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-100 font-bold text-xs rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer"
+                        className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer shadow-xs"
                       >
                         <Plus className="w-3.5 h-3.5" />
-                        <span>Add to List</span>
+                        <span>Add & Save Item</span>
                       </button>
                     </div>
                   </div>
@@ -3324,6 +4680,64 @@ export const OwnerDashboard: React.FC = () => {
 
       {activeTab === 'bookings' && (
         <div className="max-w-5xl mx-auto space-y-6 animate-fade-in">
+          {/* Active Services & Pricing Catalog Banner for Operators */}
+          <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-3xl p-5 sm:p-6 shadow-md border border-slate-800">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 bg-indigo-500/20 text-indigo-400 rounded-lg">
+                    <Sparkles className="w-4 h-4" />
+                  </span>
+                  <h3 className="font-extrabold text-white text-base sm:text-lg">Services, Add-ons & Products Offered</h3>
+                </div>
+                <p className="text-xs text-slate-400 mt-1">
+                  Active wash menu available for online bookings and walk-in sales
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('settings')}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs rounded-xl transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ Add / Edit Services</span>
+              </button>
+            </div>
+
+            {/* Quick Service Pills Display */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-4">
+              {(!selectedBusiness?.services || selectedBusiness.services.length === 0) ? (
+                <div className="col-span-full bg-slate-800/60 border border-slate-700/80 rounded-2xl p-4 text-center text-xs text-slate-400">
+                  Default Standard Wash ($15.00) active. Click <strong className="text-indigo-300">+ Add / Edit Services</strong> above to add custom wash packages, headlight polishing, or retail products!
+                </div>
+              ) : (
+                selectedBusiness.services.map((svc) => (
+                  <div key={svc.id} className="bg-slate-800/80 border border-slate-700/60 rounded-2xl p-3.5 flex items-center justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <strong className="text-xs font-extrabold text-white truncate block">{svc.name}</strong>
+                        {svc.type === 'addon' ? (
+                          <span className="bg-purple-950 text-purple-300 border border-purple-800/60 text-[9px] font-bold px-1.5 py-0.2 rounded uppercase">Add-on</span>
+                        ) : svc.type === 'product' ? (
+                          <span className="bg-emerald-950 text-emerald-300 border border-emerald-800/60 text-[9px] font-bold px-1.5 py-0.2 rounded uppercase">Product</span>
+                        ) : (
+                          <span className="bg-indigo-950 text-indigo-300 border border-indigo-800/60 text-[9px] font-bold px-1.5 py-0.2 rounded uppercase">Service</span>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-slate-400 block mt-0.5 font-mono">
+                        {svc.duration ? `${svc.duration} mins` : 'N/A'} • {svc.slotsRequired === 0 ? '0 Slots (Retail)' : `Takes 1 Bay • ${svc.slotsRequired || Math.ceil((svc.duration || 30) / 30)} slot(s)`}
+                      </span>
+                    </div>
+                    <span className="font-black text-xs text-emerald-400 bg-emerald-950/60 border border-emerald-800/40 px-2 py-1 rounded-lg shrink-0 font-mono">
+                      BND ${svc.price.toFixed(2)}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
           {/* Bookings Operations Control */}
           <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-6">
@@ -3359,14 +4773,53 @@ export const OwnerDashboard: React.FC = () => {
                     >
                     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-50 pb-2.5">
                       <div>
-                        <strong className="text-slate-800 text-xs sm:text-sm block">{bk.customerName}</strong>
-                        <span className="text-[10px] text-slate-400 font-mono block">{bk.customerEmail}</span>
+                        <div className="flex items-center gap-2">
+                          <strong className="text-slate-800 text-xs sm:text-sm block">{bk.customerName}</strong>
+                          {bk.bookingSource && (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded font-mono font-bold bg-slate-100 text-slate-500">
+                              {bk.bookingSource}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 mt-1 text-[11px] text-slate-500 flex-wrap">
+                          {bk.customerPhone && bk.customerPhone.trim() !== '' && bk.customerPhone.trim().toUpperCase() !== 'NA' && bk.customerPhone.trim().toUpperCase() !== 'N/A' ? (
+                            <div className="flex items-center gap-1.5 font-mono">
+                              <Phone className="w-3 h-3 text-emerald-600 shrink-0" />
+                              <span className="text-[10px] text-slate-400 font-sans uppercase font-bold">Phone:</span>
+                              <a href={`tel:${bk.customerPhone}`} onClick={(e) => e.stopPropagation()} className="text-slate-700 font-bold hover:text-indigo-600">
+                                {bk.customerPhone}
+                              </a>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openWhatsAppCustomer(bk.customerPhone, bk.customerName, bk.date, bk.timeSlot, bk.serviceName);
+                                }}
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded text-[10px] font-bold border border-emerald-200 cursor-pointer"
+                                title="Chat on WhatsApp"
+                              >
+                                <MessageCircle className="w-3 h-3 fill-emerald-600" />
+                                <span>WA</span>
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 text-[10px] italic">No phone recorded</span>
+                          )}
+
+                          {bk.vehicleInfo && (
+                            <div className="flex items-center gap-1 font-mono font-bold text-slate-600">
+                              <Car className="w-3 h-3 text-slate-400 shrink-0" />
+                              <span>{bk.vehicleInfo}</span>
+                            </div>
+                          )}
+                        </div>
                       </div>
 
                       <div className="flex items-center gap-2">
                         <span className="text-[11px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-lg font-mono font-semibold">
                           {bk.date} @ {bk.timeSlot.split(' - ')[0]}
                         </span>
+
                         <span className={`px-2 py-0.5 text-[10px] font-extrabold rounded-full border uppercase ${
                           bk.status === BookingStatus.COMPLETED
                             ? 'bg-emerald-50 text-emerald-800 border-emerald-100'
@@ -3390,13 +4843,17 @@ export const OwnerDashboard: React.FC = () => {
                       </div>
                     )}
 
-                     {bk.paymentBank ? (
+                     {bk.paymentBank && bk.paymentBank.trim().length > 0 && bk.paymentBank.toUpperCase() !== 'CASH' ? (
                       <div className="text-xs bg-sky-50/50 border border-sky-100 p-2.5 rounded-xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                         <div>
-                          <span className="font-bold text-[10px] text-sky-600 uppercase tracking-wider block mb-0.5">Brunei Local Bank Transfer:</span>
-                          <span className="font-semibold text-slate-700">{bk.paymentBank}</span>
-                          <span className="mx-1.5 text-slate-300">|</span>
-                          <span className="font-bold text-slate-800 font-mono tracking-wider">Ref: {bk.txnReference}</span>
+                          <span className="font-bold text-[10px] text-sky-600 uppercase tracking-wider block mb-0.5">Payment Settlement Method:</span>
+                          <span className="font-semibold text-slate-800">📱 Pay on Site ({bk.paymentBank})</span>
+                          {bk.txnReference && (
+                            <>
+                              <span className="mx-1.5 text-slate-300">|</span>
+                              <span className="font-bold text-slate-800 font-mono tracking-wider">Ref: #{bk.txnReference}</span>
+                            </>
+                          )}
                         </div>
                         {bk.receiptFilename && (
                           <a
@@ -3410,12 +4867,11 @@ export const OwnerDashboard: React.FC = () => {
                         )}
                       </div>
                     ) : (
-                      <div className="text-xs bg-slate-50 border border-slate-100 p-2.5 rounded-xl flex items-center justify-between gap-2">
+                      <div className="text-xs bg-emerald-50/50 border border-emerald-100 p-2.5 rounded-xl flex items-center justify-between gap-2">
                         <div>
-                          <span className="font-bold text-[10px] text-slate-500 uppercase tracking-wider block mb-0.5">Payment Method:</span>
-                          <span className="font-bold text-slate-700 flex items-center gap-1.5">
-                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                            Cash / Pay on Site
+                          <span className="font-bold text-[10px] text-emerald-600 uppercase tracking-wider block mb-0.5">Payment Settlement Method:</span>
+                          <span className="font-bold text-emerald-900 flex items-center gap-1.5">
+                            <span>💵</span> Pay on Site (Cash)
                           </span>
                         </div>
                       </div>
@@ -3510,7 +4966,7 @@ export const OwnerDashboard: React.FC = () => {
               </p>
             </div>
 
-            <div className="flex items-center gap-3 flex-wrap w-full md:w-auto">
+            <div className="flex items-center gap-2 flex-wrap w-full md:w-auto">
               {/* Filter pills for booking source */}
               <div className="grid grid-cols-2 sm:flex sm:items-center gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200 text-xs font-bold w-full sm:w-auto">
                 <button
@@ -3550,6 +5006,17 @@ export const OwnerDashboard: React.FC = () => {
                   🚗 Walk-In
                 </button>
               </div>
+
+              {/* + Add Holiday / Closure Button */}
+              <button
+                type="button"
+                onClick={() => openAddHolidayModal(selectedCalendarDate)}
+                className="px-3.5 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-extrabold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer w-full sm:w-auto justify-center shadow-2xs"
+                title="Mark a holiday or closure date"
+              >
+                <span>🌴</span>
+                <span>+ Add Holiday / Closure</span>
+              </button>
 
               {/* + Record Manual Booking Button */}
               <button
@@ -3634,6 +5101,7 @@ export const OwnerDashboard: React.FC = () => {
 
                 const todayStr = getTodayDateString();
                 const bizBookings = bookings.filter((b) => !selectedBusiness || b.carWashId === selectedBusiness.id);
+                const allHolidays = getBusinessHolidays();
 
                 const cells = [];
                 // Empty padding cells for start of month
@@ -3649,6 +5117,7 @@ export const OwnerDashboard: React.FC = () => {
 
                   const isToday = dateKey === todayStr;
                   const isSelected = dateKey === selectedCalendarDate;
+                  const dayHoliday = allHolidays.find((h: any) => h.date === dateKey);
 
                   // Bookings for this date
                   let dateBookings = bizBookings.filter((b) => b.date === dateKey);
@@ -3669,6 +5138,8 @@ export const OwnerDashboard: React.FC = () => {
                       className={`h-14 sm:h-20 p-1 sm:p-1.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between select-none relative ${
                         isSelected
                           ? 'border-indigo-600 bg-indigo-50/70 shadow-xs ring-2 ring-indigo-500/20'
+                          : dayHoliday
+                          ? 'border-rose-300 bg-rose-50/40 hover:bg-rose-50/70'
                           : isToday
                           ? 'border-sky-300 bg-sky-50/40'
                           : 'border-slate-200/80 bg-white hover:border-indigo-300 hover:bg-slate-50/80'
@@ -3676,20 +5147,33 @@ export const OwnerDashboard: React.FC = () => {
                     >
                       <div className="flex items-center justify-between">
                         <span className={`text-[11px] sm:text-xs font-black ${
-                          isSelected ? 'text-indigo-900' : isToday ? 'text-sky-700' : 'text-slate-700'
+                          isSelected ? 'text-indigo-900' : dayHoliday ? 'text-rose-900' : isToday ? 'text-sky-700' : 'text-slate-700'
                         }`}>
                           {d}
                         </span>
-                        {isToday && (
+                        {dayHoliday ? (
+                          <span className="text-[9px] font-extrabold text-rose-700 bg-rose-100/90 border border-rose-200 px-1 rounded flex items-center gap-0.5">
+                            <span>🌴</span>
+                            <span className="hidden sm:inline truncate max-w-[45px]">
+                              {dayHoliday.type === 'FULL_DAY' ? 'Holiday' : 'Half'}
+                            </span>
+                          </span>
+                        ) : isToday ? (
                           <>
                             <span className="hidden sm:inline text-[9px] font-extrabold text-sky-700 bg-sky-100 px-1 rounded uppercase">Today</span>
                             <span className="sm:hidden w-1.5 h-1.5 rounded-full bg-sky-500 inline-block"></span>
                           </>
-                        )}
+                        ) : null}
                       </div>
 
-                      {/* Booking Count Indicators */}
-                      {totalCount > 0 ? (
+                      {/* Booking Count Indicators / Holiday notice */}
+                      {dayHoliday && totalCount === 0 ? (
+                        <div className="text-center">
+                          <span className="text-[8px] sm:text-[9px] font-black text-rose-600 bg-rose-100/80 px-1 py-0.5 rounded truncate block">
+                            {dayHoliday.type === 'FULL_DAY' ? 'Closed' : 'Half-day'}
+                          </span>
+                        </div>
+                      ) : totalCount > 0 ? (
                         <div className="space-y-0.5">
                           <span className={`block text-[9px] sm:text-[10px] font-extrabold px-0.5 sm:px-1 py-0.2 sm:py-0.5 rounded text-center truncate ${
                             isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-white'
@@ -3738,18 +5222,87 @@ export const OwnerDashboard: React.FC = () => {
                   </h3>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMbDate(selectedCalendarDate);
-                    setShowManualBookingModal(true);
-                  }}
-                  className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-xl border border-indigo-100 transition-all cursor-pointer flex items-center gap-1"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>+ Quick Book</span>
-                </button>
+                <div className="flex items-center gap-1.5">
+                  {(() => {
+                    const selectedDateHoliday = getBusinessHolidays().find((h: any) => h.date === selectedCalendarDate);
+                    return selectedDateHoliday ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const idx = getBusinessHolidays().findIndex((h: any) => h.date === selectedCalendarDate);
+                          openEditHolidayModal(selectedDateHoliday, idx);
+                        }}
+                        className="px-2.5 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-800 text-xs font-extrabold rounded-xl border border-rose-200 transition-all cursor-pointer flex items-center gap-1"
+                        title="Edit holiday settings for this date"
+                      >
+                        <span>🌴 Edit Holiday</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => openAddHolidayModal(selectedCalendarDate)}
+                        className="px-2 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold rounded-xl border border-rose-200 transition-all cursor-pointer flex items-center gap-1"
+                        title="Set this date as a holiday or closure"
+                      >
+                        <span>🌴 Set Holiday</span>
+                      </button>
+                    );
+                  })()}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMbDate(selectedCalendarDate);
+                      setShowManualBookingModal(true);
+                    }}
+                    className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-xl border border-indigo-100 transition-all cursor-pointer flex items-center gap-1"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ Book</span>
+                  </button>
+                </div>
               </div>
+
+              {/* Holiday Callout if selected date is a holiday */}
+              {(() => {
+                const dayHoliday = getBusinessHolidays().find((h: any) => h.date === selectedCalendarDate);
+                if (!dayHoliday) return null;
+
+                return (
+                  <div className="bg-rose-50 border border-rose-200 rounded-2xl p-3.5 text-xs text-rose-950 space-y-1.5 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-black text-rose-900 flex items-center gap-1.5 text-xs uppercase tracking-wider">
+                        <span>🌴</span>
+                        <span>
+                          {dayHoliday.type === 'FULL_DAY'
+                            ? 'Full-Day Holiday Closure'
+                            : dayHoliday.type === 'HALF_DAY_MORNING'
+                            ? 'Half-Day Morning Closure'
+                            : dayHoliday.type === 'HALF_DAY_AFTERNOON'
+                            ? 'Half-Day Afternoon Closure'
+                            : 'Custom Timed Closure'}
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteHoliday(selectedCalendarDate)}
+                        className="text-[11px] text-rose-700 hover:text-rose-900 underline font-bold cursor-pointer"
+                      >
+                        Remove Closure
+                      </button>
+                    </div>
+                    <p className="font-bold text-slate-800">
+                      Reason: <span className="font-normal text-slate-700">{dayHoliday.reason || 'Public Holiday / Closure'}</span>
+                    </p>
+                    <p className="text-[11px] text-slate-600">
+                      {dayHoliday.type === 'FULL_DAY' && 'Customer app slots are completely blocked for this entire day.'}
+                      {dayHoliday.type === 'HALF_DAY_MORNING' && `Morning slots before ${dayHoliday.customEndTime || '13:00'} are closed for customers.`}
+                      {dayHoliday.type === 'HALF_DAY_AFTERNOON' && `Afternoon slots after ${dayHoliday.customStartTime || '13:00'} are closed for customers.`}
+                      {dayHoliday.type === 'CUSTOM_HOURS' && `Slots between ${dayHoliday.customStartTime} – ${dayHoliday.customEndTime} are closed for customers.`}
+                    </p>
+                  </div>
+                );
+              })()}
 
               {/* Bookings List for selected date */}
               <div className="space-y-3 flex-1 overflow-y-auto max-h-[500px] pr-1">
@@ -3819,7 +5372,29 @@ export const OwnerDashboard: React.FC = () => {
                         <div className="bg-white p-2.5 rounded-xl border border-slate-200/80 space-y-1">
                           <div className="flex items-center justify-between gap-2">
                             <span className="font-bold text-slate-800 text-xs truncate">{bk.customerName}</span>
-                            <span className="text-[10px] font-mono text-slate-500 font-bold">{bk.customerPhone || 'Phone N/A'}</span>
+                            {bk.customerPhone && bk.customerPhone.trim() !== '' && bk.customerPhone.trim().toUpperCase() !== 'NA' && bk.customerPhone.trim().toUpperCase() !== 'N/A' ? (
+                              <div className="flex items-center gap-1.5 font-mono">
+                                <span className="text-[11px] text-slate-700 font-bold flex items-center gap-1">
+                                  <Phone className="w-3 h-3 text-emerald-600 shrink-0" />
+                                  <span className="text-[9px] text-slate-400 font-sans uppercase font-bold">Phone:</span>
+                                  <a href={`tel:${bk.customerPhone}`} className="hover:text-indigo-600 hover:underline">{bk.customerPhone}</a>
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => openWhatsAppCustomer(bk.customerPhone, bk.customerName, bk.date, bk.timeSlot, bk.serviceName)}
+                                  className="inline-flex items-center gap-0.5 px-1 py-0.2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded text-[9px] font-bold border border-emerald-200 cursor-pointer shadow-2xs"
+                                  title="Send WhatsApp Message"
+                                >
+                                  <MessageCircle className="w-2.5 h-2.5 fill-emerald-600" />
+                                  <span>WA</span>
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-[10px] text-slate-400 italic flex items-center gap-1">
+                                <Phone className="w-2.5 h-2.5 text-slate-300" />
+                                <span>No phone</span>
+                              </span>
+                            )}
                           </div>
 
                           {bk.vehicleInfo && (
@@ -3831,7 +5406,21 @@ export const OwnerDashboard: React.FC = () => {
 
                           <div className="flex items-center justify-between gap-2 text-[11px] pt-1 border-t border-slate-100">
                             <span className="text-slate-500 font-bold">Service: <strong className="text-indigo-700">{bk.serviceName || 'Standard Wash'}</strong></span>
-                            <span className="font-black text-slate-900 font-mono">BND ${(bk.price || 15.00).toFixed(2)}</span>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingBooking(bk);
+                                  setShowEditBookingModal(true);
+                                }}
+                                className="px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 rounded-md text-[10px] font-extrabold flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
+                                title="Edit Services, Add-ons & Total Price"
+                              >
+                                <Pencil className="w-3 h-3 text-indigo-600" />
+                                <span>Edit</span>
+                              </button>
+                              <span className="font-black text-slate-900 font-mono">BND ${(bk.price || 15.00).toFixed(2)}</span>
+                            </div>
                           </div>
                         </div>
 
@@ -3864,328 +5453,578 @@ export const OwnerDashboard: React.FC = () => {
               </div>
             </div>
           </div>
+
+          {/* 🌴 Scheduled Holidays & Closures Management Section */}
+          <div className="bg-white border border-slate-200/80 rounded-3xl p-5 sm:p-6 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🌴</span>
+                <div>
+                  <h3 className="font-extrabold text-slate-800 text-base">
+                    Business Holidays & Schedule Overrides
+                  </h3>
+                  <p className="text-slate-500 text-xs mt-0.5">
+                    Configure full-day or half-day closures. Customer app slots will be automatically blocked for these dates.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => openAddHolidayModal()}
+                className="px-3.5 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-extrabold text-xs shadow-xs transition-all flex items-center gap-1.5 cursor-pointer shrink-0 self-start sm:self-auto"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ Add New Holiday / Closure</span>
+              </button>
+            </div>
+
+            {(() => {
+              const holidays = getBusinessHolidays();
+              if (holidays.length === 0) {
+                return (
+                  <div className="text-center py-8 bg-slate-50/70 rounded-2xl border border-dashed border-slate-200 p-4 space-y-2">
+                    <span className="text-2xl block">🗓️</span>
+                    <p className="text-xs font-bold text-slate-600">No upcoming holidays or custom closures configured.</p>
+                    <p className="text-[11px] text-slate-400">
+                      If you have public holidays, staff retreats, or half-day closures, add them here so customers cannot book during closed periods.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => openAddHolidayModal()}
+                      className="mt-2 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold rounded-xl border border-rose-200 cursor-pointer inline-flex items-center gap-1"
+                    >
+                      <span>+ Mark First Holiday</span>
+                    </button>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {holidays.map((h: any, idx: number) => {
+                    const parts = h.date.split('-');
+                    let formattedDate = h.date;
+                    if (parts.length === 3) {
+                      const dObj = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+                      formattedDate = dObj.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+                    }
+
+                    return (
+                      <div
+                        key={`${h.date}-${idx}`}
+                        className="bg-slate-50/80 border border-slate-200 rounded-2xl p-3.5 flex flex-col justify-between space-y-3 hover:border-rose-300 transition-colors shadow-2xs"
+                      >
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-black text-slate-800 font-mono flex items-center gap-1">
+                              <Calendar className="w-3.5 h-3.5 text-indigo-600" />
+                              {formattedDate}
+                            </span>
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-md border ${
+                              h.type === 'FULL_DAY'
+                                ? 'bg-rose-100 text-rose-900 border-rose-200'
+                                : 'bg-amber-100 text-amber-900 border-amber-200'
+                            }`}>
+                              {h.type === 'FULL_DAY'
+                                ? 'Full Day'
+                                : h.type === 'HALF_DAY_MORNING'
+                                ? 'Half Day AM'
+                                : h.type === 'HALF_DAY_AFTERNOON'
+                                ? 'Half Day PM'
+                                : 'Custom Hours'}
+                            </span>
+                          </div>
+
+                          <p className="text-xs font-bold text-slate-700 truncate">
+                            {h.reason || 'Public Holiday / Closure'}
+                          </p>
+
+                          <p className="text-[11px] text-slate-500">
+                            {h.type === 'FULL_DAY' && '🛑 All appointment slots closed.'}
+                            {h.type === 'HALF_DAY_MORNING' && `🛑 Morning closed before ${h.customEndTime || '13:00'}. Afternoon slots open.`}
+                            {h.type === 'HALF_DAY_AFTERNOON' && `🛑 Afternoon closed after ${h.customStartTime || '13:00'}. Morning slots open.`}
+                            {h.type === 'CUSTOM_HOURS' && `🛑 Closed between ${h.customStartTime} – ${h.customEndTime}.`}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200/70">
+                          <button
+                            type="button"
+                            onClick={() => openEditHolidayModal(h, idx)}
+                            className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-lg border border-slate-200 transition-colors cursor-pointer"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteHoliday(h.date)}
+                            className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold rounded-lg border border-rose-200 transition-colors cursor-pointer"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </div>
         </div>
       )}
 
-      {/* 🚀 System Operations & Live Audit Center */}
-      {activeTab === 'settings' && (
-        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
-          <div className="text-left">
-            <h3 className="font-extrabold text-slate-800 text-lg flex items-center gap-2">
-              <span className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg shrink-0">
-                <Sliders className="h-5 w-5" />
-              </span>
-              System Operations & Live Audit Center
-            </h3>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Live tracking of system configuration edits, administrative audits, and focused booking operator management.
-            </p>
-          </div>
-          <div className="flex items-center gap-2 self-start sm:self-center">
-            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Live Activity Monitor</span>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Left Panel: Focused Booking Quick Inspector (5 Cols) */}
-          <div className="lg:col-span-5 space-y-4">
-            <div className="bg-slate-50 border border-slate-150 rounded-2xl p-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-black text-slate-700 uppercase tracking-wider">
-                  Booking Quick Inspector
+      {/* ⭐ Customer Reviews & Ratings Tab (Structured and ready when reviews are activated) */}
+      {FEATURES.ENABLE_REVIEWS && activeTab === 'reviews' && (
+        <div className="space-y-6 animate-fade-in" id="owner-reviews-management-section">
+          {/* Header & Overview */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-200">
+            <div>
+              <h2 className="text-xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+                <span>Customer Reviews & Ratings</span>
+                <span className="text-xs font-semibold bg-amber-50 text-amber-700 px-2.5 py-0.5 rounded-full border border-amber-200">
+                  {ownerReviews.length} {ownerReviews.length === 1 ? 'Review' : 'Reviews'}
                 </span>
-                {focusedBookingId && bookings.find((b) => b.id === focusedBookingId) && (
-                  <span className="text-[10px] font-mono bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-bold animate-pulse">
-                    In Focus
-                  </span>
-                )}
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Monitor feedback for {selectedBusiness?.name || 'your car wash'}, engage by replying to customers, and track rating trends.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={fetchOwnerReviews}
+                disabled={isLoadingReviews}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isLoadingReviews ? 'animate-spin text-indigo-600' : 'text-slate-400'}`} />
+                <span>{isLoadingReviews ? 'Refreshing...' : 'Refresh'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Rating Summary Card */}
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 shadow-xs">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
+              {/* Overall Score */}
+              <div className="md:col-span-4 flex flex-col items-center justify-center text-center p-4 bg-slate-50/70 rounded-2xl border border-slate-150">
+                <span className="text-5xl font-black text-slate-900 font-mono tracking-tight">
+                  {ownerReviewSummary.averageRating > 0 ? ownerReviewSummary.averageRating.toFixed(1) : '—'}
+                </span>
+                <div className="flex items-center gap-1 mt-2">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <Star
+                      key={star}
+                      className={`w-5 h-5 ${
+                        star <= Math.round(ownerReviewSummary.averageRating)
+                          ? 'fill-amber-400 text-amber-400'
+                          : 'fill-slate-200 text-slate-200'
+                      }`}
+                    />
+                  ))}
+                </div>
+                <span className="text-xs text-slate-500 mt-2 font-medium">
+                  Based on {ownerReviewSummary.totalReviews} customer {ownerReviewSummary.totalReviews === 1 ? 'rating' : 'ratings'}
+                </span>
               </div>
 
-              {(() => {
-                const focusedBooking = bookings.find((b) => b.id === focusedBookingId);
-                if (!focusedBooking) {
+              {/* Breakdown Bars */}
+              <div className="md:col-span-5 space-y-1.5">
+                {[5, 4, 3, 2, 1].map((star) => {
+                  const count = ownerReviewSummary.ratingCounts[star] || 0;
+                  const pct = ownerReviewSummary.totalReviews > 0 ? (count / ownerReviewSummary.totalReviews) * 100 : 0;
                   return (
-                    <div className="text-center py-12 text-slate-400">
-                      <Calendar className="h-8 w-8 text-slate-300 mx-auto mb-2" />
-                      <p className="font-semibold text-xs">No Booking Selected</p>
-                      <p className="text-[10px] text-slate-400 mt-0.5">Click any booking card above to inspect and assign operators.</p>
-                    </div>
-                  );
-                }
-
-                return (
-                  <div className="space-y-4 text-xs sm:text-sm">
-                    {/* Customer Main Info */}
-                    <div className="bg-white border border-slate-200/60 p-3 rounded-xl space-y-1 text-left">
-                      <div className="flex items-center justify-between">
-                        <strong className="text-slate-800 text-sm">{focusedBooking.customerName}</strong>
-                        <span className={`px-2 py-0.5 text-[9px] font-extrabold rounded-full border uppercase ${
-                          focusedBooking.status === BookingStatus.COMPLETED
-                            ? 'bg-emerald-50 text-emerald-800 border-emerald-100'
-                            : focusedBooking.status === BookingStatus.IN_PROGRESS
-                            ? 'bg-sky-50 text-sky-800 border-sky-100 animate-pulse'
-                            : focusedBooking.status === BookingStatus.PENDING
-                            ? 'bg-amber-50 text-amber-800 border-amber-100'
-                            : focusedBooking.status === BookingStatus.REJECTED
-                            ? 'bg-rose-50 text-rose-800 border-rose-100'
-                            : 'bg-slate-50 text-slate-600 border-slate-100'
-                        }`}>
-                          {focusedBooking.status}
-                        </span>
-                      </div>
-                      <span className="text-[11px] text-slate-400 font-mono block">{focusedBooking.customerEmail}</span>
-                      <span className="text-[11px] text-slate-600 block">
-                        <strong>Scheduled:</strong> {focusedBooking.date} @ {focusedBooking.timeSlot}
+                    <button
+                      key={star}
+                      type="button"
+                      onClick={() => setReviewStarFilter(reviewStarFilter === star ? 'ALL' : star)}
+                      className={`w-full flex items-center gap-2.5 text-xs px-2 py-1 rounded-lg transition-colors cursor-pointer ${
+                        reviewStarFilter === star ? 'bg-indigo-50 font-bold' : 'hover:bg-slate-50'
+                      }`}
+                    >
+                      <span className="w-7 text-right font-semibold text-slate-600 flex items-center justify-end gap-0.5">
+                        {star} <Star className="w-3 h-3 fill-amber-400 text-amber-400 inline" />
                       </span>
-                    </div>
+                      <div className="flex-1 h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-amber-400 rounded-full transition-all duration-500"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                      <span className="w-8 text-right font-mono text-slate-500 text-[11px]">{count}</span>
+                    </button>
+                  );
+                })}
+              </div>
 
-                    {/* Selected Service & Vehicle Notes */}
-                    <div className="space-y-2 text-left">
-                      <div className="bg-white border border-slate-200/60 p-3 rounded-xl flex justify-between items-center">
-                        <div>
-                          <span className="text-[10px] text-slate-400 uppercase font-bold block">Selected Service / Item</span>
-                          <span className="font-bold text-slate-700 text-xs">{focusedBooking.serviceName || 'Standard Car Wash'}</span>
-                        </div>
-                        <span className="font-mono font-black text-indigo-600 text-sm">
-                          BND ${(focusedBooking.price || 15).toFixed(2)}
+              {/* Attention Metrics */}
+              <div className="md:col-span-3 flex flex-col justify-center space-y-3 border-t md:border-t-0 md:border-l border-slate-150 pt-4 md:pt-0 md:pl-6">
+                <div>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">Needs Response</span>
+                  {(() => {
+                    const unrepliedCount = ownerReviews.filter((r) => !r.ownerReply).length;
+                    return (
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className={`text-2xl font-black font-mono ${unrepliedCount > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                          {unrepliedCount}
                         </span>
-                      </div>
-
-                      <div className="bg-white border border-slate-200/60 p-3 rounded-xl">
-                        <span className="text-[10px] text-slate-400 uppercase font-bold block mb-1">Customer Notes / Vehicle Info</span>
-                        <p className="text-slate-600 text-[11px] leading-relaxed italic bg-slate-50/50 p-2 rounded-lg border border-slate-100">
-                          {focusedBooking.notes || 'No custom notes provided.'}
-                        </p>
-                      </div>
-                    </div>
-
-                     {/* Brunei Payment Status Verification */}
-                    {focusedBooking.paymentBank ? (
-                      <div className="bg-sky-50/40 border border-sky-100 p-3 rounded-xl space-y-2 text-left">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] text-sky-700 uppercase font-bold">Payment verification</span>
-                          <span className="text-[9px] font-black bg-sky-100 text-sky-800 px-1.5 py-0.5 rounded uppercase font-mono">
-                            {focusedBooking.paymentBank}
+                        {unrepliedCount > 0 ? (
+                          <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-md">
+                            Pending
                           </span>
-                        </div>
-                        <div className="text-[11px] space-y-1">
-                          <div>
-                            <span className="text-slate-400">Reference:</span>{' '}
-                            <strong className="font-mono text-slate-700">{focusedBooking.txnReference}</strong>
+                        ) : (
+                          <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md">
+                            All Caught Up
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                <div>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">5-Star Satisfaction</span>
+                  <div className="mt-0.5">
+                    <span className="text-2xl font-black font-mono text-slate-800">
+                      {ownerReviewSummary.totalReviews > 0
+                        ? `${Math.round(((ownerReviewSummary.ratingCounts[5] || 0) / ownerReviewSummary.totalReviews) * 100)}%`
+                        : '—'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Filtering and Search Toolbar */}
+          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200/80">
+            {/* Status Pills */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0">
+              <button
+                type="button"
+                onClick={() => setReviewStatusFilter('ALL')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
+                  reviewStatusFilter === 'ALL'
+                    ? 'bg-indigo-600 text-white shadow-2xs'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                }`}
+              >
+                All ({ownerReviews.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setReviewStatusFilter('UNREPLIED')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1 ${
+                  reviewStatusFilter === 'UNREPLIED'
+                    ? 'bg-amber-600 text-white shadow-2xs'
+                    : 'bg-amber-50 hover:bg-amber-100 text-amber-800'
+                }`}
+              >
+                <span>Needs Reply</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/30">
+                  {ownerReviews.filter((r) => !r.ownerReply).length}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setReviewStatusFilter('REPLIED')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
+                  reviewStatusFilter === 'REPLIED'
+                    ? 'bg-emerald-600 text-white shadow-2xs'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                }`}
+              >
+                Replied ({ownerReviews.filter((r) => !!r.ownerReply).length})
+              </button>
+            </div>
+
+            {/* Right: Star Filter & Search */}
+            <div className="flex items-center gap-2">
+              <select
+                value={reviewStarFilter}
+                onChange={(e) => setReviewStarFilter(e.target.value === 'ALL' ? 'ALL' : Number(e.target.value))}
+                className="bg-white border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl px-2.5 py-1.5 outline-none focus:border-indigo-500"
+              >
+                <option value="ALL">All Stars</option>
+                <option value="5">5 Stars only</option>
+                <option value="4">4 Stars only</option>
+                <option value="3">3 Stars only</option>
+                <option value="2">2 Stars only</option>
+                <option value="1">1 Star only</option>
+              </select>
+
+              <div className="relative flex-1 md:w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Search reviews or customer..."
+                  value={reviewSearchQuery}
+                  onChange={(e) => setReviewSearchQuery(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1.5 border border-slate-200 rounded-xl text-xs text-slate-800 outline-none focus:border-indigo-500"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Reviews List */}
+          {(() => {
+            const filtered = ownerReviews.filter((r) => {
+              if (reviewStatusFilter === 'UNREPLIED' && r.ownerReply) return false;
+              if (reviewStatusFilter === 'REPLIED' && !r.ownerReply) return false;
+              if (reviewStarFilter !== 'ALL' && r.rating !== reviewStarFilter) return false;
+              if (reviewSearchQuery.trim()) {
+                const q = reviewSearchQuery.toLowerCase();
+                const matchName = r.customerName?.toLowerCase().includes(q);
+                const matchComment = r.comment?.toLowerCase().includes(q);
+                const matchReply = r.ownerReply?.toLowerCase().includes(q);
+                if (!matchName && !matchComment && !matchReply) return false;
+              }
+              return true;
+            });
+
+            if (isLoadingReviews) {
+              return (
+                <div className="p-12 text-center bg-white rounded-2xl border border-slate-200">
+                  <RefreshCw className="w-8 h-8 text-indigo-600 animate-spin mx-auto mb-2" />
+                  <p className="text-xs text-slate-500 font-medium">Loading customer reviews...</p>
+                </div>
+              );
+            }
+
+            if (filtered.length === 0) {
+              return (
+                <div className="p-12 text-center bg-white rounded-2xl border border-slate-200/80 space-y-3">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-500 flex items-center justify-center mx-auto">
+                    <Star className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-slate-800 text-sm">No Reviews Found</h4>
+                    <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                      {ownerReviews.length === 0
+                        ? 'Your business does not have any customer reviews yet. Ratings will appear here once customers review completed washes.'
+                        : 'No reviews match your current filters. Try changing your search query or rating filter.'}
+                    </p>
+                  </div>
+                  {(reviewStatusFilter !== 'ALL' || reviewStarFilter !== 'ALL' || reviewSearchQuery.trim()) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReviewStatusFilter('ALL');
+                        setReviewStarFilter('ALL');
+                        setReviewSearchQuery('');
+                      }}
+                      className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                    >
+                      Reset Filters
+                    </button>
+                  )}
+                </div>
+              );
+            }
+
+            return (
+              <div className="space-y-4">
+                {filtered.map((r) => {
+                  const isReplying = activeReplyingReviewId === r.id;
+                  const isModerator = user?.role === Role.ADMIN || user?.role === Role.SPECIAL;
+
+                  return (
+                    <div
+                      key={r.id}
+                      className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs transition-shadow hover:shadow-sm"
+                    >
+                      {/* Top Review Metadata */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-indigo-500 to-indigo-700 text-white font-black text-xs flex items-center justify-center uppercase shadow-2xs">
+                            {r.customerName ? r.customerName.charAt(0) : 'C'}
                           </div>
-                          {focusedBooking.receiptFilename && (
-                            <div className="pt-1.5 flex items-center justify-between">
-                              <span className="text-[10px] text-slate-400">Receipt upload:</span>
-                              <a
-                                href={`/uploads/${focusedBooking.receiptFilename}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 font-bold text-indigo-600 hover:text-indigo-700 hover:underline bg-white border border-indigo-100 px-2.5 py-1 rounded-lg shadow-2xs text-[10px]"
-                              >
-                                <span>🔍 View Receipt</span>
-                              </a>
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-slate-900 text-sm">{r.customerName || 'Verified Customer'}</span>
+                              <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded-md">
+                                <Check className="w-3 h-3" /> Verified
+                              </span>
                             </div>
+                            <span className="text-[11px] text-slate-400">
+                              {new Date(r.createdAt).toLocaleDateString(undefined, {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                              })}
+                              {r.updatedAt && r.updatedAt !== r.createdAt && ' (edited)'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Star Rating Badge */}
+                        <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-0.5 bg-amber-50 border border-amber-200/80 px-2 py-1 rounded-xl">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <Star
+                                key={star}
+                                className={`w-3.5 h-3.5 ${
+                                  star <= r.rating ? 'fill-amber-400 text-amber-400' : 'fill-slate-200 text-slate-200'
+                                }`}
+                              />
+                            ))}
+                            <span className="ml-1 text-xs font-black text-amber-900 font-mono">{r.rating}.0</span>
+                          </div>
+
+                          {/* Moderator Delete Option */}
+                          {isModerator && (
+                            <button
+                              type="button"
+                              onClick={() => handleModeratorDeleteReview(r.id)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              title="Delete Review (Spam / Inappropriate Content)"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           )}
                         </div>
                       </div>
-                    ) : (
-                      <div className="bg-emerald-50/40 border border-emerald-100 p-3 rounded-xl space-y-1 text-left">
-                        <span className="text-[10px] text-emerald-800 uppercase font-bold block">Payment Method</span>
-                        <div className="text-slate-700 font-bold text-xs flex items-center gap-1.5 pt-0.5">
-                          <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
-                          <span>Cash / Pay on Site</span>
-                        </div>
-                        <p className="text-[9px] text-slate-400 leading-relaxed pt-0.5">
-                          No upfront payment required. This booking is confirmed for physical payment upon arrival at the facility.
-                        </p>
+
+                      {/* Review Comment */}
+                      <div className="mt-3.5 text-xs sm:text-sm text-slate-700 leading-relaxed break-words whitespace-pre-line">
+                        {r.comment || <span className="italic text-slate-400">No written comment provided.</span>}
                       </div>
-                    )}
 
-                    {/* Assign Operator Field */}
-                    <div className="bg-white border border-slate-200 p-3 rounded-xl space-y-2 text-left">
-                      <div>
-                        <span className="text-[10px] text-slate-400 uppercase font-bold block">Assign Staff Operator</span>
-                        <p className="text-[10px] text-slate-400">Assign a specific operator employee to perform this cleaning</p>
-                      </div>
-                      <select
-                        value={focusedBooking.employeeId || ''}
-                        onChange={async (e) => {
-                          const empId = e.target.value || undefined;
-                          await updateBookingStatus(focusedBooking.id, focusedBooking.status, focusedBooking.notes, empId);
-                          fetchOwnerLogs();
-                        }}
-                        className="bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold rounded-lg px-2.5 py-1.5 outline-none focus:border-indigo-500 shadow-xs w-full cursor-pointer"
-                      >
-                        <option value="">-- Unassigned / Pool --</option>
-                        {filteredEmployees.map((emp) => (
-                          <option key={emp.id} value={emp.id}>{emp.name}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Quick Actions inside inspector */}
-                    <div className="pt-2 flex gap-2">
-                      {focusedBooking.status === BookingStatus.PENDING && (
-                        <button
-                          onClick={async () => {
-                            await updateBookingStatus(focusedBooking.id, BookingStatus.IN_PROGRESS);
-                            fetchOwnerLogs();
-                          }}
-                          className="flex-1 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-2xs transition-colors cursor-pointer"
-                        >
-                          Accept & Start
-                        </button>
-                      )}
-                      {focusedBooking.status === BookingStatus.IN_PROGRESS && (
-                        <button
-                          onClick={async () => {
-                            await updateBookingStatus(focusedBooking.id, BookingStatus.COMPLETED);
-                            fetchOwnerLogs();
-                          }}
-                          className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg shadow-2xs transition-colors cursor-pointer animate-pulse"
-                        >
-                          Complete Wash
-                        </button>
-                      )}
-                      {(focusedBooking.status === BookingStatus.PENDING || focusedBooking.status === BookingStatus.IN_PROGRESS) && (
-                        <button
-                          onClick={async () => {
-                            await updateBookingStatus(focusedBooking.id, BookingStatus.CANCELLED);
-                            fetchOwnerLogs();
-                          }}
-                          className="py-1.5 px-3 bg-white border border-rose-250 text-rose-600 hover:bg-rose-50 text-xs font-bold rounded-lg transition-colors cursor-pointer"
-                        >
-                          Cancel
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-          </div>
-
-          {/* Right Panel: Audit Logs & Configuration Edits feed (7 Cols) */}
-          <div className="lg:col-span-7 flex flex-col h-full space-y-4">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-left">
-              <span className="text-xs font-black text-slate-700 uppercase tracking-wider">
-                Audit Feed & Activity logs
-              </span>
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                {/* Search */}
-                <input
-                  type="text"
-                  placeholder="Search edits..."
-                  value={logSearch}
-                  onChange={(e) => setLogSearch(e.target.value)}
-                  className="px-2.5 py-1 text-xs border border-slate-200 rounded-lg outline-none focus:border-indigo-500 bg-white"
-                />
-                {/* Filter Selector */}
-                <select
-                  value={logFilter}
-                  onChange={(e) => setLogFilter(e.target.value)}
-                  className="bg-white border border-slate-200 text-slate-600 text-xs rounded-lg px-2 py-1 outline-none cursor-pointer"
-                >
-                  <option value="ALL">All Events</option>
-                  <option value="CAR_WASH">Configuration Edits</option>
-                  <option value="EMPLOYEE">Employee Actions</option>
-                  <option value="BOOKING">Booking Updates</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Logs Timeline */}
-            <div className="border border-slate-150 rounded-2xl p-4 bg-slate-50/50 flex-1 min-h-[300px] max-h-[460px] overflow-y-auto space-y-3">
-              {(() => {
-                const filtered = ownerLogs.filter((log) => {
-                  // Keyword Match
-                  if (logSearch.trim()) {
-                    const searchLower = logSearch.toLowerCase();
-                    const actionMatches = log.action && log.action.toLowerCase().includes(searchLower);
-                    const detailsMatches = log.details && log.details.toLowerCase().includes(searchLower);
-                    const emailMatches = log.userEmail && log.userEmail.toLowerCase().includes(searchLower);
-                    if (!actionMatches && !detailsMatches && !emailMatches) return false;
-                  }
-                  
-                  // Category Match
-                  if (logFilter === 'CAR_WASH') {
-                    return log.action.startsWith('CAR_WASH');
-                  } else if (logFilter === 'EMPLOYEE') {
-                    return log.action.startsWith('EMPLOYEE');
-                  } else if (logFilter === 'BOOKING') {
-                    return log.action.startsWith('BOOKING') || log.action === 'STATUS_UPDATE';
-                  }
-                  return true;
-                });
-
-                if (filtered.length === 0) {
-                  return (
-                    <div className="text-center py-20 text-slate-400">
-                      <svg className="w-8 h-8 text-slate-200 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      <p className="font-semibold text-xs">No audits found matching current filters.</p>
-                      <p className="text-[10px] mt-0.5 text-slate-400">Operations will log automatically when edits are made.</p>
-                    </div>
-                  );
-                }
-
-                return (
-                  <div className="space-y-3 text-xs">
-                    {filtered.map((log) => {
-                      const dateObj = new Date(log.timestamp);
-                      const formattedTime = dateObj.toLocaleDateString('en-GB', {
-                        day: 'numeric',
-                        month: 'short',
-                      }) + ' ' + dateObj.toLocaleTimeString('en-GB', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      });
-
-                      // Badge styles based on Action
-                      let badgeStyle = 'bg-slate-100 text-slate-600 border-slate-200/80';
-                      if (log.action.includes('CAR_WASH')) {
-                        badgeStyle = 'bg-sky-50 text-sky-800 border-sky-100';
-                      } else if (log.action.includes('EMPLOYEE')) {
-                        badgeStyle = 'bg-indigo-50 text-indigo-800 border-indigo-100';
-                      } else if (log.action.includes('BOOKING') || log.action.includes('STATUS')) {
-                        badgeStyle = 'bg-emerald-50 text-emerald-800 border-emerald-100';
-                      }
-
-                      return (
-                        <div key={log.id} className="bg-white border border-slate-200/60 p-3 rounded-xl flex items-start gap-3 shadow-2xs hover:border-slate-300 transition-colors">
-                          <div className="flex-1 min-w-0 text-left">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded border uppercase ${badgeStyle}`}>
-                                {log.action.replace(/_/g, ' ')}
-                              </span>
-                              <span className="text-[10px] text-slate-400 font-mono ml-auto">
-                                {formattedTime}
-                              </span>
-                            </div>
-                            <p className="text-slate-700 font-medium text-[11px] mt-1.5 leading-relaxed">
-                              {log.details}
-                            </p>
-                            <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-1">
-                              <span>By:</span>
-                              <strong className="font-mono text-slate-500 font-semibold">{log.userEmail}</strong>
+                      {/* Owner Response Section */}
+                      {r.ownerReply && !isReplying && (
+                        <div className="mt-4 pl-3 sm:pl-4 border-l-2 border-indigo-400 bg-indigo-50/50 p-3.5 rounded-r-xl border-y border-r border-indigo-100">
+                          <div className="flex items-center justify-between gap-2 mb-1.5">
+                            <span className="text-[11px] font-bold text-indigo-900 flex items-center gap-1.5">
+                              <CornerDownRight className="w-3.5 h-3.5 text-indigo-600" />
+                              Response from {selectedBusiness?.name || 'Business Owner'}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              {r.ownerReplyAt && (
+                                <span className="text-[10px] text-slate-400">
+                                  {new Date(r.ownerReplyAt).toLocaleDateString(undefined, {
+                                    year: 'numeric',
+                                    month: 'short',
+                                    day: 'numeric',
+                                  })}
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveReplyingReviewId(r.id);
+                                  setOwnerReplyComment(r.ownerReply || '');
+                                }}
+                                className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 underline cursor-pointer"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleOwnerDeleteReply(r.id)}
+                                className="text-[10px] font-bold text-rose-600 hover:text-rose-800 underline cursor-pointer"
+                              >
+                                Remove
+                              </button>
                             </div>
                           </div>
+                          <p className="text-xs text-slate-800 whitespace-pre-line leading-relaxed">
+                            {r.ownerReply}
+                          </p>
                         </div>
-                      );
-                    })}
-                  </div>
-                );
-              })()}
-            </div>
-          </div>
+                      )}
+
+                      {/* Unreplied Action Bar */}
+                      {!r.ownerReply && !isReplying && (
+                        <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                          <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                            <Info className="w-3.5 h-3.5 text-slate-400" />
+                            Replying shows customers you value their experience.
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveReplyingReviewId(r.id);
+                              setOwnerReplyComment('');
+                            }}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                          >
+                            <MessageSquare className="w-3.5 h-3.5" />
+                            <span>Reply to Customer</span>
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Active Reply Editor Form */}
+                      {isReplying && (
+                        <div className="mt-4 pt-3 border-t border-slate-150 space-y-2.5">
+                          <div className="flex items-center justify-between">
+                            <label className="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
+                              <MessageSquare className="w-3.5 h-3.5 text-indigo-600" />
+                              {r.ownerReply ? 'Edit Business Response' : `Reply to ${r.customerName || 'Customer'}`}
+                            </label>
+                            <span className="text-[10px] font-mono text-slate-400">
+                              {ownerReplyComment.length}/250 characters
+                            </span>
+                          </div>
+
+                          <textarea
+                            rows={2}
+                            maxLength={250}
+                            placeholder="Thank the customer for their visit or address any concerns..."
+                            value={ownerReplyComment}
+                            onChange={(e) => setOwnerReplyComment(e.target.value)}
+                            className="w-full p-3 border border-indigo-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 rounded-xl text-xs text-slate-800 outline-none leading-relaxed"
+                          />
+
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveReplyingReviewId(null);
+                                setOwnerReplyComment('');
+                              }}
+                              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleOwnerSubmitReply(r.id)}
+                              disabled={!ownerReplyComment.trim() || isPostingReply}
+                              className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl text-xs font-bold shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5"
+                            >
+                              {isPostingReply ? (
+                                <>
+                                  <RefreshCw className="w-3 h-3 animate-spin" />
+                                  <span>Publishing...</span>
+                                </>
+                              ) : (
+                                <span>Publish Response</span>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
-      </div>
       )}
 
-      {/* Add Employee modal */}
+      {/* 🌟 LOYALTY & REWARDS MANAGEMENT - Only available when activated by Admin / Special User */}
+      {activeTab === 'loyalty' && selectedBusiness && isMembershipEnabled && (
+        <div className="space-y-6 animate-fade-in" id="owner-loyalty-section">
+          <LoyaltyMembershipOwnerView
+            carWash={selectedBusiness}
+            token={token}
+            currentUser={user}
+          />
+        </div>
+      )}
+
       {showEmployeeModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-50 overflow-y-auto animate-fade-in">
           <div className="relative my-auto bg-white rounded-2xl max-w-sm w-full border border-slate-200 shadow-2xl p-5 sm:p-6 text-left max-h-[85vh] overflow-y-auto overscroll-contain">
@@ -4204,7 +6043,7 @@ export const OwnerDashboard: React.FC = () => {
                 <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Employee Name</label>
                 <input
                   type="text"
-                  placeholder="e.g. Sam Employee"
+                  placeholder="e.g. Sam Wilson"
                   value={empName}
                   onChange={(e) => setEmpName(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl"
@@ -4217,7 +6056,7 @@ export const OwnerDashboard: React.FC = () => {
                 <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Email Address</label>
                 <input
                   type="email"
-                  placeholder="sam@carwash.com"
+                  placeholder="Email Address"
                   value={empEmail}
                   onChange={(e) => setEmpEmail(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl"
@@ -4226,11 +6065,33 @@ export const OwnerDashboard: React.FC = () => {
                 />
               </div>
 
-              <div className="bg-amber-50 text-amber-800 p-2.5 rounded-lg border border-amber-150 text-[11px] flex gap-2">
-                <Info className="h-4 w-4 shrink-0 mt-0.5 text-amber-600" />
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  Login Password (Chosen by Owner)
+                </label>
+                <div className="relative">
+                  <input
+                    type={showEmpPassword ? 'text' : 'password'}
+                    placeholder="Set password (or leave empty for 'employee123')"
+                    value={empPassword}
+                    onChange={(e) => setEmpPassword(e.target.value)}
+                    className="w-full px-3 py-2 pr-14 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-mono text-xs"
+                    id="emp-password-input"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowEmpPassword(!showEmpPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer text-xs font-bold"
+                  >
+                    {showEmpPassword ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-indigo-50 text-indigo-900 p-2.5 rounded-xl border border-indigo-100 text-[11px] flex gap-2">
+                <Info className="h-4 w-4 shrink-0 mt-0.5 text-indigo-600" />
                 <p>
-                  Newly registered staff accounts can log in using their email and the default initial password:
-                  <strong className="block font-bold select-all mt-1">employee123</strong>
+                  As owner, you set the staff password above. The employee can log in using their email and this password immediately.
                 </p>
               </div>
 
@@ -4306,7 +6167,7 @@ export const OwnerDashboard: React.FC = () => {
                   required
                 >
                   <option value="">-- Select Business --</option>
-                  {locations.map((loc) => (
+                  {ownerLocations.map((loc) => (
                     <option key={loc.id} value={loc.id}>
                       {loc.name}
                     </option>
@@ -4411,8 +6272,9 @@ export const OwnerDashboard: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
-                    Customer Phone Number *
+                  <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1 flex items-center gap-1">
+                    <Phone className="w-3 h-3 text-emerald-600 shrink-0" />
+                    <span>Customer Phone Number *</span>
                   </label>
                   <input
                     type="tel"
@@ -4425,108 +6287,195 @@ export const OwnerDashboard: React.FC = () => {
                 </div>
               </div>
 
-              {/* Vehicle Info & Email */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
-                    Vehicle Info / Plate Number
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Toyota Fortuner - BAA 1234"
-                    value={mbVehicle}
-                    onChange={(e) => setMbVehicle(e.target.value)}
-                    className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm outline-none focus:border-indigo-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
-                    Customer Email (Optional)
-                  </label>
-                  <input
-                    type="email"
-                    placeholder="ahmad@gmail.com"
-                    value={mbEmail}
-                    onChange={(e) => setMbEmail(e.target.value)}
-                    className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm outline-none focus:border-indigo-500"
-                  />
-                </div>
+              {/* Vehicle Info */}
+              <div>
+                <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
+                  Vehicle Info / Plate Number
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Toyota Fortuner - BAA 1234"
+                  value={mbVehicle}
+                  onChange={(e) => setMbVehicle(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm outline-none focus:border-indigo-500"
+                />
               </div>
 
-              {/* Date & Time Slot */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
-                    Booking Date *
+              {/* Booking Date */}
+              <div>
+                <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
+                  Booking Date *
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={mbDate}
+                  onChange={(e) => setMbDate(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm outline-none focus:border-indigo-500 font-mono"
+                />
+              </div>
+
+              {/* Time Slot Selection */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider">
+                    Time Slot Selection *
                   </label>
-                  <input
-                    type="date"
-                    required
-                    value={mbDate}
-                    onChange={(e) => setMbDate(e.target.value)}
-                    className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm outline-none focus:border-indigo-500 font-mono"
-                  />
+                  <button
+                    type="button"
+                    onClick={() => setMbSelectedSlots([])}
+                    className="text-[10px] font-bold text-amber-600 hover:underline cursor-pointer flex items-center gap-1"
+                    title="Mark booking as unscheduled / immediate walk-in"
+                  >
+                    <span>⚡ Immediate / Walk-In Now</span>
+                  </button>
                 </div>
 
-                <div>
-                  <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
-                    Time Slot *
-                  </label>
-                  <select
-                    value={mbTimeSlot}
-                    onChange={(e) => setMbTimeSlot(e.target.value)}
-                    className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm outline-none focus:border-indigo-500 font-mono"
-                  >
-                    {mbAvailableSlots.length === 0 ? (
-                      <option value="09:00 - 09:30">09:00 - 09:30</option>
-                    ) : (
-                      mbAvailableSlots.map((s) => (
-                        <option key={s.timeSlot} value={s.timeSlot}>
-                          {s.timeSlot} ({s.bookedCount}/{s.capacity} occupied)
-                        </option>
-                      ))
+                <div className="space-y-2">
+                  {/* Selection Summary Header */}
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 flex items-center justify-between text-xs">
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-bold uppercase block">Selected Time Slot</span>
+                      <strong className={`font-mono text-xs sm:text-sm ${mbSelectedSlots.length > 0 ? 'text-indigo-700 font-extrabold' : 'text-slate-600'}`}>
+                        {getFormattedSlotSummary(mbSelectedSlots)}
+                      </strong>
+                    </div>
+                    {mbSelectedSlots.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setMbSelectedSlots([])}
+                        className="text-[10px] font-bold text-slate-500 hover:text-red-600 px-2 py-1 bg-white border border-slate-200 rounded-lg shadow-2xs hover:bg-red-50 transition-colors cursor-pointer"
+                      >
+                        Clear
+                      </button>
                     )}
-                  </select>
+                  </div>
+
+                  {/* Interactive Slots Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-1.5 border border-slate-200 rounded-2xl bg-slate-50/50">
+                    {mbAvailableSlots.length === 0 ? (
+                      <div className="col-span-full p-4 text-center text-slate-400 text-xs">
+                        No predefined slots available for this date. Defaulting to Immediate Walk-In.
+                      </div>
+                    ) : (
+                      mbAvailableSlots.map((s) => {
+                        const isSelected = mbSelectedSlots.includes(s.timeSlot);
+                        const remaining = s.remainingCapacity !== undefined ? s.remainingCapacity : (s.capacity - s.bookedCount);
+                        const isFull = remaining <= 0;
+
+                        return (
+                          <button
+                            key={s.timeSlot}
+                            type="button"
+                            onClick={() => {
+                              if (isSelected) {
+                                setMbSelectedSlots(mbSelectedSlots.filter((slot) => slot !== s.timeSlot));
+                              } else {
+                                setMbSelectedSlots([...mbSelectedSlots, s.timeSlot]);
+                              }
+                            }}
+                            className={`p-2 rounded-xl text-left border transition-all cursor-pointer flex flex-col justify-between ${
+                              isSelected
+                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs font-bold scale-[1.02]'
+                                : isFull
+                                ? 'bg-red-50/80 hover:bg-red-100 border-red-200 text-slate-800'
+                                : 'bg-white hover:bg-slate-100 border-slate-200 text-slate-800'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between text-xs font-mono font-bold">
+                              <span>{s.timeSlot}</span>
+                              {isSelected && <Check className="w-3.5 h-3.5 shrink-0 ml-1" />}
+                            </div>
+                            <div className="mt-1 flex items-center justify-between text-[10px]">
+                              <span className={`font-semibold ${
+                                isSelected
+                                  ? 'text-indigo-100'
+                                  : isFull
+                                  ? 'text-red-600 font-bold'
+                                  : 'text-slate-500'
+                              }`}>
+                                {isFull ? '🔴 0 left (Full)' : `🟢 ${remaining} left`}
+                              </span>
+                              <span className={`font-mono text-[9px] ${isSelected ? 'text-indigo-200' : 'text-slate-400'}`}>
+                                {s.bookedCount}/{s.capacity}
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                  <p className="text-[10px] text-slate-400">
+                    💡 Click a time slot above to reserve a specific time, or leave as Immediate / Walk-In.
+                  </p>
                 </div>
               </div>
 
               {/* Service Selection & Price */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
-                    Wash Service
+              <div className="col-span-full space-y-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider">
+                    Selected Services & Products ({mbSelectedItems.length})
                   </label>
-                  <select
-                    value={mbSelectedServiceId}
-                    onChange={(e) => {
-                      const svcId = e.target.value;
-                      setMbSelectedServiceId(svcId);
-                      const svc = selectedBusiness?.services?.find((s) => s.id === svcId);
-                      if (svc) setMbPrice(svc.price.toFixed(2));
-                    }}
-                    className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm outline-none focus:border-indigo-500"
+                  <button
+                    type="button"
+                    onClick={() => setShowServicePickerModal(true)}
+                    className="w-full sm:w-auto text-xs font-black text-amber-900 bg-amber-100 hover:bg-amber-200 px-3.5 py-2 rounded-xl border border-amber-300 transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs min-h-[38px]"
                   >
-                    <option value="">Standard Wash ($15.00)</option>
-                    {selectedBusiness?.services?.map((svc) => (
-                      <option key={svc.id} value={svc.id}>
-                        {svc.name} - BND ${svc.price.toFixed(2)}
-                      </option>
-                    ))}
-                  </select>
+                    <Sparkles className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                    <span>Tick & Choose Services (Multi-Select)</span>
+                  </button>
                 </div>
 
-                <div>
-                  <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
-                    Price (BND)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={mbPrice}
-                    onChange={(e) => setMbPrice(e.target.value)}
-                    className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm outline-none focus:border-indigo-500 font-mono font-bold"
-                  />
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                  {mbSelectedItems.length === 0 ? (
+                    <div className="text-center py-3 text-xs text-slate-400 font-medium">
+                      No services selected yet. Click "Tick & Choose Services" above.
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                      {mbSelectedItems.map((item, idx) => (
+                        <div
+                          key={`${item.id}_${idx}`}
+                          className="flex flex-col sm:flex-row sm:items-center justify-between bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs gap-1.5 text-xs"
+                        >
+                          <div className="flex items-start gap-2 min-w-0">
+                            <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase shrink-0 mt-0.5 ${
+                              item.type === 'product'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : item.type === 'addon'
+                                ? 'bg-purple-100 text-purple-800'
+                                : 'bg-sky-100 text-sky-800'
+                            }`}>
+                              {item.type === 'product' ? 'Product' : item.type === 'addon' ? 'Add-on' : 'Main'}
+                            </span>
+                            <span className="font-extrabold text-slate-800 text-xs sm:text-sm leading-snug break-words whitespace-normal">
+                              {item.name}
+                            </span>
+                          </div>
+                          <span className="font-mono font-black text-slate-900 shrink-0 self-end sm:self-center ml-2">
+                            BND ${(Number(item.price) || 0).toFixed(2)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-xs font-extrabold">
+                    <span className="text-slate-500">Calculated Charge Total:</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-400 font-normal">
+                        (or override price manually)
+                      </span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={mbPrice}
+                        onChange={(e) => setMbPrice(e.target.value)}
+                        className="w-24 px-2 py-1 border border-slate-300 rounded-lg text-right font-mono font-black text-slate-900 bg-white"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -4544,6 +6493,63 @@ export const OwnerDashboard: React.FC = () => {
                   <option value={BookingStatus.IN_PROGRESS}>🧼 In Progress (Currently in wash bay)</option>
                   <option value={BookingStatus.PENDING}>⏳ Pending (Scheduled call/walk-in)</option>
                 </select>
+              </div>
+
+              {/* On-Site Settlement Method */}
+              <div>
+                <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1.5 flex items-center justify-between">
+                  <span>Payment Settlement Method</span>
+                  <span className="text-[10px] text-slate-400 font-normal lowercase">(collected at counter)</span>
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setMbPaymentMode('Cash')}
+                    className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      mbPaymentMode === 'Cash'
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-900 shadow-2xs'
+                        : 'border-slate-200 bg-slate-50/70 text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    <span>💵</span> Cash
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMbPaymentMode('Transfer')}
+                    className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      mbPaymentMode === 'Transfer'
+                        ? 'border-sky-500 bg-sky-50 text-sky-900 shadow-2xs'
+                        : 'border-slate-200 bg-slate-50/70 text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    <span>📱</span> Bank / Digital Transfer
+                  </button>
+                </div>
+
+                {mbPaymentMode === 'Transfer' && (
+                  <div className="mt-2.5 p-3 bg-sky-50/60 border border-sky-200/80 rounded-xl space-y-2.5 animate-fade-in">
+                    <TransferProviderSelector
+                      value={mbTransferProvider}
+                      onChange={setMbTransferProvider}
+                      idPrefix="od-mb"
+                      businessId={selectedBusiness?.id}
+                      businessMethods={selectedBusinessPaymentMethods}
+                    />
+
+                    <div>
+                      <span className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
+                        Transaction Reference / Approval Code (Optional)
+                      </span>
+                      <input
+                        type="text"
+                        placeholder="e.g. Ref #, approval code, or last 4 digits (8492)"
+                        value={mbTxnReference}
+                        onChange={(e) => setMbTxnReference(e.target.value)}
+                        className="w-full px-3 py-1.5 border border-slate-200 rounded-xl text-slate-800 text-xs font-mono outline-none focus:border-indigo-500"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Notes */}
@@ -4576,6 +6582,246 @@ export const OwnerDashboard: React.FC = () => {
                 >
                   Cancel
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Booking Services & Add-ons Modal */}
+      <EditBookingModal
+        isOpen={showEditBookingModal}
+        onClose={() => {
+          setShowEditBookingModal(false);
+          setEditingBooking(null);
+        }}
+        booking={editingBooking}
+        location={selectedBusiness}
+      />
+
+      {/* Confirmation & Settlement Modal on Job Completion */}
+      <SettlementConfirmationModal
+        isOpen={showSettlementModal}
+        onClose={() => {
+          setShowSettlementModal(false);
+          setSettlementBooking(null);
+        }}
+        booking={settlementBooking}
+        onConfirm={handleConfirmSettlement}
+      />
+
+      {/* Multi-Item Tick Selection Picker Sub-Modal */}
+      <ServicePickerModal
+        isOpen={showServicePickerModal}
+        onClose={() => setShowServicePickerModal(false)}
+        catalog={getCatalogForLocation(selectedBusiness)}
+        selectedItems={mbSelectedItems}
+        onConfirm={(items) => {
+          setMbSelectedItems(items);
+          const total = items.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
+          setMbPrice(total.toFixed(2));
+        }}
+      />
+
+      {/* 🌴 Holiday & Schedule Overrides Management Modal */}
+      {showHolidayModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-50 overflow-y-auto animate-fade-in">
+          <div className="relative my-auto bg-white rounded-3xl max-w-lg w-full border border-slate-200 shadow-2xl p-5 sm:p-7 text-left max-h-[90vh] overflow-y-auto overscroll-contain">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">🌴</span>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-base sm:text-lg">
+                    {editingHolidayIndex !== null ? 'Edit Holiday / Closure' : 'Set Business Holiday / Closure'}
+                  </h3>
+                  <p className="text-slate-500 text-xs mt-0.5">
+                    Block appointment slots for public holidays, half-days, or maintenance.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowHolidayModal(false)}
+                className="p-1.5 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveHoliday} className="mt-4 space-y-4">
+              {/* Date Picker */}
+              <div>
+                <label className="block text-xs font-black uppercase text-slate-700 tracking-wider mb-1">
+                  1. Closure Date
+                </label>
+                <div className="relative">
+                  <Calendar className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                  <input
+                    type="date"
+                    value={holidayDate}
+                    onChange={(e) => setHolidayDate(e.target.value)}
+                    required
+                    className="w-full pl-10 pr-4 py-2.5 border border-slate-200 focus:border-rose-500 focus:ring-2 focus:ring-rose-100 rounded-xl outline-none text-slate-800 text-xs sm:text-sm font-bold bg-white"
+                  />
+                </div>
+              </div>
+
+              {/* Holiday Closure Type */}
+              <div>
+                <label className="block text-xs font-black uppercase text-slate-700 tracking-wider mb-1">
+                  2. Closure Coverage Type
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setHolidayType('FULL_DAY')}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                      holidayType === 'FULL_DAY'
+                        ? 'bg-rose-50 border-rose-500 text-rose-900 ring-2 ring-rose-500/20'
+                        : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                    }`}
+                  >
+                    <span className="font-extrabold text-xs flex items-center gap-1">
+                      <span>🛑</span>
+                      <span>Full Day Closed</span>
+                    </span>
+                    <span className="text-[10px] text-slate-500 mt-1">Entire day completely closed (No bookings)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setHolidayType('HALF_DAY_MORNING')}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                      holidayType === 'HALF_DAY_MORNING'
+                        ? 'bg-amber-50 border-amber-500 text-amber-900 ring-2 ring-amber-500/20'
+                        : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                    }`}
+                  >
+                    <span className="font-extrabold text-xs flex items-center gap-1">
+                      <span>🌅</span>
+                      <span>Half Day Morning</span>
+                    </span>
+                    <span className="text-[10px] text-slate-500 mt-1">Closed AM (Before 1:00 PM), Open PM</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setHolidayType('HALF_DAY_AFTERNOON')}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                      holidayType === 'HALF_DAY_AFTERNOON'
+                        ? 'bg-amber-50 border-amber-500 text-amber-900 ring-2 ring-amber-500/20'
+                        : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                    }`}
+                  >
+                    <span className="font-extrabold text-xs flex items-center gap-1">
+                      <span>🌇</span>
+                      <span>Half Day Afternoon</span>
+                    </span>
+                    <span className="text-[10px] text-slate-500 mt-1">Open AM, Closed PM (After 1:00 PM)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setHolidayType('CUSTOM_HOURS')}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                      holidayType === 'CUSTOM_HOURS'
+                        ? 'bg-indigo-50 border-indigo-500 text-indigo-900 ring-2 ring-indigo-500/20'
+                        : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                    }`}
+                  >
+                    <span className="font-extrabold text-xs flex items-center gap-1">
+                      <span>⏱️</span>
+                      <span>Custom Closed Hours</span>
+                    </span>
+                    <span className="text-[10px] text-slate-500 mt-1">Specific closed time window</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Custom Hours Fields */}
+              {holidayType === 'CUSTOM_HOURS' && (
+                <div className="bg-indigo-50/60 p-3.5 rounded-2xl border border-indigo-100 space-y-2">
+                  <span className="text-[10px] font-black uppercase text-indigo-700 tracking-wider block">
+                    Define Closed Hours Range (Customers blocked during this time)
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Closed From</label>
+                      <input
+                        type="time"
+                        value={holidayCustomStart}
+                        onChange={(e) => setHolidayCustomStart(e.target.value)}
+                        className="w-full px-2.5 py-1.5 border border-indigo-200 bg-white rounded-lg text-xs font-mono font-bold text-slate-800"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Closed Until</label>
+                      <input
+                        type="time"
+                        value={holidayCustomEnd}
+                        onChange={(e) => setHolidayCustomEnd(e.target.value)}
+                        className="w-full px-2.5 py-1.5 border border-indigo-200 bg-white rounded-lg text-xs font-mono font-bold text-slate-800"
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Reason / Title */}
+              <div>
+                <label className="block text-xs font-black uppercase text-slate-700 tracking-wider mb-1">
+                  3. Holiday Reason / Description
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Brunei National Day, Hari Raya Aidilfitri, Staff Retreat, Half-day Friday"
+                  value={holidayReason}
+                  onChange={(e) => setHolidayReason(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-slate-200 focus:border-rose-500 focus:ring-2 focus:ring-rose-100 rounded-xl outline-none text-slate-800 text-xs sm:text-sm"
+                  required
+                />
+              </div>
+
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-[11px] text-slate-600 flex items-start gap-2">
+                <Info className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+                <p>
+                  Once saved, customer app users will see this notice and will not be able to book during the closed hours.
+                </p>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-2 flex items-center justify-between gap-2 border-t border-slate-100">
+                {editingHolidayIndex !== null ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleDeleteHoliday(holidayDate);
+                      setShowHolidayModal(false);
+                    }}
+                    className="px-3 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl font-bold text-xs transition-colors cursor-pointer"
+                  >
+                    Delete Closure
+                  </button>
+                ) : <div />}
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowHolidayModal(false)}
+                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold text-xs transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingHoliday}
+                    className="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-extrabold text-xs shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    {isSavingHoliday ? 'Saving...' : 'Save Holiday Closure'}
+                  </button>
+                </div>
               </div>
             </form>
           </div>

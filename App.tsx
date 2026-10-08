@@ -11,17 +11,167 @@ import { OwnerDashboard } from './pages/OwnerDashboard.js';
 import { EmployeeDashboard } from './pages/EmployeeDashboard.js';
 import { AdminDashboard } from './pages/AdminDashboard.js';
 import { SpecialUserDashboard } from './pages/SpecialUserDashboard.js';
-import { Role } from './types.js';
-import { Lock, Mail, UserPlus, LogIn, Sparkles, Compass, Sliders, Briefcase, Shield, Check, Info, X } from 'lucide-react';
-import autoshineLogo from './assets/images/autoshine_logo_1783916518342.jpg';
+import { ErrorBoundary } from './components/ErrorBoundary.js';
+import { TermsAndConditionsContent } from './components/TermsAndConditionsContent.js';
+import { PublicOperatorView } from './components/PublicOperatorView.js';
+import { BookingFlowModal } from './components/BookingFlowModal.js';
+import { Role, CarWash } from './types.js';
+import { isValidEmail } from './lib/validation.js';
+import { useModalBack } from './utils/useBackHandler.js';
+import { Lock, Mail, UserPlus, LogIn, Sparkles, Compass, Sliders, Briefcase, Shield, ShieldAlert, KeyRound, Check, Info, X, AlertTriangle, LogOut, Eye, EyeOff, Building, Phone, MapPin, Bell } from 'lucide-react';
+import autoshineLogo from './assets/images/autoshine_logo.jpg';
 
 const MainAppContent: React.FC = () => {
-  const { user, loading, login, register, notification, clearNotification, forgotPassword, resetPassword, showNotification } = useApp();
+  const {
+    user,
+    loading,
+    login,
+    verifyAdminOtp,
+    resendAdminOtp,
+    register,
+    verifyRegistrationOtp,
+    resendRegistrationOtp,
+    notification,
+    clearNotification,
+    forgotPassword,
+    resetPassword,
+    showNotification,
+    platformInfo,
+    locations,
+    createBooking,
+    deviceNotificationPermission,
+    requestDeviceNotificationPermission,
+  } = useApp();
+
+  const [hasDismissedPrompt, setHasDismissedPrompt] = useState(() => {
+    return sessionStorage.getItem('cw_dismiss_notif_banner') === 'true';
+  });
 
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isRegisterMode, setIsRegisterMode] = useState(() => window.location.pathname === '/register');
   const [isForgotMode, setIsForgotMode] = useState(() => window.location.pathname === '/forgot-password');
   const [isResetMode, setIsResetMode] = useState(() => window.location.pathname === '/reset-password');
+  const [isRegisterOtpMode, setIsRegisterOtpMode] = useState(false);
+  const [pendingRegisterEmail, setPendingRegisterEmail] = useState('');
+  const [registerOtpCode, setRegisterOtpCode] = useState('');
+  const [isAdminOtpMode, setIsAdminOtpMode] = useState(false);
+  const [pendingAdminEmail, setPendingAdminEmail] = useState('');
+  const [adminOtpCode, setAdminOtpCode] = useState('');
+  const [adminOtpDevCode, setAdminOtpDevCode] = useState<string | null>(null);
+  const [showExitConfirmModal, setShowExitConfirmModal] = useState(false);
+
+  const isDevMode = 
+    import.meta.env.DEV || 
+    window.location.hostname === 'localhost' || 
+    window.location.hostname.includes('127.0.0.1') ||
+    window.location.hostname.includes('onrender.com') ||
+    window.location.hostname.includes('-dev-') ||
+    Boolean(adminOtpDevCode);
+
+  // Direct QR Code / Operator Vanity URL State
+  const [publicOperatorSlug, setPublicOperatorSlug] = useState<string | null>(() => {
+    const path = window.location.pathname;
+    const match = path.match(/^\/(?:wash|book|operator)\/([^/?#]+)/i);
+    if (match) return decodeURIComponent(match[1]);
+    const searchParams = new URLSearchParams(window.location.search);
+    return searchParams.get('wash') || searchParams.get('operator') || searchParams.get('carwash') || null;
+  });
+  const [showAuthModalForOperator, setShowAuthModalForOperator] = useState(false);
+  const [fetchedOperatorCarWash, setFetchedOperatorCarWash] = useState<CarWash | null>(null);
+  const [bookingLocationForPublicView, setBookingLocationForPublicView] = useState<CarWash | null>(null);
+  const [preselectedServiceId, setPreselectedServiceId] = useState<string | null>(null);
+
+  // Matched Car Wash for direct booking
+  const publicCarWash = React.useMemo(() => {
+    if (!publicOperatorSlug || !locations || locations.length === 0) return null;
+    const clean = publicOperatorSlug.toLowerCase().trim();
+    return (
+      locations.find(
+        (l) =>
+          l.id.toLowerCase() === clean ||
+          (l.slug && l.slug.toLowerCase() === clean) ||
+          (l.name && l.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') === clean)
+      ) || null
+    );
+  }, [publicOperatorSlug, locations]);
+
+  // If station not yet in locations state, fetch directly from API endpoint
+  React.useEffect(() => {
+    if (!publicOperatorSlug) {
+      setFetchedOperatorCarWash(null);
+      return;
+    }
+    const clean = publicOperatorSlug.toLowerCase().trim();
+    if (publicCarWash) {
+      setFetchedOperatorCarWash(publicCarWash);
+      return;
+    }
+
+    let isSubscribed = true;
+    fetch(`/api/car-washes/by-slug/${encodeURIComponent(clean)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (isSubscribed) {
+          if (data && data.id) {
+            setFetchedOperatorCarWash(data);
+          } else {
+            showNotification('Car wash location not found.', 'error');
+            setPublicOperatorSlug(null);
+            const targetPath = user
+              ? (user.role === Role.ADMIN ? '/admin' : user.role === Role.OWNER ? '/owner' : user.role === Role.SPECIAL ? '/special' : '/customer')
+              : '/login';
+            window.history.replaceState({ path: targetPath }, '', targetPath);
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn('Could not fetch station by slug:', err);
+        if (isSubscribed) {
+          setPublicOperatorSlug(null);
+          const targetPath = user ? '/customer' : '/login';
+          window.history.replaceState({ path: targetPath }, '', targetPath);
+        }
+      });
+
+    return () => {
+      isSubscribed = false;
+    };
+  }, [publicOperatorSlug, publicCarWash, user]);
+
+  const activeCarWash = publicCarWash || fetchedOperatorCarWash;
+  const isPublicWashAllowed = Boolean(activeCarWash && activeCarWash.ownerQrCodeEnabled === true && activeCarWash.isActive !== false);
+
+  // If visitor arrives via direct /wash/ URL but QR booking access is disabled or inactive, redirect to login / dashboard
+  React.useEffect(() => {
+    if (!publicOperatorSlug) return;
+
+    if (activeCarWash) {
+      if (activeCarWash.ownerQrCodeEnabled !== true || activeCarWash.isActive === false) {
+        showNotification(
+          `The booking page for "${activeCarWash.name}" is currently private or awaiting activation.`,
+          'error'
+        );
+        setPublicOperatorSlug(null);
+        setFetchedOperatorCarWash(null);
+        const targetPath = user
+          ? (user.role === Role.ADMIN ? '/admin' : user.role === Role.OWNER ? '/owner' : user.role === Role.SPECIAL ? '/special' : '/customer')
+          : '/login';
+        window.history.replaceState({ path: targetPath }, '', targetPath);
+      }
+    }
+  }, [publicOperatorSlug, activeCarWash, user]);
+
+  // Track if we are navigating back from an auth sub-view
+  const currentAuthModeRef = React.useRef<'login' | 'register' | 'forgot' | 'reset'>('login');
+  const isExitingRef = React.useRef(false);
+
+  // Sync ref with current auth state
+  React.useEffect(() => {
+    if (isRegisterMode) currentAuthModeRef.current = 'register';
+    else if (isForgotMode) currentAuthModeRef.current = 'forgot';
+    else if (isResetMode) currentAuthModeRef.current = 'reset';
+    else currentAuthModeRef.current = 'login';
+  }, [isRegisterMode, isForgotMode, isResetMode]);
 
   // Navigation helper
   const navigate = (path: string, replace = false) => {
@@ -36,6 +186,21 @@ const MainAppContent: React.FC = () => {
 
   // Sync route on login / role change / auth mode change
   React.useEffect(() => {
+    const path = window.location.pathname;
+    const isOperatorPath = /^\/(?:wash|book|operator)\//i.test(path);
+
+    if (isOperatorPath) {
+      const match = path.match(/^\/(?:wash|book|operator)\/([^/?#]+)/i);
+      if (match) {
+        setPublicOperatorSlug(decodeURIComponent(match[1]));
+      }
+      return;
+    }
+
+    if (publicOperatorSlug) {
+      return;
+    }
+
     if (user) {
       let targetPath = '/customer';
       if (user.role === Role.ADMIN) targetPath = '/admin';
@@ -47,7 +212,6 @@ const MainAppContent: React.FC = () => {
         window.history.replaceState({ path: targetPath }, '', targetPath);
       }
     } else {
-      const path = window.location.pathname;
       if (path === '/register') {
         setIsRegisterMode(true);
         setIsForgotMode(false);
@@ -69,13 +233,36 @@ const MainAppContent: React.FC = () => {
         }
       }
     }
-  }, [user]);
+  }, [user, publicOperatorSlug]);
 
   // Mobile Back button / browser popstate listener
   React.useEffect(() => {
     const handlePopState = () => {
+      if (isExitingRef.current) return;
+
       const path = window.location.pathname;
+      const prevMode = currentAuthModeRef.current;
+      const isOperatorPath = /^\/(?:wash|book|operator)\//i.test(path);
+
+      if (isOperatorPath) {
+        const match = path.match(/^\/(?:wash|book|operator)\/([^/?#]+)/i);
+        setPublicOperatorSlug(match ? decodeURIComponent(match[1]) : null);
+        return;
+      } else if (publicOperatorSlug) {
+        setPublicOperatorSlug(null);
+      }
+
       if (!user) {
+        // If navigating back from a sub-screen (register, forgot, reset) to login, smoothly switch to login without trapping
+        if (prevMode !== 'login' && (path === '/' || path === '/login')) {
+          setIsRegisterMode(false);
+          setIsForgotMode(false);
+          setIsResetMode(false);
+          setIsRegisterOtpMode(false);
+          setShowExitConfirmModal(false);
+          return;
+        }
+
         if (path === '/register') {
           setIsRegisterMode(true);
           setIsForgotMode(false);
@@ -103,6 +290,9 @@ const MainAppContent: React.FC = () => {
   // Auth form state
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [registerConfirmPassword, setRegisterConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showRegisterConfirmPassword, setShowRegisterConfirmPassword] = useState(false);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
@@ -113,42 +303,148 @@ const MainAppContent: React.FC = () => {
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
 
+  // 🔄 Modals Back button dismissal:
+  useModalBack(showTermsModal, () => setShowTermsModal(false), 'app-terms-modal');
+  useModalBack(showExitConfirmModal, () => setShowExitConfirmModal(false), 'app-exit-modal');
+
   // Password reset form state
   const [resetCode, setResetCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showResetPassword, setShowResetPassword] = useState(false);
+
+  // If visitor logs in while showAuthModalForOperator was open, return to operator view and open booking flow
+  React.useEffect(() => {
+    if (user && showAuthModalForOperator) {
+      setShowAuthModalForOperator(false);
+      const pendingSvc = sessionStorage.getItem('pending_service_id');
+      if (pendingSvc) {
+        setPreselectedServiceId(pendingSvc);
+        sessionStorage.removeItem('pending_service_id');
+      }
+      if (activeCarWash) {
+        setBookingLocationForPublicView(activeCarWash);
+      }
+    }
+  }, [user, showAuthModalForOperator, activeCarWash]);
 
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password || (isRegisterMode && !name)) return;
 
-    if (isRegisterMode && !acceptTerms) {
-      showNotification("You must accept the Terms and Conditions to register.", "error");
+    const trimmedEmail = email.trim();
+    if (!isValidEmail(trimmedEmail)) {
+      showNotification("Please enter a valid email address (e.g. name@domain.com).", "error");
       return;
+    }
+
+    if (isRegisterMode) {
+      if (password.length < 6) {
+        showNotification("Password must be at least 6 characters.", "error");
+        return;
+      }
+      if (password !== registerConfirmPassword) {
+        showNotification("Passwords do not match. Please confirm your password.", "error");
+        return;
+      }
+      if (!phone.trim()) {
+        showNotification("Please enter a valid phone number.", "error");
+        return;
+      }
+      if (!acceptTerms) {
+        showNotification("You must accept the Terms and Conditions to register.", "error");
+        return;
+      }
     }
 
     setAuthLoading(true);
     if (isRegisterMode) {
-      const success = await register(email, password, name, {
-        phone: phone || undefined,
+      const res = await register(trimmedEmail, password, name, {
+        phone: phone.trim(),
         dateOfBirth: dateOfBirth || undefined,
         gender: gender || undefined,
         profileImageUrl: profileImageUrl || undefined,
         address: address || undefined,
       });
-      if (success) {
-        setIsRegisterMode(false);
-        setEmail('');
-        setPassword('');
-        setName('');
-        setPhone('');
-        setDateOfBirth('');
-        setGender('');
-        setProfileImageUrl('');
-        setAddress('');
+      if (res.success) {
+        if (res.requireOtp) {
+          setIsRegisterOtpMode(true);
+          setPendingRegisterEmail(res.email || trimmedEmail);
+        } else {
+          setIsRegisterMode(false);
+          setEmail('');
+          setPassword('');
+          setRegisterConfirmPassword('');
+          setName('');
+        }
       }
     } else {
-      await login(email, password);
+      const res = await login(email, password);
+      if (typeof res === 'object') {
+        if (res.requireAdminOtp) {
+          setIsAdminOtpMode(true);
+          setPendingAdminEmail(res.email);
+          setAdminOtpDevCode(res.sandboxCode || null);
+          setAdminOtpCode(res.sandboxCode || '');
+        } else if (res.requireOtp) {
+          setIsRegisterOtpMode(true);
+          setPendingRegisterEmail(res.email);
+          setRegisterOtpCode('');
+        }
+      }
+    }
+    setAuthLoading(false);
+  };
+
+  const handleVerifyRegistrationOtpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pendingRegisterEmail || !registerOtpCode) return;
+
+    setAuthLoading(true);
+    const success = await verifyRegistrationOtp(pendingRegisterEmail, registerOtpCode);
+    if (success) {
+      setIsRegisterOtpMode(false);
+      setIsRegisterMode(false);
+      setEmail('');
+      setPassword('');
+      setName('');
+      setRegisterOtpCode('');
+      setPendingRegisterEmail('');
+    }
+    setAuthLoading(false);
+  };
+
+  const handleResendRegistrationOtpSubmit = async () => {
+    if (!pendingRegisterEmail) return;
+    setAuthLoading(true);
+    await resendRegistrationOtp(pendingRegisterEmail);
+    setAuthLoading(false);
+  };
+
+  const handleVerifyAdminOtpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pendingAdminEmail || !adminOtpCode) return;
+
+    setAuthLoading(true);
+    const success = await verifyAdminOtp(pendingAdminEmail, adminOtpCode.trim());
+    if (success) {
+      setIsAdminOtpMode(false);
+      setPendingAdminEmail('');
+      setAdminOtpCode('');
+      setAdminOtpDevCode(null);
+      setEmail('');
+      setPassword('');
+    }
+    setAuthLoading(false);
+  };
+
+  const handleResendAdminOtpSubmit = async () => {
+    if (!pendingAdminEmail) return;
+    setAuthLoading(true);
+    const res = await resendAdminOtp(pendingAdminEmail);
+    if (res?.sandboxCode) {
+      setAdminOtpDevCode(res.sandboxCode);
+      setAdminOtpCode(res.sandboxCode);
     }
     setAuthLoading(false);
   };
@@ -160,16 +456,8 @@ const MainAppContent: React.FC = () => {
     setAuthLoading(true);
     const code = await forgotPassword(email);
     if (code !== null) {
-      if (code === 'SUPABASE_SENT') {
-        setIsForgotMode(false);
-        setIsResetMode(false);
-      } else {
-        setIsForgotMode(false);
-        setIsResetMode(true);
-        if (code) {
-          setResetCode(code); // auto-fill code in developer sandbox environment
-        }
-      }
+      setIsForgotMode(false);
+      setIsResetMode(true);
     }
     setAuthLoading(false);
   };
@@ -199,6 +487,11 @@ const MainAppContent: React.FC = () => {
   // Automated Test Role Login Quick Switchers
   const handleQuickLogin = async (role: string) => {
     setAuthLoading(true);
+    setIsRegisterMode(false);
+    setIsForgotMode(false);
+    setIsResetMode(false);
+    setIsRegisterOtpMode(false);
+
     let quickEmail = '';
     let quickPass = '';
 
@@ -227,8 +520,24 @@ const MainAppContent: React.FC = () => {
 
     setEmail(quickEmail);
     setPassword(quickPass);
-    await login(quickEmail, quickPass);
-    setAuthLoading(false);
+    try {
+      const res = await login(quickEmail, quickPass);
+      if (typeof res === 'object') {
+        if (res.requireAdminOtp) {
+          setIsAdminOtpMode(true);
+          setPendingAdminEmail(res.email);
+          setAdminOtpDevCode(res.sandboxCode || null);
+          setAdminOtpCode(res.sandboxCode || '');
+        } else if (res.requireOtp) {
+          setIsRegisterOtpMode(true);
+          setPendingRegisterEmail(res.email);
+        }
+      }
+    } catch (err) {
+      console.error('Quick login error:', err);
+    } finally {
+      setAuthLoading(false);
+    }
   };
 
   const renderDashboardByRole = (role: Role) => {
@@ -259,13 +568,68 @@ const MainAppContent: React.FC = () => {
     );
   }
 
+  // If visitor arrives via direct operator QR code or link and is allowed and not in auth modal, render rich public operator schedule
+  if (activeCarWash && isPublicWashAllowed && !showAuthModalForOperator) {
+    return (
+      <>
+        <PublicOperatorView
+          carWash={activeCarWash}
+          currentUser={user}
+          onSelectBook={(serviceId) => {
+            if (!user) {
+              sessionStorage.setItem('pending_operator_redirect', activeCarWash.slug || activeCarWash.id);
+              if (serviceId) {
+                sessionStorage.setItem('pending_service_id', serviceId);
+              }
+              setShowAuthModalForOperator(true);
+            } else {
+              setPreselectedServiceId(serviceId || null);
+              setBookingLocationForPublicView(activeCarWash);
+            }
+          }}
+          onBrowseAll={() => {
+            setPublicOperatorSlug(null);
+            setShowAuthModalForOperator(false);
+            const target = user ? (user.role === Role.OWNER ? '/owner' : '/customer') : '/login';
+            window.history.replaceState({ path: target }, '', target);
+          }}
+          onLoginClick={() => {
+            sessionStorage.setItem('pending_operator_redirect', activeCarWash.slug || activeCarWash.id);
+            setShowAuthModalForOperator(true);
+          }}
+          isAuthenticated={!!user}
+        />
+
+        {/* In-view booking flow for authenticated users */}
+        {bookingLocationForPublicView && (
+          <BookingFlowModal
+            location={bookingLocationForPublicView}
+            isOpen={!!bookingLocationForPublicView}
+            onClose={() => {
+              setBookingLocationForPublicView(null);
+              setPreselectedServiceId(null);
+            }}
+            user={user}
+            initialServiceId={preselectedServiceId || undefined}
+            createBooking={createBooking}
+            onBookingSuccess={() => {
+              showNotification('Booking confirmed successfully!', 'success');
+              setBookingLocationForPublicView(null);
+              setPreselectedServiceId(null);
+            }}
+          />
+        )}
+      </>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50/50 flex flex-col text-slate-900 font-sans">
       {/* Toast notifications */}
       {notification && (
         <div
           onClick={clearNotification}
-          className={`fixed top-4 right-4 z-50 p-4 rounded-2xl shadow-xl max-w-sm border transition-all duration-300 cursor-pointer flex items-center gap-3 animate-slide-in ${
+          className={`fixed top-4 right-3 left-3 sm:left-auto sm:right-4 z-50 p-3.5 sm:p-4 rounded-2xl shadow-xl sm:max-w-sm border transition-all duration-300 cursor-pointer flex items-center gap-3 animate-slide-in ${
             notification.type === 'success'
               ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
               : 'bg-rose-50 border-rose-200 text-rose-800'
@@ -284,16 +648,63 @@ const MainAppContent: React.FC = () => {
       {user ? (
         <>
           <Navbar activeTab={activeTab} setActiveTab={setActiveTab} />
+
+          {/* Quick Push/Device Notifications Opt-In Banner */}
+          {deviceNotificationPermission !== 'granted' && deviceNotificationPermission !== 'denied' && !hasDismissedPrompt && (
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
+              <div className="bg-gradient-to-r from-sky-600 to-blue-700 text-white rounded-2xl p-4 sm:p-5 shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-sky-400/30">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0 backdrop-blur-xs">
+                    <Bell className="w-5 h-5 text-white animate-bounce" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-black tracking-tight text-white">
+                      Never miss a booking alert or status update!
+                    </h4>
+                    <p className="text-xs text-sky-100 mt-0.5">
+                      Enable instant lock-screen &amp; desktop alerts with audible chimes whenever a wash status updates or new booking arrives.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHasDismissedPrompt(true);
+                      sessionStorage.setItem('cw_dismiss_notif_banner', 'true');
+                    }}
+                    className="px-3 py-2 text-xs font-semibold text-sky-100 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
+                  >
+                    Maybe Later
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await requestDeviceNotificationPermission();
+                    }}
+                    className="px-4 py-2 bg-white text-sky-700 hover:bg-sky-50 rounded-xl text-xs font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Bell className="w-3.5 h-3.5" />
+                    <span>Enable Device Alerts</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            {renderDashboardByRole(user.role)}
+            <ErrorBoundary>
+              {renderDashboardByRole(user.role)}
+            </ErrorBoundary>
           </main>
         </>
       ) : (
         /* Dynamic Landing Auth Screen */
         <div className="flex-1 flex flex-col justify-center py-12 sm:px-6 lg:px-8 bg-gradient-to-b from-slate-50 to-slate-100">
           <div className="sm:mx-auto sm:w-full sm:max-w-md text-center px-4">
-            <div className="mx-auto w-24 h-24 overflow-hidden rounded-3xl bg-white shadow-lg border border-slate-100 flex items-center justify-center p-1">
-              <img src={autoshineLogo} alt="Autoshine BN" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+            <div className="mx-auto w-24 h-24 overflow-hidden rounded-3xl bg-[#0058E6] shadow-xl flex items-center justify-center">
+              <img src={autoshineLogo} alt="Autoshine BN" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
             </div>
             <h2 className="mt-4 text-3xl font-black text-slate-800 tracking-tight">
               autoshine bn
@@ -304,8 +715,196 @@ const MainAppContent: React.FC = () => {
           </div>
 
           <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md px-4">
+            {publicCarWash && showAuthModalForOperator && (
+              <div className="mb-4 bg-sky-50 border border-sky-200 rounded-2xl p-4 flex items-center justify-between gap-3 shadow-xs animate-fade-in">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-sky-600 text-white font-black flex items-center justify-center text-xs shrink-0 shadow-xs">
+                    {publicCarWash.name.slice(0, 2).toUpperCase()}
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-sky-950 block">Reserving at {publicCarWash.name}</span>
+                    <span className="text-[11px] text-sky-700">Sign in to proceed directly to time slot selection.</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAuthModalForOperator(false)}
+                  className="text-xs font-bold text-sky-700 hover:text-sky-900 bg-white px-2.5 py-1.5 rounded-lg border border-sky-200 shadow-2xs shrink-0 cursor-pointer"
+                >
+                  Back
+                </button>
+              </div>
+            )}
+
             <div className="bg-white py-8 px-4 border border-slate-200 rounded-3xl shadow-xl sm:px-10">
-              {isForgotMode ? (
+              {isAdminOtpMode ? (
+                <div>
+                  <div className="flex items-center gap-2.5 mb-3">
+                    <div className="p-2.5 bg-rose-100 rounded-xl text-rose-700 shadow-2xs">
+                      <ShieldAlert className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-800">Admin 2FA Security Passkey</h3>
+                      <p className="text-xs text-slate-500">
+                        Two-factor code dispatched to <strong className="text-rose-950 font-mono">{pendingAdminEmail}</strong>
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Dev / Sandbox Helper Notice */}
+                  {isDevMode && (
+                    <>
+                      <div className="my-3 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs">
+                        <div className="flex items-center gap-2">
+                          <KeyRound className="h-4 w-4 text-amber-700 shrink-0" />
+                          <span>
+                            Testing Passkey: <strong className="font-mono text-sm tracking-wider text-amber-950">123456</strong>
+                            {adminOtpDevCode && adminOtpDevCode !== '123456' && (
+                              <span className="text-slate-500 text-[11px] ml-1">(or {adminOtpDevCode})</span>
+                            )}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setAdminOtpCode('123456')}
+                          className="px-2.5 py-1 bg-white hover:bg-amber-100 text-amber-800 rounded-lg font-bold border border-amber-300 text-[11px] cursor-pointer shadow-2xs self-start sm:self-auto"
+                        >
+                          Fill 123456
+                        </button>
+                      </div>
+
+                      <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl mb-4 text-[11px] text-slate-600 leading-relaxed">
+                        <span className="font-semibold text-slate-800">Quick Testing:</span> The code <code className="bg-rose-100 text-rose-800 font-mono px-1 py-0.5 rounded font-bold">123456</code> is active in <code className="bg-slate-200 px-1 py-0.5 rounded text-[10px] text-slate-800">server.ts</code> as <code className="text-slate-800 font-mono font-bold">TEST_MASTER_OTP</code> for rapid dev testing. Generated codes are also delivered via email and recorded in Supabase <code className="bg-slate-200 px-1 py-0.5 rounded text-[10px] text-slate-800">audit_logs</code>.
+                      </div>
+                    </>
+                  )}
+
+                  <form onSubmit={handleVerifyAdminOtpSubmit} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                        6-Digit Security Passkey
+                      </label>
+                      <input
+                        type="text"
+                        maxLength={6}
+                        placeholder="••••••"
+                        value={adminOtpCode}
+                        onChange={(e) => setAdminOtpCode(e.target.value.replace(/\D/g, ''))}
+                        className="w-full px-3 py-3 border border-rose-200 focus:border-rose-500 focus:ring-2 focus:ring-rose-100 rounded-xl outline-none text-slate-900 text-lg transition-all text-center tracking-widest font-mono font-black shadow-inner"
+                        required
+                        autoFocus
+                        id="admin-otp-input"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={authLoading}
+                      className="w-full py-3 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer mt-4"
+                      id="admin-otp-submit-btn"
+                    >
+                      {authLoading ? 'Verifying Security Passkey...' : 'Verify Passkey & Access Command Center'}
+                    </button>
+
+                    <div className="flex justify-between items-center pt-3 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={handleResendAdminOtpSubmit}
+                        disabled={authLoading}
+                        className="text-xs text-slate-600 hover:text-slate-900 font-bold font-sans cursor-pointer flex items-center gap-1"
+                      >
+                        Resend Passkey
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsAdminOtpMode(false);
+                          setPendingAdminEmail('');
+                          setAdminOtpCode('');
+                          setAdminOtpDevCode(null);
+                        }}
+                        className="text-xs text-rose-600 hover:text-rose-500 font-bold font-sans cursor-pointer"
+                      >
+                        Cancel & Switch Account
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              ) : isRegisterOtpMode ? (
+                <div>
+                  <div className="flex items-center gap-2.5 mb-2">
+                    <div className="p-2 bg-sky-100 rounded-xl text-sky-700">
+                      <Shield className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-800">Verify Your Email Address</h3>
+                      <p className="text-xs text-slate-500">OTP code sent to <strong className="text-slate-700">{pendingRegisterEmail}</strong></p>
+                    </div>
+                  </div>
+
+                  {isDevMode && (
+                    <div className="my-3 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs">
+                      <div className="flex items-center gap-2">
+                        <KeyRound className="h-4 w-4 text-amber-700 shrink-0" />
+                        <span>Testing Passkey: <strong className="font-mono text-sm tracking-wider text-amber-950">123456</strong></span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setRegisterOtpCode('123456')}
+                        className="px-2.5 py-1 bg-white hover:bg-amber-100 text-amber-800 rounded-lg font-bold border border-amber-300 text-[11px] cursor-pointer shadow-2xs self-start sm:self-auto"
+                      >
+                        Fill 123456
+                      </button>
+                    </div>
+                  )}
+
+                  <form onSubmit={handleVerifyRegistrationOtpSubmit} className="space-y-4 mt-2">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1">6-Digit Verification OTP Code</label>
+                      <input
+                        type="text"
+                        maxLength={6}
+                        placeholder="123456"
+                        value={registerOtpCode}
+                        onChange={(e) => setRegisterOtpCode(e.target.value)}
+                        className="w-full px-3 py-3 border border-slate-200 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 rounded-xl outline-none text-slate-800 text-base transition-all text-center tracking-widest font-mono font-bold"
+                        required
+                        id="verify-otp-input"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={authLoading}
+                      className="w-full py-3 bg-sky-600 hover:bg-sky-500 text-white rounded-xl font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer mt-4"
+                      id="verify-otp-submit-btn"
+                    >
+                      {authLoading ? 'Verifying...' : 'Verify Email & Activate Account'}
+                    </button>
+
+                    <div className="flex justify-between items-center pt-3 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={handleResendRegistrationOtpSubmit}
+                        disabled={authLoading}
+                        className="text-xs text-slate-600 hover:text-slate-900 font-bold font-sans cursor-pointer flex items-center gap-1"
+                      >
+                        Resend Verification Code
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsRegisterOtpMode(false);
+                          setIsRegisterMode(true);
+                        }}
+                        className="text-xs text-sky-600 hover:text-sky-500 font-bold font-sans cursor-pointer"
+                      >
+                        Change Details
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              ) : isForgotMode ? (
                 <div>
                   <h3 className="text-lg font-bold text-slate-800 mb-1">Forgot Password</h3>
                   <p className="text-xs text-slate-500 mb-6">Enter your email and we will send you a 6-digit verification code to reset your password.</p>
@@ -317,7 +916,7 @@ const MainAppContent: React.FC = () => {
                         <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
                         <input
                           type="email"
-                          placeholder="your-email@carwash.com"
+                          placeholder="Email Address"
                           value={email}
                           onChange={(e) => setEmail(e.target.value)}
                           className="w-full pl-10 pr-3 py-2.5 border border-slate-200 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 rounded-xl outline-none text-slate-800 text-sm transition-all"
@@ -374,14 +973,23 @@ const MainAppContent: React.FC = () => {
                       <div className="relative">
                         <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
                         <input
-                          type="password"
+                          type={showResetPassword ? 'text' : 'password'}
                           placeholder="••••••••"
                           value={newPassword}
                           onChange={(e) => setNewPassword(e.target.value)}
-                          className="w-full pl-10 pr-3 py-2.5 border border-slate-200 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 rounded-xl outline-none text-slate-800 text-sm transition-all"
+                          className="w-full pl-10 pr-10 py-2.5 border border-slate-200 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 rounded-xl outline-none text-slate-800 text-sm transition-all"
                           required
                           id="new-password-input"
                         />
+                        <button
+                          type="button"
+                          onClick={() => setShowResetPassword(!showResetPassword)}
+                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none cursor-pointer p-1"
+                          id="toggle-reset-password-btn"
+                          aria-label={showResetPassword ? "Hide password" : "Show password"}
+                        >
+                          {showResetPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
                       </div>
                     </div>
 
@@ -390,14 +998,23 @@ const MainAppContent: React.FC = () => {
                       <div className="relative">
                         <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
                         <input
-                          type="password"
+                          type={showResetPassword ? 'text' : 'password'}
                           placeholder="••••••••"
                           value={confirmPassword}
                           onChange={(e) => setConfirmPassword(e.target.value)}
-                          className="w-full pl-10 pr-3 py-2.5 border border-slate-200 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 rounded-xl outline-none text-slate-800 text-sm transition-all"
+                          className="w-full pl-10 pr-10 py-2.5 border border-slate-200 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 rounded-xl outline-none text-slate-800 text-sm transition-all"
                           required
                           id="confirm-password-input"
                         />
+                        <button
+                          type="button"
+                          onClick={() => setShowResetPassword(!showResetPassword)}
+                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none cursor-pointer p-1"
+                          id="toggle-confirm-reset-password-btn"
+                          aria-label={showResetPassword ? "Hide password" : "Show password"}
+                        >
+                          {showResetPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
                       </div>
                     </div>
 
@@ -472,7 +1089,7 @@ const MainAppContent: React.FC = () => {
                         <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Full Name</label>
                         <input
                           type="text"
-                          placeholder="Alex Customer"
+                          placeholder="e.g. Alex Tan"
                           value={name}
                           onChange={(e) => setName(e.target.value)}
                           className="w-full px-3 py-2.5 border border-slate-200 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 rounded-xl outline-none text-slate-800 text-sm transition-all"
@@ -488,7 +1105,7 @@ const MainAppContent: React.FC = () => {
                         <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
                         <input
                           type="email"
-                          placeholder="customer@carwash.com"
+                          placeholder="Email Address"
                           value={email}
                           onChange={(e) => setEmail(e.target.value)}
                           className="w-full pl-10 pr-3 py-2.5 border border-slate-200 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 rounded-xl outline-none text-slate-800 text-sm transition-all"
@@ -500,7 +1117,9 @@ const MainAppContent: React.FC = () => {
 
                     <div>
                       <div className="flex justify-between items-center mb-1">
-                        <label className="block text-xs font-bold text-slate-700 uppercase">Password</label>
+                        <label className="block text-xs font-bold text-slate-700 uppercase">
+                          Password {isRegisterMode && <span className="text-red-500">*</span>}
+                        </label>
                         {!isRegisterMode && (
                           <button
                             type="button"
@@ -519,83 +1138,69 @@ const MainAppContent: React.FC = () => {
                       <div className="relative">
                         <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
                         <input
-                          type="password"
+                          type={showPassword ? 'text' : 'password'}
                           placeholder="••••••••"
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
-                          className="w-full pl-10 pr-3 py-2.5 border border-slate-200 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 rounded-xl outline-none text-slate-800 text-sm transition-all"
+                          className="w-full pl-10 pr-10 py-2.5 border border-slate-200 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 rounded-xl outline-none text-slate-800 text-sm transition-all"
                           required
                           id="auth-password-input"
                         />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none cursor-pointer p-1"
+                          id="toggle-auth-password-btn"
+                          aria-label={showPassword ? "Hide password" : "Show password"}
+                        >
+                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
                       </div>
                     </div>
 
                     {isRegisterMode && (
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                          Confirm Password <span className="text-red-500">*</span>
+                        </label>
+                        <div className="relative">
+                          <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+                          <input
+                            type={showRegisterConfirmPassword ? 'text' : 'password'}
+                            placeholder="••••••••"
+                            value={registerConfirmPassword}
+                            onChange={(e) => setRegisterConfirmPassword(e.target.value)}
+                            className="w-full pl-10 pr-10 py-2.5 border border-slate-200 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 rounded-xl outline-none text-slate-800 text-sm transition-all"
+                            required
+                            id="auth-confirm-password-input"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowRegisterConfirmPassword(!showRegisterConfirmPassword)}
+                            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none cursor-pointer p-1"
+                            id="toggle-auth-confirm-password-btn"
+                            aria-label={showRegisterConfirmPassword ? "Hide password" : "Show password"}
+                          >
+                            {showRegisterConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {isRegisterMode && (
                       <div className="space-y-4 pt-3 border-t border-slate-100 mt-3 animate-fade-in">
-                        <div className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider mb-2">Optional Profile Details</div>
-                        
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Phone Number</label>
-                            <input
-                              type="tel"
-                              placeholder="+673 812-3456"
-                              value={phone}
-                              onChange={(e) => setPhone(e.target.value)}
-                              className="w-full px-3 py-2 border border-slate-200 focus:border-sky-500 rounded-xl outline-none text-slate-800 text-xs transition-all"
-                              id="auth-phone-input"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Date of Birth</label>
-                            <input
-                              type="date"
-                              value={dateOfBirth}
-                              onChange={(e) => setDateOfBirth(e.target.value)}
-                              className="w-full px-3 py-2 border border-slate-200 focus:border-sky-500 rounded-xl outline-none text-slate-800 text-xs transition-all"
-                              id="auth-dob-input"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Gender</label>
-                            <select
-                              value={gender}
-                              onChange={(e) => setGender(e.target.value)}
-                              className="w-full px-3 py-2 border border-slate-200 focus:border-sky-500 rounded-xl outline-none text-slate-800 text-xs transition-all bg-white"
-                              id="auth-gender-input"
-                            >
-                              <option value="">Select Gender</option>
-                              <option value="Male">Male</option>
-                              <option value="Female">Female</option>
-                              <option value="Other">Other</option>
-                              <option value="Prefer not to say">Prefer not to say</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Profile Photo URL</label>
-                            <input
-                              type="text"
-                              placeholder="https://..."
-                              value={profileImageUrl}
-                              onChange={(e) => setProfileImageUrl(e.target.value)}
-                              className="w-full px-3 py-2 border border-slate-200 focus:border-sky-500 rounded-xl outline-none text-slate-800 text-xs transition-all"
-                              id="auth-avatar-input"
-                            />
-                          </div>
-                        </div>
-
                         <div>
-                          <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Residential Address</label>
-                          <textarea
-                            placeholder="Kampong Gadong, Bandar Seri Begawan"
-                            value={address}
-                            onChange={(e) => setAddress(e.target.value)}
-                            rows={2}
-                            className="w-full px-3 py-2 border border-slate-200 focus:border-sky-500 rounded-xl outline-none text-slate-800 text-xs transition-all resize-none"
-                            id="auth-address-input"
+                          <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                            Phone Number <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="tel"
+                            placeholder="+673 812-3456"
+                            value={phone}
+                            onChange={(e) => setPhone(e.target.value)}
+                            className="w-full px-3 py-2 border border-slate-200 focus:border-sky-500 rounded-xl outline-none text-slate-800 text-xs transition-all"
+                            required
+                            id="auth-phone-input"
                           />
                         </div>
 
@@ -642,67 +1247,153 @@ const MainAppContent: React.FC = () => {
                         </>
                       )}
                     </button>
+
+                    {isRegisterMode && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsRegisterMode(false);
+                          setIsForgotMode(false);
+                          setIsResetMode(false);
+                          navigate('/login');
+                        }}
+                        className="w-full text-center text-xs text-slate-500 hover:text-slate-700 font-bold font-sans cursor-pointer pt-2 block"
+                        id="back-to-login-btn"
+                      >
+                        Already have an account? <span className="text-sky-600 hover:underline">Log In</span>
+                      </button>
+                    )}
                   </form>
                 </>
               )}
 
-              {/* Multi-role Simulator Playground Switcher (MANDATORY & VERY HELPFUL FOR GRADING) */}
-              <div className="mt-8 border-t border-slate-100 pt-6">
-                <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 text-center">
-                  🛠️ Interactive Role Play Testing Credentials
-                </span>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleQuickLogin('customer')}
-                    className="p-2 border border-sky-150 hover:bg-sky-50 text-sky-700 text-xs font-bold rounded-xl flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer"
-                    id="quick-login-customer"
-                  >
-                    <Compass className="h-4 w-4" />
-                    Customer
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleQuickLogin('owner')}
-                    className="p-2 border border-indigo-150 hover:bg-indigo-50 text-indigo-700 text-xs font-bold rounded-xl flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer"
-                    id="quick-login-owner"
-                  >
-                    <Sliders className="h-4 w-4" />
-                    Owner
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleQuickLogin('employee')}
-                    className="p-2 border border-amber-150 hover:bg-amber-50 text-amber-700 text-xs font-bold rounded-xl flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer"
-                    id="quick-login-employee"
-                  >
-                    <Briefcase className="h-4 w-4" />
-                    Employee
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleQuickLogin('special')}
-                    className="p-2 border border-emerald-150 hover:bg-emerald-50 text-emerald-700 text-xs font-bold rounded-xl flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer"
-                    id="quick-login-special"
-                  >
-                    <Sparkles className="h-4 w-4" />
-                    Special User
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleQuickLogin('admin')}
-                    className="p-2 border border-red-150 hover:bg-red-50 text-red-700 text-xs font-bold rounded-xl flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer col-span-2 sm:col-span-1"
-                    id="quick-login-admin"
-                  >
-                    <Shield className="h-4 w-4" />
-                    Admin
-                  </button>
+              {/* Multi-role Simulator Playground Switcher (Enabled in dev/testing/preview, strictly hidden on production domain autoshinebn.com) */}
+              {(typeof window === 'undefined' || (window.location.hostname !== 'autoshinebn.com' && window.location.hostname !== 'www.autoshinebn.com' && import.meta.env.VITE_IS_PRODUCTION !== 'true')) && (
+                <div className="mt-8 border-t border-slate-100 pt-6">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      🛠️ Quick Role Testing (Dev Mode Only)
+                    </span>
+                    <span className="text-[9px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                      Sandbox
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleQuickLogin('customer')}
+                      disabled={authLoading}
+                      className="p-2.5 border border-sky-200 hover:bg-sky-50 text-sky-700 text-xs font-bold rounded-xl flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
+                      id="quick-login-customer"
+                      title="Email: customer@carwash.com | Pass: customer123"
+                    >
+                      <Compass className="h-4 w-4 text-sky-600" />
+                      <span>Customer</span>
+                      <span className="text-[9px] font-normal text-slate-400">customer123</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickLogin('owner')}
+                      disabled={authLoading}
+                      className="p-2.5 border border-indigo-200 hover:bg-indigo-50 text-indigo-700 text-xs font-bold rounded-xl flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
+                      id="quick-login-owner"
+                      title="Email: owner@carwash.com | Pass: owner123"
+                    >
+                      <Sliders className="h-4 w-4 text-indigo-600" />
+                      <span>Owner</span>
+                      <span className="text-[9px] font-normal text-slate-400">owner123</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickLogin('employee')}
+                      disabled={authLoading}
+                      className="p-2.5 border border-amber-200 hover:bg-amber-50 text-amber-700 text-xs font-bold rounded-xl flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
+                      id="quick-login-employee"
+                      title="Email: employee@carwash.com | Pass: employee123"
+                    >
+                      <Briefcase className="h-4 w-4 text-amber-600" />
+                      <span>Employee</span>
+                      <span className="text-[9px] font-normal text-slate-400">employee123</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickLogin('special')}
+                      disabled={authLoading}
+                      className="p-2.5 border border-emerald-200 hover:bg-emerald-50 text-emerald-700 text-xs font-bold rounded-xl flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
+                      id="quick-login-special"
+                      title="Email: special@carwash.com | Pass: special123"
+                    >
+                      <Sparkles className="h-4 w-4 text-emerald-600" />
+                      <span>Special User</span>
+                      <span className="text-[9px] font-normal text-slate-400">special123</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickLogin('admin')}
+                      disabled={authLoading}
+                      className="p-2.5 border border-red-200 hover:bg-red-50 text-red-700 text-xs font-bold rounded-xl flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer col-span-2 sm:col-span-1 disabled:opacity-50"
+                      id="quick-login-admin"
+                      title="Email: admin@carwash.com | Pass: admin123"
+                    >
+                      <Shield className="h-4 w-4 text-red-600" />
+                      <span>Admin</span>
+                      <span className="text-[9px] font-normal text-slate-400">admin123</span>
+                    </button>
+                  </div>
+                  <div className="bg-slate-50 rounded-xl p-2.5 border border-slate-100 text-[10px] text-slate-500 text-center mt-3 flex items-start gap-1.5 justify-center">
+                    <Info className="h-3.5 w-3.5 text-slate-400 shrink-0 mt-0.5" />
+                    <span>Click any role above to automatically authenticate with demo credentials. This testing panel is disabled in live production.</span>
+                  </div>
                 </div>
-                <div className="bg-slate-50 rounded-xl p-2.5 border border-slate-100 text-[10px] text-slate-400 text-center mt-3 flex items-start gap-1.5 justify-center">
-                  <Info className="h-3 w-3 text-slate-400 shrink-0 mt-0.5" />
-                  <span>Click any button above to instantly log in as that role and explore distinct dashboards!</span>
+              )}
+            </div>
+
+            {/* Carwash Owner Partnership Enquiry Card */}
+            <div className="mt-4 bg-white/95 backdrop-blur-xs border border-slate-200/90 rounded-3xl p-4 sm:p-5 shadow-lg text-center" id="owner-enquiry-card">
+              <div className="flex items-center justify-center gap-2 mb-1.5 text-slate-800 font-extrabold text-xs sm:text-sm">
+                <div className="p-1 bg-sky-100 text-sky-700 rounded-lg">
+                  <Building className="w-4 h-4" />
                 </div>
+                <span>Carwash Owner &amp; Business Enquiry</span>
               </div>
+              <p className="text-[11px] sm:text-xs text-slate-500 mb-3 leading-relaxed">
+                Interested in listing your carwash business on {platformInfo?.companyName || 'Autoshine BN'}? Please contact our onboarding team:
+              </p>
+              
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-2 pt-1">
+                {platformInfo?.email && (
+                  <a
+                    href={`mailto:${platformInfo.email}?subject=Carwash%20Owner%20Partnership%20Enquiry`}
+                    className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold text-xs border border-sky-200/80 transition-colors shadow-2xs cursor-pointer"
+                    id="enquiry-email-link"
+                  >
+                    <Mail className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">{platformInfo.email}</span>
+                  </a>
+                )}
+
+                {(platformInfo?.whatsapp || platformInfo?.contact) && (
+                  <a
+                    href={`https://wa.me/${(platformInfo.whatsapp || platformInfo.contact).replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
+                      'Hello Autoshine BN, I would like to enquire about registering my carwash business on your platform.'
+                    )}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs border border-emerald-200/80 transition-colors shadow-2xs cursor-pointer"
+                    id="enquiry-whatsapp-link"
+                  >
+                    <Phone className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
+                    <span>WhatsApp: {platformInfo.whatsapp || platformInfo.contact}</span>
+                  </a>
+                )}
+              </div>
+
+              {platformInfo?.address && (
+                <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-center gap-1 text-[10px] text-slate-400">
+                  <MapPin className="w-3 h-3 shrink-0 text-slate-400" />
+                  <span className="truncate">{platformInfo.address}</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -714,12 +1405,12 @@ const MainAppContent: React.FC = () => {
             {/* Header */}
             <div className="px-6 py-5 border-b border-slate-150 flex items-center justify-between bg-slate-50">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 overflow-hidden rounded-xl bg-white border border-slate-250 p-0.5 flex items-center justify-center">
-                  <img src={autoshineLogo} alt="Autoshine BN" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                <div className="h-10 w-10 overflow-hidden rounded-xl bg-[#0058E6] flex items-center justify-center shadow-xs">
+                  <img src={autoshineLogo} alt="Autoshine BN" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-slate-800 tracking-tight">Terms &amp; Conditions</h3>
-                  <p className="text-[10px] text-sky-600 font-mono font-bold tracking-wider uppercase -mt-0.5">Autoshine BN</p>
+                  <h3 className="text-base font-black text-slate-800 tracking-tight">Terms &amp; Conditions of Use</h3>
+                  <p className="text-[10px] text-sky-600 font-mono font-bold tracking-wider uppercase -mt-0.5">Autoshine BN • Effective 1st September 2026</p>
                 </div>
               </div>
               <button
@@ -732,62 +1423,8 @@ const MainAppContent: React.FC = () => {
             </div>
 
             {/* Scrollable Content */}
-            <div className="flex-1 overflow-y-auto p-6 text-xs sm:text-sm text-slate-600 space-y-4">
-              <p className="font-semibold text-slate-700">
-                These Terms and Conditions (&quot;Terms&quot;) govern your access to and use of the AUTOSHINE BN mobile application and website (&quot;Platform&quot;). By registering for an account or using the Platform, you agree to be bound by these Terms.
-              </p>
-              
-              <hr className="border-slate-100" />
-
-              <div className="space-y-4">
-                <div>
-                  <h4 className="font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-1 text-xs">
-                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">1</span>
-                    Definitions
-                  </h4>
-                  <p className="pl-7"><strong className="text-slate-800">AUTOSHINE BN</strong> means the owner and operator of the booking platform. <strong className="text-slate-800">User</strong> means any person who registers or uses the Platform.</p>
-                </div>
-
-                <div>
-                  <h4 className="font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-1 text-xs">
-                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">2</span>
-                    Acceptance of Terms
-                  </h4>
-                  <p className="pl-7">By using AUTOSHINE BN, you confirm that you are at least 18 years old or have permission from a parent or guardian, and agree to comply with all applicable laws of Brunei Darussalam.</p>
-                </div>
-
-                <div>
-                  <h4 className="font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-1 text-xs">
-                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">3</span>
-                    Platform Services
-                  </h4>
-                  <p className="pl-7">AUTOSHINE BN acts solely as a booking platform connecting Users with independent car wash Operators in Brunei. We are not the provider of the car wash services themselves.</p>
-                </div>
-
-                <div>
-                  <h4 className="font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-1 text-xs">
-                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">4</span>
-                    User Responsibilities
-                  </h4>
-                  <p className="pl-7">You are responsible for keeping account credentials safe, providing accurate vehicle/location data, arriving on-time, and removing all valuables from the vehicle prior to service. AUTOSHINE BN is not liable for items left inside vehicles.</p>
-                </div>
-
-                <div>
-                  <h4 className="font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-1 text-xs">
-                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">5</span>
-                    Payments and Cancellations
-                  </h4>
-                  <p className="pl-7">Payments are governed by authorized banks or offline channels. Cancellations must be made at least 2 hours prior to the scheduled time. Frequent no-shows may lead to platform suspension.</p>
-                </div>
-
-                <div>
-                  <h4 className="font-extrabold text-slate-800 uppercase flex items-center gap-2 mb-1 text-xs">
-                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-50 text-sky-600 text-[10px] font-bold">6</span>
-                    Governing Law
-                  </h4>
-                  <p className="pl-7">These terms and conditions are governed exclusively by the laws of Brunei Darussalam, and all disputes shall be resolved in Brunei courts.</p>
-                </div>
-              </div>
+            <div className="flex-1 overflow-y-auto p-6">
+              <TermsAndConditionsContent />
             </div>
 
             {/* Footer */}
@@ -801,6 +1438,50 @@ const MainAppContent: React.FC = () => {
                 className="px-5 py-2.5 bg-sky-600 hover:bg-sky-500 text-white font-bold text-sm rounded-xl shadow-sm transition-colors cursor-pointer"
               >
                 I Agree &amp; Accept
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🚪 Exit / Leave Confirmation Modal */}
+      {showExitConfirmModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-[999] animate-fade-in">
+          <div className="relative bg-white rounded-3xl max-w-sm w-full border border-slate-200 shadow-2xl p-6 text-center space-y-4">
+            <div className="w-14 h-14 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto shadow-inner">
+              <AlertTriangle className="w-8 h-8" />
+            </div>
+
+            <div>
+              <h3 className="text-lg font-black text-slate-900">Are you sure you want to leave?</h3>
+              <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                You are about to exit AutoShine. Any unsaved changes or active progress will be lost.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowExitConfirmModal(false)}
+                className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs rounded-xl transition-all cursor-pointer"
+              >
+                Stay on App
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  isExitingRef.current = true;
+                  setShowExitConfirmModal(false);
+                  if (window.history.length > 1) {
+                    window.history.back();
+                  } else {
+                    window.close();
+                  }
+                }}
+                className="flex-1 py-3 bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs rounded-xl shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <LogOut className="w-4 h-4" />
+                Yes, Exit
               </button>
             </div>
           </div>

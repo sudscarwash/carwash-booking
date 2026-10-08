@@ -9,10 +9,18 @@ import crypto from 'crypto';
 import { Role, User } from '../src/types.js';
 
 // In production, process.env.JWT_SECRET is preferred, with a reliable fallback for dev and server container restarts.
-const JWT_SECRET = process.env.JWT_SECRET || 'car-wash-super-secure-secret-key-2026-xyz';
+export const JWT_SECRET = process.env.JWT_SECRET || 'car-wash-super-secure-secret-key-2026-xyz';
 
 export interface AuthenticatedRequest extends Request {
   user?: User;
+}
+
+export function verifyToken(token: string): User | null {
+  try {
+    return jwt.verify(token, JWT_SECRET) as User;
+  } catch {
+    return null;
+  }
 }
 
 export function generateToken(user: User): string {

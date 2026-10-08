@@ -9,9 +9,14 @@ import { MapSimulation } from '../components/MapSimulation.js';
 import {
   ShieldAlert, ShieldCheck, Users, Activity, Sliders, Check, X,
   Plus, Edit, UserPlus, FileText, Ban, CheckCircle, Info, Lock, Key, Sparkles, MapPin, Navigation,
-  Database, Mail, AlertTriangle, RefreshCw, Server
+  Database, Mail, AlertTriangle, RefreshCw, Server, Send, Eye, Trash2, Terminal, Building, Phone, Star,
+  Search, Filter, Award, Gift, Bell, BellOff, Shield, Zap, Settings, HelpCircle, CheckCircle2
 } from 'lucide-react';
-import { Role, User, MapPreset } from '../types.js';
+import { Role, User, MapPreset, Review, CarWash } from '../types.js';
+import { isValidEmail } from '../lib/validation.js';
+import { FEATURES } from '../config/features.js';
+import { useModalBack, useTabBack } from '../utils/useBackHandler.js';
+import { CarWashOperationsModal } from '../components/CarWashOperationsModal.js';
 
 export const AdminDashboard: React.FC = () => {
   const {
@@ -19,11 +24,15 @@ export const AdminDashboard: React.FC = () => {
     bookings,
     locations,
     logs,
+    platformInfo,
+    updatePlatformInfo,
+    toggleAdminOtpPolicy,
     adminCreateUser,
     adminUpdateUser,
     createOwnerWithBusiness,
     updateLocationConfig,
     deleteLocation,
+    fetchLocationsConfig,
     loading,
     token
   } = useApp();
@@ -51,6 +60,8 @@ export const AdminDashboard: React.FC = () => {
 
   // Onboard Business and Owner State
   const [showOnboardModal, setShowOnboardModal] = useState(false);
+  const [onboardOwnerMode, setOnboardOwnerMode] = useState<'new' | 'existing'>('new');
+  const [selectedOnboardOwnerId, setSelectedOnboardOwnerId] = useState('');
   const [onboardOwnerName, setOnboardOwnerName] = useState('');
   const [onboardOwnerEmail, setOnboardOwnerEmail] = useState('');
   const [onboardOwnerPassword, setOnboardOwnerPassword] = useState('owner123');
@@ -59,6 +70,7 @@ export const AdminDashboard: React.FC = () => {
   const [onboardBusinessDesc, setOnboardBusinessDesc] = useState('');
   const [onboardBusinessLat, setOnboardBusinessLat] = useState(4.8917);
   const [onboardBusinessLng, setOnboardBusinessLng] = useState(114.9401);
+  const [onboardMembership, setOnboardMembership] = useState(false);
   const [onboardSubmitting, setOnboardSubmitting] = useState(false);
 
   // Edit Location State
@@ -71,12 +83,322 @@ export const AdminDashboard: React.FC = () => {
   const [editLocSlotDuration, setEditLocSlotDuration] = useState(30);
   const [editLocCapacity, setEditLocCapacity] = useState(1);
   const [editLocIsActive, setEditLocIsActive] = useState(true);
+  const [editLocOwnerQr, setEditLocOwnerQr] = useState(false);
+  const [editLocMembership, setEditLocMembership] = useState(false);
+  const [operationsModalCarWash, setOperationsModalCarWash] = useState<CarWash | null>(null);
   const [editLocPhone, setEditLocPhone] = useState('');
   const [editLocInstagram, setEditLocInstagram] = useState('');
+  const [editLocOwnerId, setEditLocOwnerId] = useState('');
   const [editLocSubmitting, setEditLocSubmitting] = useState(false);
   const [deletingLocId, setDeletingLocId] = useState<string | null>(null);
+  
+  // Review Moderation States (Structured and ready when reviews are activated)
+  const [adminReviews, setAdminReviews] = useState<Review[]>([]);
+  const [adminReviewsLoading, setAdminReviewsLoading] = useState(false);
+  const [adminReviewsSearch, setAdminReviewsSearch] = useState('');
+  const [adminReviewsRatingFilter, setAdminReviewsRatingFilter] = useState<string>('ALL');
+  const [deletingReviewId, setDeletingReviewId] = useState<string | null>(null);
 
-  const [activeSubTab, setActiveSubTab] = useState<'users' | 'logs' | 'businesses' | 'presets' | 'system'>('users');
+  const fetchAdminReviews = async () => {
+    if (!token || !FEATURES.ENABLE_REVIEWS) return;
+    setAdminReviewsLoading(true);
+    try {
+      const res = await fetch('/api/reviews', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAdminReviews(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      console.warn('Failed to load reviews for admin:', err);
+    } finally {
+      setAdminReviewsLoading(false);
+    }
+  };
+
+  const handleAdminDeleteReview = async (reviewId: string) => {
+    if (!window.confirm('Admin Moderation Action: Are you sure you want to permanently delete this review? This action cannot be undone.')) {
+      return;
+    }
+    setDeletingReviewId(reviewId);
+    try {
+      const res = await fetch(`/api/reviews/${reviewId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to delete review');
+      }
+      setAdminReviews(prev => prev.filter(r => r.id !== reviewId));
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete review');
+    } finally {
+      setDeletingReviewId(null);
+    }
+  };
+
+  const [activeSubTab, setActiveSubTab] = useState<'users' | 'logs' | 'emails' | 'businesses' | 'memberships' | 'presets' | 'info' | 'system' | 'reviews'>('users');
+
+  // Platform & Enquiry Info States
+  const [infoEmail, setInfoEmail] = useState('');
+  const [infoContact, setInfoContact] = useState('');
+  const [infoWhatsapp, setInfoWhatsapp] = useState('');
+  const [infoAddress, setInfoAddress] = useState('');
+  const [infoCompanyName, setInfoCompanyName] = useState('Autoshine BN');
+  const [infoDesc, setInfoDesc] = useState('');
+  const [infoAdminOtpRequired, setInfoAdminOtpRequired] = useState(true);
+  const [infoSaving, setInfoSaving] = useState(false);
+  const [togglingOtp, setTogglingOtp] = useState(false);
+
+  useEffect(() => {
+    if (platformInfo) {
+      setInfoEmail(platformInfo.email || '');
+      setInfoContact(platformInfo.contact || '');
+      setInfoWhatsapp(platformInfo.whatsapp || '');
+      setInfoAddress(platformInfo.address || '');
+      setInfoCompanyName(platformInfo.companyName || 'Autoshine BN');
+      setInfoDesc(platformInfo.description || '');
+      setInfoAdminOtpRequired(platformInfo.adminOtpRequired !== false);
+    }
+  }, [platformInfo]);
+
+  const handleSavePlatformInfo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setInfoSaving(true);
+    await updatePlatformInfo({
+      email: infoEmail.trim(),
+      contact: infoContact.trim(),
+      whatsapp: infoWhatsapp.trim(),
+      address: infoAddress.trim(),
+      companyName: infoCompanyName.trim(),
+      description: infoDesc.trim(),
+      adminOtpRequired: infoAdminOtpRequired,
+    });
+    setInfoSaving(false);
+  };
+
+  const handleDirectToggleOtp = async (newValue: boolean) => {
+    setTogglingOtp(true);
+    const ok = await toggleAdminOtpPolicy(newValue);
+    if (ok) {
+      setInfoAdminOtpRequired(newValue);
+    }
+    setTogglingOtp(false);
+  };
+
+  // Email Sandbox & Log State
+  interface EmailLogEntry {
+    id: string;
+    timestamp: string;
+    to: string;
+    from: string;
+    subject: string;
+    html: string;
+    status: 'DELIVERED' | 'SIMULATED' | 'FAILED' | 'HELD_QUOTA';
+    provider: 'RESEND' | 'GMAIL_SMTP' | 'SANDBOX_CONSOLE';
+    errorDetails?: string;
+  }
+
+  interface EmailNotificationSettings {
+    masterEnabled: boolean;
+    notifyBookingConfirmed: boolean;
+    notifyWashCompleted: boolean;
+    notifyBookingCancelled: boolean;
+    notifyDailyOwnerDigest: boolean;
+    activeProvider: 'RESEND' | 'GMAIL_SMTP' | 'SANDBOX_CONSOLE';
+    dailyQuotaLimit: number;
+    reservedAuthQuota: number;
+    gmailUser?: string;
+    gmailAppPassword?: string;
+    resendApiKey?: string;
+    emailFromAddress?: string;
+    replyToAddress?: string;
+  }
+
+  interface QuotaStatus {
+    date: string;
+    totalSentToday: number;
+    authSentToday: number;
+    notificationsSentToday: number;
+    notificationsHeldToday: number;
+    dailyQuotaLimit: number;
+    reservedAuthQuota: number;
+    remainingTotal: number;
+    remainingForNotifications: number;
+    activeProvider: 'RESEND' | 'GMAIL_SMTP' | 'SANDBOX_CONSOLE';
+    hasResendKey: boolean;
+    hasGmailConfig: boolean;
+    masterEnabled: boolean;
+  }
+
+  const [emailLogs, setEmailLogs] = useState<EmailLogEntry[]>([]);
+  const [emailLogsLoading, setEmailLogsLoading] = useState(false);
+  const [selectedEmailPreview, setSelectedEmailPreview] = useState<EmailLogEntry | null>(null);
+  const [testEmailRecipient, setTestEmailRecipient] = useState('');
+  const [testEmailSubject, setTestEmailSubject] = useState('Autoshine BN Test Email');
+  const [testEmailBody, setTestEmailBody] = useState('This is a test transactional email sent from your Autoshine BN administration console.');
+  const [sendingTestEmail, setSendingTestEmail] = useState(false);
+  const [testEmailStatus, setTestEmailStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Email Notification Preferences & Provider States
+  const [emailSettings, setEmailSettings] = useState<EmailNotificationSettings | null>(null);
+  const [quotaStatus, setQuotaStatus] = useState<QuotaStatus | null>(null);
+  const [savingEmailSettings, setSavingEmailSettings] = useState(false);
+  const [emailSettingsMsg, setEmailSettingsMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [gmailUserInput, setGmailUserInput] = useState('');
+  const [gmailAppPassInput, setGmailAppPassInput] = useState('');
+  const [showGmailConfigForm, setShowGmailConfigForm] = useState(false);
+  const [fromAddressInput, setFromAddressInput] = useState('');
+  const [replyToInput, setReplyToInput] = useState('');
+  const [showSenderConfig, setShowSenderConfig] = useState(false);
+
+  // 🔄 Navigation & Back button synchronization:
+  useTabBack(activeSubTab, setActiveSubTab, 'users', 'adminTab');
+  useModalBack(showCreateModal, () => setShowCreateModal(false), 'admin-create-user-modal');
+  useModalBack(Boolean(editingUser), () => setEditingUser(null), 'admin-edit-user-modal');
+  useModalBack(showOnboardModal, () => setShowOnboardModal(false), 'admin-onboard-business-modal');
+  useModalBack(Boolean(editingLocation), () => setEditingLocation(null), 'admin-edit-location-modal');
+  useModalBack(Boolean(selectedEmailPreview), () => setSelectedEmailPreview(null), 'admin-email-preview-modal');
+
+  const fetchEmailSettings = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch('/api/admin/email-settings', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setEmailSettings(data.settings);
+        setQuotaStatus(data.quota);
+        if (data.settings?.gmailUser) {
+          setGmailUserInput(data.settings.gmailUser);
+        }
+        if (data.settings?.gmailAppPassword) {
+          setGmailAppPassInput(data.settings.gmailAppPassword);
+        }
+        if (data.settings?.emailFromAddress) {
+          setFromAddressInput(data.settings.emailFromAddress);
+        }
+        if (data.settings?.replyToAddress) {
+          setReplyToInput(data.settings.replyToAddress);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch email settings:', err);
+    }
+  };
+
+  const handleUpdateEmailSetting = async (updates: Partial<EmailNotificationSettings>) => {
+    if (!token) return;
+    setSavingEmailSettings(true);
+    setEmailSettingsMsg(null);
+    try {
+      const res = await fetch('/api/admin/email-settings', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(updates)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setEmailSettings(data.settings);
+        setQuotaStatus(data.quota);
+        setEmailSettingsMsg({ type: 'success', text: 'Email notification preferences updated successfully!' });
+        setTimeout(() => setEmailSettingsMsg(null), 4000);
+      } else {
+        setEmailSettingsMsg({ type: 'error', text: 'Failed to save email settings.' });
+      }
+    } catch (err: any) {
+      setEmailSettingsMsg({ type: 'error', text: err?.message || 'Error saving settings' });
+    } finally {
+      setSavingEmailSettings(false);
+    }
+  };
+
+  const fetchEmailLogs = async () => {
+    if (!token) return;
+    setEmailLogsLoading(true);
+    try {
+      const res = await fetch('/api/admin/email-logs', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setEmailLogs(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch email logs:', err);
+    } finally {
+      setEmailLogsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSubTab === 'emails') {
+      fetchEmailLogs();
+      fetchEmailSettings();
+    }
+  }, [activeSubTab, token]);
+
+  const handleSendTestEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const recipientClean = testEmailRecipient.trim();
+    if (!recipientClean || !isValidEmail(recipientClean)) {
+      setTestEmailStatus({ type: 'error', message: 'Please enter a valid recipient email address (e.g. name@domain.com).' });
+      return;
+    }
+    setSendingTestEmail(true);
+    setTestEmailStatus(null);
+    try {
+      const res = await fetch('/api/admin/test-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          recipient: recipientClean,
+          subject: testEmailSubject.trim(),
+          body: testEmailBody.trim()
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setTestEmailStatus({ type: 'success', message: data.message || 'Email dispatched successfully!' });
+        fetchEmailLogs();
+      } else {
+        setTestEmailStatus({ type: 'error', message: data.error || data.message || 'Failed to dispatch email.' });
+      }
+    } catch (err: any) {
+      setTestEmailStatus({ type: 'error', message: err.message || 'Network error occurred while sending email.' });
+    } finally {
+      setSendingTestEmail(false);
+    }
+  };
+
+  const handleClearEmailLogs = async () => {
+    if (!confirm('Are you sure you want to clear all recorded email logs?')) return;
+    try {
+      const res = await fetch('/api/admin/email-logs', {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setEmailLogs([]);
+        setSelectedEmailPreview(null);
+      }
+    } catch (err) {
+      console.error('Failed to clear email logs:', err);
+    }
+  };
 
   // Preset management state
   const [presets, setPresets] = useState<MapPreset[]>([]);
@@ -162,6 +484,8 @@ export const AdminDashboard: React.FC = () => {
       fetchPresets();
     } else if (activeSubTab === 'system') {
       fetchSystemStatus();
+    } else if (activeSubTab === 'reviews' && FEATURES.ENABLE_REVIEWS) {
+      fetchAdminReviews();
     }
   }, [activeSubTab]);
 
@@ -233,8 +557,11 @@ export const AdminDashboard: React.FC = () => {
     setEditLocSlotDuration(loc.slotDuration || 30);
     setEditLocCapacity(loc.capacityPerSlot || 1);
     setEditLocIsActive(loc.isActive);
+    setEditLocOwnerQr(loc.ownerQrCodeEnabled === true);
+    setEditLocMembership(loc.membershipEnabled === true);
     setEditLocPhone(loc.phone || '');
     setEditLocInstagram(loc.instagram || '');
+    setEditLocOwnerId(loc.ownerId || '');
   };
 
   const handleEditLocationSubmit = async (e: React.FormEvent) => {
@@ -251,8 +578,12 @@ export const AdminDashboard: React.FC = () => {
       slotDuration: editLocSlotDuration,
       capacityPerSlot: editLocCapacity,
       isActive: editLocIsActive,
+      ownerNavigationEnabled: true,
+      ownerQrCodeEnabled: editLocOwnerQr,
+      membershipEnabled: editLocMembership,
       phone: editLocPhone,
       instagram: editLocInstagram,
+      ownerId: editLocOwnerId,
     });
     setEditLocSubmitting(false);
 
@@ -275,8 +606,14 @@ export const AdminDashboard: React.FC = () => {
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
+    const trimmedEmail = createEmail.trim();
+    if (!isValidEmail(trimmedEmail)) {
+      alert("Please enter a valid email address format (e.g. user@carwash.com).");
+      return;
+    }
+
     const data = {
-      email: createEmail,
+      email: trimmedEmail,
       password: createPassword,
       name: createName,
       role: createRole,
@@ -296,19 +633,68 @@ export const AdminDashboard: React.FC = () => {
 
   const handleOnboardSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!onboardOwnerName || !onboardOwnerEmail || !onboardBusinessName || !onboardBusinessAddress) return;
+    if (!onboardBusinessName || !onboardBusinessAddress) return;
+
+    if (onboardOwnerMode === 'new') {
+      const trimmedEmail = onboardOwnerEmail.trim();
+      if (!isValidEmail(trimmedEmail)) {
+        alert("Please enter a valid owner email address (e.g. owner@carwash.com).");
+        return;
+      }
+    }
 
     setOnboardSubmitting(true);
-    const success = await createOwnerWithBusiness({
-      ownerName: onboardOwnerName,
-      ownerEmail: onboardOwnerEmail,
-      ownerPassword: onboardOwnerPassword,
-      businessName: onboardBusinessName,
-      businessAddress: onboardBusinessAddress,
-      businessDesc: onboardBusinessDesc,
-      businessLat: onboardBusinessLat,
-      businessLng: onboardBusinessLng
-    });
+    let success = false;
+
+    if (onboardOwnerMode === 'existing') {
+      if (!selectedOnboardOwnerId) {
+        setOnboardSubmitting(false);
+        return;
+      }
+      try {
+        const res = await fetch('/api/car-washes', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            name: onboardBusinessName,
+            address: onboardBusinessAddress,
+            description: onboardBusinessDesc,
+            locationLat: onboardBusinessLat,
+            locationLng: onboardBusinessLng,
+            ownerId: selectedOnboardOwnerId,
+            slotDuration: 30,
+            capacityPerSlot: 2,
+            membershipEnabled: onboardMembership,
+          })
+        });
+        success = res.ok;
+        if (success) {
+          fetchLocationsConfig();
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    } else {
+      if (!onboardOwnerName || !onboardOwnerEmail) {
+        setOnboardSubmitting(false);
+        return;
+      }
+      success = await createOwnerWithBusiness({
+        ownerName: onboardOwnerName,
+        ownerEmail: onboardOwnerEmail,
+        ownerPassword: onboardOwnerPassword,
+        businessName: onboardBusinessName,
+        businessAddress: onboardBusinessAddress,
+        businessDesc: onboardBusinessDesc,
+        businessLat: onboardBusinessLat,
+        businessLng: onboardBusinessLng,
+        membershipEnabled: onboardMembership,
+      });
+    }
+
     setOnboardSubmitting(false);
 
     if (success) {
@@ -318,6 +704,7 @@ export const AdminDashboard: React.FC = () => {
       setOnboardBusinessName('');
       setOnboardBusinessAddress('');
       setOnboardBusinessDesc('');
+      setSelectedOnboardOwnerId('');
       setShowOnboardModal(false);
     }
   };
@@ -389,63 +776,118 @@ export const AdminDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Sub Tabs Selection */}
-      <div className="border-b border-slate-200 flex gap-4 text-sm font-semibold">
+      {/* Sub Tabs Selection - Responsive Mobile Horizontal Scroll */}
+      <div className="border-b border-slate-200 flex items-center gap-1.5 sm:gap-4 text-xs sm:text-sm font-semibold overflow-x-auto no-scrollbar scrollbar-none py-1 -mx-4 px-4 sm:mx-0 sm:px-0 touch-pan-x">
         <button
           onClick={() => setActiveSubTab('users')}
-          className={`pb-3.5 px-1 border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
+          className={`pb-3 pt-1.5 px-2.5 sm:px-1 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap ${
             activeSubTab === 'users'
               ? 'border-red-600 text-red-600 font-bold'
               : 'border-transparent text-slate-500 hover:text-slate-700'
           }`}
           id="admin-subtab-users"
         >
-          <Users className="h-4 w-4" /> User Management
+          <Users className="h-4 w-4 shrink-0" />
+          <span>User Management</span>
         </button>
         <button
           onClick={() => setActiveSubTab('logs')}
-          className={`pb-3.5 px-1 border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
+          className={`pb-3 pt-1.5 px-2.5 sm:px-1 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap ${
             activeSubTab === 'logs'
               ? 'border-red-600 text-red-600 font-bold'
               : 'border-transparent text-slate-500 hover:text-slate-700'
           }`}
           id="admin-subtab-logs"
         >
-          <Activity className="h-4 w-4" /> System Audit Logs
+          <Activity className="h-4 w-4 shrink-0" />
+          <span>System Audit Logs</span>
+        </button>
+        <button
+          onClick={() => setActiveSubTab('emails')}
+          className={`pb-3 pt-1.5 px-2.5 sm:px-1 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap ${
+            activeSubTab === 'emails'
+              ? 'border-red-600 text-red-600 font-bold'
+              : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}
+          id="admin-subtab-emails"
+        >
+          <Mail className="h-4 w-4 shrink-0" />
+          <span>Email Sandbox &amp; Logs</span>
         </button>
         <button
           onClick={() => setActiveSubTab('businesses')}
-          className={`pb-3.5 px-1 border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
+          className={`pb-3 pt-1.5 px-2.5 sm:px-1 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap ${
             activeSubTab === 'businesses'
               ? 'border-red-600 text-red-600 font-bold'
               : 'border-transparent text-slate-500 hover:text-slate-700'
           }`}
           id="admin-subtab-businesses"
         >
-          <Sliders className="h-4 w-4" /> Business Locations
+          <Sliders className="h-4 w-4 shrink-0" />
+          <span>Business Locations</span>
+        </button>
+        <button
+          onClick={() => setActiveSubTab('memberships')}
+          className={`pb-3 pt-1.5 px-2.5 sm:px-1 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap ${
+            activeSubTab === 'memberships'
+              ? 'border-red-600 text-red-600 font-bold'
+              : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}
+          id="admin-subtab-memberships"
+        >
+          <Award className="h-4 w-4 shrink-0" />
+          <span>Loyalty Programmes</span>
         </button>
         <button
           onClick={() => setActiveSubTab('presets')}
-          className={`pb-3.5 px-1 border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
+          className={`pb-3 pt-1.5 px-2.5 sm:px-1 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap ${
             activeSubTab === 'presets'
               ? 'border-red-600 text-red-600 font-bold'
               : 'border-transparent text-slate-500 hover:text-slate-700'
           }`}
           id="admin-subtab-presets"
         >
-          <Navigation className="h-4 w-4" /> Map Presets
+          <Navigation className="h-4 w-4 shrink-0" />
+          <span>Map Presets</span>
+        </button>
+        <button
+          onClick={() => setActiveSubTab('info')}
+          className={`pb-3 pt-1.5 px-2.5 sm:px-1 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap ${
+            activeSubTab === 'info'
+              ? 'border-red-600 text-red-600 font-bold'
+              : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}
+          id="admin-subtab-info"
+        >
+          <Building className="h-4 w-4 shrink-0" />
+          <span>Autoshine Information</span>
         </button>
         <button
           onClick={() => setActiveSubTab('system')}
-          className={`pb-3.5 px-1 border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
+          className={`pb-3 pt-1.5 px-2.5 sm:px-1 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap ${
             activeSubTab === 'system'
               ? 'border-red-600 text-red-600 font-bold'
               : 'border-transparent text-slate-500 hover:text-slate-700'
           }`}
           id="admin-subtab-system"
         >
-          <Server className="h-4 w-4" /> Database & System Diagnostics
+          <Server className="h-4 w-4 shrink-0" />
+          <span>Database &amp; System Diagnostics</span>
         </button>
+        {FEATURES.ENABLE_REVIEWS && (
+          <button
+            onClick={() => setActiveSubTab('reviews')}
+            className={`pb-3 pt-1.5 px-2.5 sm:px-1 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap ${
+              activeSubTab === 'reviews'
+                ? 'border-red-600 text-red-600 font-bold'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+            id="admin-subtab-reviews"
+          >
+            <Star className="h-4 w-4 shrink-0" />
+            <span>Review Moderation</span>
+          </button>
+        )}
       </div>
 
       {/* Sub Tab: Users */}
@@ -654,41 +1096,695 @@ export const AdminDashboard: React.FC = () => {
         );
       })()}
 
-      {/* Sub Tab: System Logs */}
-      {activeSubTab === 'logs' && (
-        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
-          <div className="pb-4 border-b border-slate-100 mb-6">
-            <h2 className="text-base sm:text-lg font-bold text-slate-800">Operational Log Streams</h2>
-            <p className="text-xs text-slate-400">Cryptographically isolated trails auditing state-modifying actions</p>
-          </div>
+      {/* Sub Tab: Email Sandbox & Logs */}
+      {activeSubTab === 'emails' && (
+        <div className="space-y-6">
+          {/* Email Settings Toast Message */}
+          {emailSettingsMsg && (
+            <div className={`p-4 rounded-2xl text-xs font-bold flex items-center justify-between shadow-sm animate-fade-in ${
+              emailSettingsMsg.type === 'success'
+                ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                : 'bg-rose-50 text-rose-800 border border-rose-200'
+            }`}>
+              <div className="flex items-center gap-2">
+                {emailSettingsMsg.type === 'success' ? <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" /> : <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" />}
+                <span>{emailSettingsMsg.text}</span>
+              </div>
+              <button onClick={() => setEmailSettingsMsg(null)} className="text-slate-400 hover:text-slate-600 text-xs font-bold ml-4">Dismiss</button>
+            </div>
+          )}
 
-          <div className="space-y-3 font-mono text-xs max-h-[500px] overflow-y-auto pr-1">
-            {logs.length === 0 ? (
-              <p className="text-center py-8 text-slate-400 italic">No system audit logs found.</p>
-            ) : (
-              logs.map((log) => (
-                <div
-                  key={log.id}
-                  className="bg-slate-50 border border-slate-100 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-slate-100/50 transition-colors"
-                >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="bg-red-50 text-red-800 text-[10px] px-1.5 py-0.5 rounded font-extrabold border border-red-100">
-                        {log.action}
-                      </span>
-                      <span className="text-slate-400 text-[10px]">|</span>
-                      <span className="text-slate-600 font-semibold">{log.userEmail}</span>
-                    </div>
-                    <p className="text-slate-500 font-sans text-xs">{log.details}</p>
+          {/* Top Row: Notification Controls & Provider Switcher */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Notification ON/OFF Preferences (7 Cols) */}
+            <div className="lg:col-span-7 bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-5">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2.5 rounded-2xl ${emailSettings?.masterEnabled ? 'bg-sky-50 text-sky-600' : 'bg-slate-100 text-slate-400'}`}>
+                    {emailSettings?.masterEnabled ? <Bell className="h-5 w-5" /> : <BellOff className="h-5 w-5" />}
                   </div>
+                  <div>
+                    <h2 className="text-base font-bold text-slate-800">Email Notification Toggles</h2>
+                    <p className="text-xs text-slate-400">Control outgoing transactional messages to preserve daily email quota</p>
+                  </div>
+                </div>
 
-                  <span className="text-slate-400 text-[10px] sm:text-right font-mono self-start sm:self-center shrink-0">
-                    {new Date(log.timestamp).toLocaleString()}
+                {/* Master Switch */}
+                <button
+                  onClick={() => handleUpdateEmailSetting({ masterEnabled: !emailSettings?.masterEnabled })}
+                  disabled={savingEmailSettings}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm ${
+                    emailSettings?.masterEnabled
+                      ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
+                      : 'bg-slate-200 hover:bg-slate-300 text-slate-700'
+                  }`}
+                  title="Toggle Master Notifications"
+                >
+                  {emailSettings?.masterEnabled ? (
+                    <>
+                      <Check className="h-3.5 w-3.5" /> Notifications ON
+                    </>
+                  ) : (
+                    <>
+                      <X className="h-3.5 w-3.5" /> Notifications OFF
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Critical Security Protection Notice */}
+              <div className="bg-sky-50/70 border border-sky-100 rounded-2xl p-3.5 flex items-start gap-2.5 text-xs text-sky-900">
+                <Shield className="h-4 w-4 text-sky-600 shrink-0 mt-0.5" />
+                <p className="leading-relaxed text-[11px]">
+                  <strong>Always-Protected Auth Emails:</strong> Email Verification OTPs, Password Resets, and Initial Staff Credentials bypass these toggles and are <strong>always active</strong> so your users and staff can never get locked out.
+                </p>
+              </div>
+
+              {/* Granular Toggles List */}
+              <div className="space-y-3 pt-1">
+                {/* 1. Car Wash Completed (Car Ready) */}
+                <div className="p-3.5 bg-slate-50 hover:bg-slate-50/80 border border-slate-200/80 rounded-2xl flex items-center justify-between gap-3 transition-colors">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-800">Car Wash Completed & Ready for Pick-Up</span>
+                      <span className="bg-emerald-100 text-emerald-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider">High Value</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500">Emails customer when detailer marks booking as Completed so they can pick up their vehicle.</p>
+                  </div>
+                  <button
+                    onClick={() => handleUpdateEmailSetting({ notifyWashCompleted: !emailSettings?.notifyWashCompleted })}
+                    disabled={savingEmailSettings || !emailSettings?.masterEnabled}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 ${
+                      emailSettings?.notifyWashCompleted && emailSettings?.masterEnabled ? 'bg-sky-600' : 'bg-slate-300'
+                    }`}
+                  >
+                    <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      emailSettings?.notifyWashCompleted && emailSettings?.masterEnabled ? 'translate-x-5' : 'translate-x-0'
+                    }`} />
+                  </button>
+                </div>
+
+                {/* 2. Booking Confirmation */}
+                <div className="p-3.5 bg-slate-50 hover:bg-slate-50/80 border border-slate-200/80 rounded-2xl flex items-center justify-between gap-3 transition-colors">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-800">Booking Confirmation Email</span>
+                      <span className="bg-amber-100 text-amber-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider">Quota Saver</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500">Sends instant booking details. Can be turned OFF on high-volume days since customers see instant screen confirmation.</p>
+                  </div>
+                  <button
+                    onClick={() => handleUpdateEmailSetting({ notifyBookingConfirmed: !emailSettings?.notifyBookingConfirmed })}
+                    disabled={savingEmailSettings || !emailSettings?.masterEnabled}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 ${
+                      emailSettings?.notifyBookingConfirmed && emailSettings?.masterEnabled ? 'bg-sky-600' : 'bg-slate-300'
+                    }`}
+                  >
+                    <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      emailSettings?.notifyBookingConfirmed && emailSettings?.masterEnabled ? 'translate-x-5' : 'translate-x-0'
+                    }`} />
+                  </button>
+                </div>
+
+                {/* 3. Booking Cancellation */}
+                <div className="p-3.5 bg-slate-50 hover:bg-slate-50/80 border border-slate-200/80 rounded-2xl flex items-center justify-between gap-3 transition-colors">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-800">Booking Cancellation / Rejection Alert</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500">Alerts customer if weather, power, or slot issues force a cancellation.</p>
+                  </div>
+                  <button
+                    onClick={() => handleUpdateEmailSetting({ notifyBookingCancelled: !emailSettings?.notifyBookingCancelled })}
+                    disabled={savingEmailSettings || !emailSettings?.masterEnabled}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 ${
+                      emailSettings?.notifyBookingCancelled && emailSettings?.masterEnabled ? 'bg-sky-600' : 'bg-slate-300'
+                    }`}
+                  >
+                    <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      emailSettings?.notifyBookingCancelled && emailSettings?.masterEnabled ? 'translate-x-5' : 'translate-x-0'
+                    }`} />
+                  </button>
+                </div>
+
+                {/* 4. Owner Daily Summary */}
+                <div className="p-3.5 bg-slate-50 hover:bg-slate-50/80 border border-slate-200/80 rounded-2xl flex items-center justify-between gap-3 transition-colors">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-800">Owner Daily Schedule Digest</span>
+                      <span className="bg-slate-200 text-slate-700 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider">1 / day</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500">Sends 1 single morning summary email to owners instead of spamming 1 email per customer booking.</p>
+                  </div>
+                  <button
+                    onClick={() => handleUpdateEmailSetting({ notifyDailyOwnerDigest: !emailSettings?.notifyDailyOwnerDigest })}
+                    disabled={savingEmailSettings || !emailSettings?.masterEnabled}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 ${
+                      emailSettings?.notifyDailyOwnerDigest && emailSettings?.masterEnabled ? 'bg-sky-600' : 'bg-slate-300'
+                    }`}
+                  >
+                    <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      emailSettings?.notifyDailyOwnerDigest && emailSettings?.masterEnabled ? 'translate-x-5' : 'translate-x-0'
+                    }`} />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Provider Switcher & Quota Gauge (5 Cols) */}
+            <div className="lg:col-span-5 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-3xl p-6 text-white shadow-md flex flex-col justify-between space-y-5">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sky-400 text-xs font-extrabold uppercase tracking-wider">
+                    <Server className="h-4 w-4" /> Email Delivery Engine
+                  </div>
+                  <span className="text-[10px] font-mono bg-slate-800 px-2 py-0.5 rounded-full text-slate-400">
+                    {quotaStatus?.date || new Date().toISOString().slice(0, 10)}
                   </span>
                 </div>
-              ))
-            )}
+
+                {/* Quota Gauge */}
+                {(() => {
+                  const sent = quotaStatus?.totalSentToday || 0;
+                  const limit = quotaStatus?.dailyQuotaLimit || 100;
+                  const usagePct = Math.min(100, Math.round((sent / limit) * 100));
+                  const notifsLeft = quotaStatus?.remainingForNotifications || 0;
+                  const isNearLimit = usagePct >= 80;
+                  const isCapped = notifsLeft <= 0;
+
+                  return (
+                    <div className="bg-slate-800/90 border border-slate-700/80 rounded-2xl p-4 space-y-2.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-300 font-semibold flex items-center gap-1.5">
+                          Daily Quota Usage:
+                          {isCapped ? (
+                            <span className="text-[10px] bg-rose-950 text-rose-300 border border-rose-800 px-2 py-0.5 rounded-full font-bold">
+                              Threshold Reached
+                            </span>
+                          ) : isNearLimit ? (
+                            <span className="text-[10px] bg-amber-950 text-amber-300 border border-amber-800 px-2 py-0.5 rounded-full font-bold animate-pulse">
+                              Near Limit ({usagePct}%)
+                            </span>
+                          ) : (
+                            <span className="text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-800 px-2 py-0.5 rounded-full font-bold">
+                              Healthy ({usagePct}%)
+                            </span>
+                          )}
+                        </span>
+                        <span className="font-mono font-bold text-white">
+                          {sent} / {limit} sent
+                        </span>
+                      </div>
+
+                      {/* Progress Bar with Color Coding */}
+                      <div className="w-full bg-slate-700 h-2.5 rounded-full overflow-hidden flex">
+                        <div
+                          className={`h-full transition-all duration-300 ${
+                            isCapped ? 'bg-rose-500' : isNearLimit ? 'bg-amber-400' : 'bg-emerald-400'
+                          }`}
+                          style={{ width: `${usagePct}%` }}
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between text-[11px] text-slate-400 pt-0.5">
+                        <span className="flex items-center gap-1 text-emerald-400 font-medium">
+                          <ShieldCheck className="h-3.5 w-3.5" /> 25 OTPs Reserved
+                        </span>
+                        <span className={isCapped ? 'text-rose-400 font-bold' : isNearLimit ? 'text-amber-400 font-bold' : ''}>
+                          {notifsLeft} notifications left
+                        </span>
+                      </div>
+
+                      {/* Alert when near limit or capped */}
+                      {isCapped ? (
+                        <div className="p-2.5 rounded-xl bg-rose-950/70 border border-rose-800/80 text-[11px] text-rose-200 flex items-start gap-2">
+                          <AlertTriangle className="h-4 w-4 shrink-0 text-rose-400 mt-0.5" />
+                          <div>
+                            <span className="font-bold">Circuit Breaker Active:</span> Routine alerts paused to guarantee reserved capacity for user OTPs & password resets.
+                          </div>
+                        </div>
+                      ) : isNearLimit ? (
+                        <div className="p-2.5 rounded-xl bg-amber-950/70 border border-amber-800/80 text-[11px] text-amber-200 flex items-start gap-2">
+                          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400 mt-0.5" />
+                          <div>
+                            <span className="font-bold">Approaching Quota:</span> {sent} of {limit} daily emails dispatched ({notifsLeft} alerts remaining before auto-pause).
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })()}
+
+                {/* Active Provider Selector */}
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wide">Select Active Provider</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      onClick={() => handleUpdateEmailSetting({ activeProvider: 'RESEND', dailyQuotaLimit: 100 })}
+                      disabled={savingEmailSettings}
+                      className={`p-2.5 rounded-xl text-center text-xs font-bold border transition-all cursor-pointer ${
+                        emailSettings?.activeProvider === 'RESEND'
+                          ? 'bg-sky-600 text-white border-sky-400 shadow-md'
+                          : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                      }`}
+                    >
+                      <div className="text-[11px]">Resend API</div>
+                      <div className="text-[9px] text-slate-300 mt-0.5 font-normal">100 / day (Free)</div>
+                    </button>
+
+                    <button
+                      onClick={() => handleUpdateEmailSetting({ activeProvider: 'GMAIL_SMTP', dailyQuotaLimit: 500 })}
+                      disabled={savingEmailSettings}
+                      className={`p-2.5 rounded-xl text-center text-xs font-bold border transition-all cursor-pointer ${
+                        emailSettings?.activeProvider === 'GMAIL_SMTP'
+                          ? 'bg-emerald-600 text-white border-emerald-400 shadow-md'
+                          : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                      }`}
+                    >
+                      <div className="text-[11px]">Gmail SMTP</div>
+                      <div className="text-[9px] text-slate-300 mt-0.5 font-normal">500 / day ($0 Free)</div>
+                    </button>
+
+                    <button
+                      onClick={() => handleUpdateEmailSetting({ activeProvider: 'SANDBOX_CONSOLE' })}
+                      disabled={savingEmailSettings}
+                      className={`p-2.5 rounded-xl text-center text-xs font-bold border transition-all cursor-pointer ${
+                        emailSettings?.activeProvider === 'SANDBOX_CONSOLE'
+                          ? 'bg-amber-600 text-white border-amber-400 shadow-md'
+                          : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                      }`}
+                    >
+                      <div className="text-[11px]">Sandbox</div>
+                      <div className="text-[9px] text-slate-300 mt-0.5 font-normal">Logs only</div>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Free Gmail SMTP Config Section */}
+                {emailSettings?.activeProvider === 'GMAIL_SMTP' && (
+                  <div className="bg-slate-800/80 border border-slate-700 rounded-2xl p-3.5 space-y-2.5 text-xs text-slate-300">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-emerald-400 text-[11px] flex items-center gap-1">
+                        <Zap className="h-3.5 w-3.5" /> Gmail 16-Char App Password
+                      </span>
+                      <button
+                        onClick={() => setShowGmailConfigForm(!showGmailConfigForm)}
+                        className="text-[10px] text-sky-400 hover:underline cursor-pointer"
+                      >
+                        {showGmailConfigForm ? 'Close instructions' : 'How to set up (2 mins)'}
+                      </button>
+                    </div>
+
+                    {showGmailConfigForm && (
+                      <div className="text-[10px] text-slate-300 space-y-1 bg-slate-900/60 p-2.5 rounded-xl border border-slate-700">
+                        <p className="font-bold text-white">How to get a Free Google App Password:</p>
+                        <ol className="list-decimal pl-4 space-y-0.5">
+                          <li>Open Google Account (e.g. suds.carwash.app@gmail.com).</li>
+                          <li>Go to <strong>Security</strong> &rarr; Turn ON 2-Step Verification.</li>
+                          <li>Search <strong>"App Passwords"</strong> (myaccount.google.com/apppasswords).</li>
+                          <li>Name it "Autoshine BN" &rarr; Copy the 16-letter secret code.</li>
+                          <li>Paste it below and click Save! (Sends 500 emails/day free).</li>
+                        </ol>
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-bold text-slate-300 uppercase">
+                          Google Workspace / Gmail Account
+                        </label>
+                        <input
+                          type="email"
+                          placeholder="e.g. suds.carwash.app@gmail.com or admin@yourdomain.com"
+                          value={gmailUserInput}
+                          onChange={(e) => setGmailUserInput(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700 px-3 py-1.5 rounded-xl text-xs font-mono text-white outline-none focus:border-emerald-500"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-bold text-slate-300 uppercase">
+                          16-Character App Password
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="password"
+                            placeholder="Paste 16-character App Password (e.g. abcd efgh ijkl mnop)"
+                            value={gmailAppPassInput}
+                            onChange={(e) => setGmailAppPassInput(e.target.value)}
+                            className="flex-1 bg-slate-900 border border-slate-700 px-3 py-1.5 rounded-xl text-xs font-mono text-white outline-none focus:border-emerald-500"
+                          />
+                          <button
+                            onClick={() => handleUpdateEmailSetting({
+                              gmailUser: gmailUserInput.trim(),
+                              gmailAppPassword: gmailAppPassInput.trim(),
+                            })}
+                            disabled={savingEmailSettings || !gmailAppPassInput.trim()}
+                            className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs font-bold px-3 py-1.5 rounded-xl transition-colors cursor-pointer"
+                          >
+                            Save
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Sender Address (From) & Reply-To Configuration */}
+                <div className="bg-slate-800/80 border border-slate-700 rounded-2xl p-3.5 space-y-2.5 text-xs text-slate-300">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-sky-400 text-[11px] flex items-center gap-1">
+                      <Mail className="h-3.5 w-3.5" /> Sender Address & Reply-To
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowSenderConfig(!showSenderConfig)}
+                      className="text-[10px] text-sky-400 hover:underline cursor-pointer"
+                    >
+                      {showSenderConfig ? 'Hide' : 'Customize From / Reply-To'}
+                    </button>
+                  </div>
+
+                  {showSenderConfig ? (
+                    <div className="space-y-3 pt-1 border-t border-slate-700/60 mt-1">
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-bold text-slate-300 uppercase">
+                          Sender "From" Address
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. AutoShine BN <info@domain.com>"
+                          value={fromAddressInput}
+                          onChange={(e) => setFromAddressInput(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700 px-3 py-1.5 rounded-xl text-xs font-mono text-white outline-none focus:border-sky-500"
+                        />
+                        <p className="text-[10px] text-slate-400 leading-tight">
+                          Resend supports any address on your registered domain (e.g. <span className="text-sky-300 font-mono">info@domain.com</span>).
+                        </p>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-bold text-slate-300 uppercase">
+                          Reply-To Address (Optional)
+                        </label>
+                        <input
+                          type="email"
+                          placeholder="e.g. info@domain.com or admin@domain.com"
+                          value={replyToInput}
+                          onChange={(e) => setReplyToInput(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700 px-3 py-1.5 rounded-xl text-xs font-mono text-white outline-none focus:border-sky-500"
+                        />
+                        <p className="text-[10px] text-slate-400 leading-tight">
+                          When customers click "Reply", responses go to this mailbox.
+                        </p>
+                      </div>
+
+                      <div className="flex justify-end pt-1">
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateEmailSetting({
+                            emailFromAddress: fromAddressInput.trim(),
+                            replyToAddress: replyToInput.trim(),
+                          })}
+                          disabled={savingEmailSettings}
+                          className="bg-sky-600 hover:bg-sky-500 disabled:opacity-40 text-white text-xs font-bold px-3 py-1.5 rounded-xl transition-colors cursor-pointer"
+                        >
+                          Save Sender Settings
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-[10px] text-slate-400 flex items-center justify-between">
+                      <span className="truncate">From: <strong className="text-slate-200 font-mono">{emailSettings?.emailFromAddress || 'AutoShine BN <onboarding@resend.dev>'}</strong></span>
+                      {emailSettings?.replyToAddress && (
+                        <span className="truncate ml-2 text-slate-400">Reply: <strong className="text-sky-300 font-mono">{emailSettings.replyToAddress}</strong></span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Status footer banner */}
+              <div className="text-[11px] text-slate-400 pt-1 border-t border-slate-800 flex items-center justify-between">
+                <span>Active: <strong className="text-white">{emailSettings?.activeProvider}</strong></span>
+                <span>Circuit Breaker: <strong className="text-emerald-400">Armed</strong></span>
+              </div>
+            </div>
           </div>
+
+          {/* Middle Row: Test Email Dispatch Form */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Live Email Testing Form */}
+            <div className="lg:col-span-12 bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-blue-50 text-blue-600 rounded-2xl">
+                    <Send className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-slate-800">Dispatch Test Email</h2>
+                    <p className="text-xs text-slate-400">Send transactional test messages to verify your active provider ({emailSettings?.activeProvider || 'Sandbox'})</p>
+                  </div>
+                </div>
+
+                <span className="text-xs font-mono px-2.5 py-1 bg-slate-100 text-slate-700 rounded-xl font-bold">
+                  Target Engine: {emailSettings?.activeProvider}
+                </span>
+              </div>
+
+              {testEmailStatus && (
+                <div className={`p-3.5 rounded-xl text-xs font-semibold flex items-center gap-2 ${
+                  testEmailStatus.type === 'success'
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                    : 'bg-rose-50 text-rose-700 border border-rose-200'
+                }`}>
+                  {testEmailStatus.type === 'success' ? <CheckCircle className="h-4 w-4 shrink-0" /> : <AlertTriangle className="h-4 w-4 shrink-0" />}
+                  <span>{testEmailStatus.message}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleSendTestEmail} className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Recipient Email Address</label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="Email Address"
+                    value={testEmailRecipient}
+                    onChange={(e) => setTestEmailRecipient(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:bg-white focus:border-red-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Subject Line</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Email subject..."
+                    value={testEmailSubject}
+                    onChange={(e) => setTestEmailSubject(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:bg-white focus:border-red-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Email Body Message</label>
+                  <input
+                    type="text"
+                    placeholder="Enter test message..."
+                    value={testEmailBody}
+                    onChange={(e) => setTestEmailBody(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:bg-white focus:border-red-500 outline-none"
+                  />
+                </div>
+
+                <div className="md:col-span-3 flex justify-end pt-1">
+                  <button
+                    type="submit"
+                    disabled={sendingTestEmail}
+                    className="bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-sm transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    {sendingTestEmail ? (
+                      <>
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Dispatching via {emailSettings?.activeProvider}...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="h-3.5 w-3.5" /> Dispatch Test Email ({emailSettings?.activeProvider})
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          {/* Email Logs Table */}
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+              <div>
+                <h2 className="text-base font-bold text-slate-800">Email Dispatch History & Sandbox Logs</h2>
+                <p className="text-xs text-slate-400">Captured transactional emails sent across the system ({emailLogs.length} total recorded)</p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={fetchEmailLogs}
+                  disabled={emailLogsLoading}
+                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-3 py-2 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
+                  title="Refresh Email Logs"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${emailLogsLoading ? 'animate-spin' : ''}`} /> Refresh
+                </button>
+                {emailLogs.length > 0 && (
+                  <button
+                    onClick={handleClearEmailLogs}
+                    className="bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold px-3 py-2 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
+                    title="Clear All Logs"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" /> Clear Logs
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Email Logs Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-600">
+                <thead className="bg-slate-50 text-slate-400 uppercase tracking-wider text-[10px] font-bold border-b border-slate-100">
+                  <tr>
+                    <th className="px-4 py-3 rounded-l-xl">Status & Engine</th>
+                    <th className="px-4 py-3">Recipient</th>
+                    <th className="px-4 py-3">Subject Line</th>
+                    <th className="px-4 py-3">Timestamp</th>
+                    <th className="px-4 py-3 text-right rounded-r-xl">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {emailLogsLoading && emailLogs.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="text-center py-8 text-slate-400">
+                        <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-sky-500" />
+                        Fetching email dispatch logs...
+                      </td>
+                    </tr>
+                  ) : emailLogs.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="text-center py-12 text-slate-400 italic">
+                        <Mail className="h-8 w-8 mx-auto mb-2 text-slate-300" />
+                        No emails sent yet. Trigger a user registration or dispatch a test email above to test!
+                      </td>
+                    </tr>
+                  ) : (
+                    emailLogs.map((log) => (
+                      <tr key={log.id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="px-4 py-3">
+                          <div className="flex flex-col gap-0.5">
+                            <div className="flex items-center gap-2">
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
+                                log.status === 'DELIVERED'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : log.status === 'SIMULATED'
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : log.status === 'HELD_QUOTA'
+                                  ? 'bg-orange-100 text-orange-800'
+                                  : 'bg-rose-100 text-rose-800'
+                              }`}>
+                                {log.status}
+                              </span>
+                              <span className={`text-[10px] font-mono font-bold ${
+                                log.provider === 'GMAIL_SMTP'
+                                  ? 'text-emerald-600'
+                                  : log.provider === 'RESEND'
+                                  ? 'text-sky-600'
+                                  : 'text-amber-600'
+                              }`}>
+                                {log.provider === 'GMAIL_SMTP' ? 'Gmail SMTP' : log.provider === 'RESEND' ? 'Resend API' : 'Sandbox'}
+                              </span>
+                            </div>
+                            {log.errorDetails && (
+                              <span className="text-[10px] text-rose-600 font-medium truncate max-w-xs block" title={log.errorDetails}>
+                                ⚠️ {log.errorDetails}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 font-semibold text-slate-800">
+                          {log.to}
+                        </td>
+                        <td className="px-4 py-3 text-slate-700 max-w-xs truncate">
+                          {log.subject}
+                        </td>
+                        <td className="px-4 py-3 text-slate-400 font-mono text-[11px]">
+                          {new Date(log.timestamp).toLocaleString()}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            onClick={() => setSelectedEmailPreview(log)}
+                            className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1.5 rounded-lg font-bold text-[11px] transition-colors inline-flex items-center gap-1 cursor-pointer"
+                          >
+                            <Eye className="h-3.5 w-3.5" /> View HTML
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Email Preview Modal */}
+          {selectedEmailPreview && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[85vh] flex flex-col">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                  <div>
+                    <span className="text-[10px] font-extrabold uppercase bg-sky-100 text-sky-800 px-2 py-0.5 rounded-full">
+                      Email Content Preview
+                    </span>
+                    <h3 className="text-base font-bold text-slate-800 mt-1">{selectedEmailPreview.subject}</h3>
+                    <p className="text-xs text-slate-400">
+                      To: {selectedEmailPreview.to} | Sent: {new Date(selectedEmailPreview.timestamp).toLocaleString()} | Provider: {selectedEmailPreview.provider}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setSelectedEmailPreview(null)}
+                    className="p-2 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-xl transition-colors cursor-pointer"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+
+                {selectedEmailPreview.errorDetails && (
+                  <div className="bg-rose-50 border border-rose-200 text-rose-800 p-3 rounded-2xl text-xs flex items-start gap-2.5">
+                    <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600 mt-0.5" />
+                    <div>
+                      <strong className="block font-bold">Failure / Diagnostic Reason:</strong>
+                      <p className="font-mono text-[11px] text-rose-700 mt-0.5 break-all">{selectedEmailPreview.errorDetails}</p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex-1 overflow-y-auto bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                  <div
+                    className="email-html-preview"
+                    dangerouslySetInnerHTML={{ __html: selectedEmailPreview.html }}
+                  />
+                </div>
+
+                <div className="pt-2 flex justify-end">
+                  <button
+                    onClick={() => setSelectedEmailPreview(null)}
+                    className="bg-slate-900 text-white font-bold text-xs px-5 py-2.5 rounded-xl cursor-pointer hover:bg-slate-800 transition-colors"
+                  >
+                    Close Preview
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -724,16 +1820,71 @@ export const AdminDashboard: React.FC = () => {
                 </div>
 
                 <div className="border-t border-slate-100 pt-3 mt-4 flex items-center justify-between">
-                  <div className="flex gap-4 text-[11px] text-slate-400 font-medium">
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-[11px] text-slate-400 font-medium">
                     <span>Slot: {loc.slotDuration} min</span>
                     <span>Capacity: {loc.capacityPerSlot} cap</span>
-                    <span className={`px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider ${
-                      loc.isActive ? 'bg-green-50 text-green-700 border border-green-100' : 'bg-amber-50 text-amber-700 border border-amber-100'
+                    <span className={`px-2 py-0.5 rounded-md text-[9px] font-extrabold uppercase tracking-wider ${
+                      loc.isActive ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-800 border border-amber-300'
                     }`}>
-                      {loc.isActive ? 'Active' : 'Inactive'}
+                      {loc.isActive ? 'Active (Live)' : 'Suspended (Hidden)'}
                     </span>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await updateLocationConfig(loc.id, {
+                          ownerNavigationEnabled: true,
+                          ownerQrCodeEnabled: !loc.ownerQrCodeEnabled,
+                        });
+                      }}
+                      className={`px-2 py-0.5 rounded-md text-[9px] font-extrabold uppercase tracking-wider cursor-pointer border transition-colors ${
+                        loc.ownerQrCodeEnabled
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                          : 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
+                      }`}
+                      title="Click to toggle Owner QR Code access (allowed or hidden)"
+                    >
+                      {loc.ownerQrCodeEnabled ? 'Owner QR: Allowed' : 'Owner QR: Hidden'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await updateLocationConfig(loc.id, {
+                          membershipEnabled: !loc.membershipEnabled,
+                        });
+                      }}
+                      className={`px-2 py-0.5 rounded-md text-[9px] font-extrabold uppercase tracking-wider cursor-pointer border transition-colors ${
+                        loc.membershipEnabled
+                          ? 'bg-indigo-50 text-indigo-800 border-indigo-200 hover:bg-indigo-100'
+                          : 'bg-slate-100 text-slate-500 border-slate-300 hover:bg-slate-200'
+                      }`}
+                      title="Click to toggle Loyalty & Membership Programme for this business location"
+                    >
+                      {loc.membershipEnabled ? '⭐ Loyalty: Enabled' : '⭐ Loyalty: Disabled'}
+                    </button>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex items-center gap-1.5 sm:gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setOperationsModalCarWash(loc)}
+                      className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 text-[10px] font-extrabold px-2.5 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                      title="Configure Facility Operations, Services Catalog & Schedule"
+                    >
+                      <Sliders className="h-3 w-3" /> Operations
+                    </button>
+                    <button
+                      onClick={async () => {
+                        await updateLocationConfig(loc.id, { isActive: !loc.isActive });
+                      }}
+                      className={`text-[10px] font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer transition-colors ${
+                        loc.isActive
+                          ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200'
+                          : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200'
+                      }`}
+                      title={loc.isActive ? "Suspend operator (hides location from customer search)" : "Activate operator (makes location visible to customers)"}
+                    >
+                      {loc.isActive ? <Ban className="h-3 w-3" /> : <CheckCircle className="h-3 w-3" />}
+                      {loc.isActive ? 'Suspend' : 'Activate'}
+                    </button>
                     <button
                       onClick={() => handleOpenEditLocation(loc)}
                       className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
@@ -756,6 +1907,138 @@ export const AdminDashboard: React.FC = () => {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Sub Tab: Loyalty & Memberships Management */}
+      {activeSubTab === 'memberships' && (
+        <div className="space-y-6 animate-fade-in" id="admin-memberships-management-section">
+          {/* Header Banner */}
+          <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div>
+              <div className="inline-flex items-center gap-1.5 bg-indigo-500/20 border border-indigo-400/30 px-3 py-1 rounded-full text-indigo-300 text-xs font-semibold mb-2">
+                <Award className="h-3.5 w-3.5" />
+                <span>Multi-Tenant Loyalty Platform Administration</span>
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-black">Customer Loyalty &amp; Rewards Programmes</h2>
+              <p className="text-xs sm:text-sm text-slate-300 max-w-xl mt-1">
+                Centrally activate or deactivate the customer rewards club for each car wash partner in Brunei.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 shrink-0">
+              <div className="bg-white/10 backdrop-blur-md border border-white/20 px-4 py-3 rounded-2xl text-center">
+                <span className="text-[10px] uppercase font-bold text-slate-300 block">Programmes Active</span>
+                <span className="text-2xl font-black text-emerald-400">
+                  {locations.filter((l) => l.membershipEnabled).length}
+                </span>
+              </div>
+              <div className="bg-white/10 backdrop-blur-md border border-white/20 px-4 py-3 rounded-2xl text-center">
+                <span className="text-[10px] uppercase font-bold text-slate-300 block">Deactivated</span>
+                <span className="text-2xl font-black text-slate-400">
+                  {locations.filter((l) => !l.membershipEnabled).length}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Guide Card */}
+          <div className="bg-indigo-50/70 border border-indigo-200/80 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 bg-indigo-600 text-white rounded-xl shrink-0 mt-0.5 shadow-sm">
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <div>
+                <strong className="text-indigo-950 font-bold block text-sm">How Business Enablement Operates:</strong>
+                <p className="text-indigo-900/80 mt-0.5 leading-relaxed">
+                  When enabled, the business owner can access their <strong>"Loyalty &amp; Rewards"</strong> tab, configure points per service, create voucher rewards, and print their counter QR enrollment poster. Customers can join the club and earn points.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Facilities List Table */}
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div>
+                <h3 className="font-bold text-slate-900 text-base">Registered Car Wash Facilities ({locations.length})</h3>
+                <p className="text-xs text-slate-400">Click the toggle button to instantly permit or pause loyalty rewards for any partner.</p>
+              </div>
+            </div>
+
+            <div className="divide-y divide-slate-100">
+              {locations.map((loc) => {
+                const isEnabled = loc.membershipEnabled === true;
+
+                return (
+                  <div key={loc.id} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50/50 px-2 rounded-2xl transition-colors">
+                    <div className="flex items-start gap-3">
+                      <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border ${
+                        isEnabled
+                          ? 'bg-indigo-100 text-indigo-700 border-indigo-200'
+                          : 'bg-slate-100 text-slate-400 border-slate-200'
+                      }`}>
+                        <Award className="w-5 h-5" />
+                      </div>
+
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="font-extrabold text-slate-900 text-sm">{loc.name}</h4>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                            isEnabled
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                              : 'bg-slate-100 text-slate-600 border border-slate-200'
+                          }`}>
+                            {isEnabled ? 'Loyalty Active' : 'Feature Paused'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-0.5 truncate">{loc.address}</p>
+                        <span className="text-[10px] font-mono text-slate-400">ID: {loc.id}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await updateLocationConfig(loc.id, {
+                            membershipEnabled: !isEnabled,
+                          });
+                        }}
+                        className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-xs ${
+                          isEnabled
+                            ? 'bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300'
+                            : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/20'
+                        }`}
+                        title={isEnabled ? 'Click to disable loyalty for this facility' : 'Click to enable loyalty for this facility'}
+                      >
+                        {isEnabled ? (
+                          <>
+                            <Ban className="w-3.5 h-3.5" />
+                            <span>Disable Loyalty</span>
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle className="w-3.5 h-3.5" />
+                            <span>Enable Loyalty</span>
+                          </>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setOperationsModalCarWash(loc)}
+                        className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-colors cursor-pointer"
+                        title="Configure Full Operations & Services Catalog"
+                      >
+                        <Sliders className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
@@ -943,6 +2226,303 @@ export const AdminDashboard: React.FC = () => {
                     </div>
                   ))
                 )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sub Tab: Autoshine Global Information & Enquiry Management */}
+      {activeSubTab === 'info' && (
+        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+            <div>
+              <h2 className="text-base sm:text-lg font-bold text-slate-800 flex items-center gap-2">
+                <Building className="h-5 w-5 text-red-600" />
+                Autoshine BN Global Information &amp; Enquiry Management
+              </h2>
+              <p className="text-xs text-slate-400 mt-1">
+                Configure platform contact details, support channels, official business address, and enquiry information dynamically displayed across the login/register screens and the official Terms and Conditions of Use.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold uppercase bg-sky-50 text-sky-700 border border-sky-200 px-2.5 py-1 rounded-xl flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse"></span>
+                Database Live Sync Enabled
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            {/* Left Column: Form to Edit Platform Information */}
+            <div className="lg:col-span-7 space-y-5">
+              <form onSubmit={handleSavePlatformInfo} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
+                      Official Enquiry Email
+                    </label>
+                    <div className="relative">
+                      <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                      <input
+                        type="email"
+                        value={infoEmail}
+                        onChange={(e) => setInfoEmail(e.target.value)}
+                        placeholder="enquiry@autoshinebn.com"
+                        className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium focus:ring-2 focus:ring-red-100 focus:border-red-500 outline-none"
+                        required
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">Used for owner partnership enquiries and customer support.</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
+                      WhatsApp Direct Number
+                    </label>
+                    <div className="relative">
+                      <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                      <input
+                        type="text"
+                        value={infoWhatsapp}
+                        onChange={(e) => setInfoWhatsapp(e.target.value)}
+                        placeholder="+673 812 3456"
+                        className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium focus:ring-2 focus:ring-red-100 focus:border-red-500 outline-none"
+                        required
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">Auto-generates direct WhatsApp chat links for owners.</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
+                      General Phone / Hotline
+                    </label>
+                    <div className="relative">
+                      <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                      <input
+                        type="text"
+                        value={infoContact}
+                        onChange={(e) => setInfoContact(e.target.value)}
+                        placeholder="+673 222 3456"
+                        className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium focus:ring-2 focus:ring-red-100 focus:border-red-500 outline-none"
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">Office hotline / secondary telephone number.</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
+                      Platform / Brand Name
+                    </label>
+                    <div className="relative">
+                      <Building className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                      <input
+                        type="text"
+                        value={infoCompanyName}
+                        onChange={(e) => setInfoCompanyName(e.target.value)}
+                        placeholder="Autoshine BN"
+                        className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium focus:ring-2 focus:ring-red-100 focus:border-red-500 outline-none"
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">Platform brand display name.</p>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
+                    Operating / Headquarters Address
+                  </label>
+                  <div className="relative">
+                    <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                    <textarea
+                      rows={2}
+                      value={infoAddress}
+                      onChange={(e) => setInfoAddress(e.target.value)}
+                      placeholder="Unit 12, Spg 45, Jalan Gadong, Bandar Seri Begawan, Brunei Darussalam"
+                      className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium focus:ring-2 focus:ring-red-100 focus:border-red-500 outline-none"
+                    />
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1">Official physical or business postal address.</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
+                    Platform Tagline &amp; Overview
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={infoDesc}
+                    onChange={(e) => setInfoDesc(e.target.value)}
+                    placeholder="Brunei's premier smart car wash & detailing booking platform."
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium focus:ring-2 focus:ring-red-100 focus:border-red-500 outline-none"
+                  />
+                </div>
+
+                {/* Administrator 2FA Security Enforcement Card */}
+                <div className="p-4 bg-rose-50/60 border border-rose-200 rounded-2xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 bg-rose-100 rounded-xl text-rose-700">
+                        <ShieldAlert className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs sm:text-sm font-bold text-slate-800">
+                          Administrator 2FA Security Enforcement
+                        </h4>
+                        <p className="text-[11px] text-slate-500">
+                          Require 6-digit email passkey verification on all administrator logins.
+                        </p>
+                      </div>
+                    </div>
+                    {infoAdminOtpRequired ? (
+                      <span className="text-[10px] font-bold uppercase bg-emerald-100 text-emerald-800 border border-emerald-300 px-2.5 py-1 rounded-xl flex items-center gap-1.5 shrink-0">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse"></span>
+                        Active &amp; Required
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-bold uppercase bg-amber-100 text-amber-800 border border-amber-300 px-2.5 py-1 rounded-xl flex items-center gap-1.5 shrink-0">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-600"></span>
+                        Disabled
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-2 border-t border-rose-100">
+                    <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={infoAdminOtpRequired}
+                        onChange={(e) => setInfoAdminOtpRequired(e.target.checked)}
+                        className="w-4 h-4 text-rose-600 rounded border-slate-300 focus:ring-rose-500 cursor-pointer"
+                        id="toggle-admin-otp-checkbox"
+                      />
+                      <span className="text-xs font-semibold text-slate-700">
+                        Enforce Email OTP challenge for Role.ADMIN
+                      </span>
+                    </label>
+
+                    <button
+                      type="button"
+                      disabled={togglingOtp}
+                      onClick={() => handleDirectToggleOtp(!infoAdminOtpRequired)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer flex items-center gap-1.5 ${
+                        infoAdminOtpRequired
+                          ? 'bg-amber-600 hover:bg-amber-500 text-white'
+                          : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                      }`}
+                      id="direct-toggle-admin-otp-btn"
+                    >
+                      {togglingOtp ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Key className="w-3.5 h-3.5" />
+                      )}
+                      <span>{infoAdminOtpRequired ? 'Switch to OFF' : 'Switch to ON'}</span>
+                    </button>
+                  </div>
+
+                  <div className="p-2.5 bg-white/80 border border-rose-100 rounded-xl text-[11px] text-slate-600 leading-relaxed">
+                    <p className="font-semibold text-slate-800 mb-0.5">Development &amp; Supabase Logging:</p>
+                    Passkeys are dispatched via email. In development or if email delivery fails, codes are immediately printed to the <strong>terminal console</strong> and saved to the Supabase database <code className="bg-slate-100 text-rose-700 px-1 py-0.5 rounded font-mono text-[10px]">audit_logs</code> table under the action <code className="bg-slate-100 text-rose-700 px-1 py-0.5 rounded font-mono text-[10px]">ADMIN_OTP_ISSUED</code>.
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-3">
+                  <button
+                    type="submit"
+                    disabled={infoSaving}
+                    className="px-5 py-2.5 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+                    id="save-platform-info-btn"
+                  >
+                    {infoSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                    <span>{infoSaving ? 'Saving Changes...' : 'Save Autoshine Information'}</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* Right Column: Live Login Screen Card Preview */}
+            <div className="lg:col-span-5 space-y-4">
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-200/80 pb-3">
+                  <div className="flex items-center gap-2">
+                    <Eye className="w-4 h-4 text-slate-500" />
+                    <span className="font-bold text-xs text-slate-700 uppercase tracking-wider">Live Preview: Login Page Card</span>
+                  </div>
+                  <span className="text-[9px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded font-mono">Public View</span>
+                </div>
+
+                <p className="text-[11px] text-slate-500">
+                  This preview renders exactly how prospective carwash operators and business owners will see your enquiry card on the login and register screens:
+                </p>
+
+                {/* Actual Card Render */}
+                <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm text-center space-y-2">
+                  <div className="flex items-center justify-center gap-1.5 text-slate-800 font-extrabold text-xs sm:text-sm">
+                    <div className="p-1 bg-sky-100 text-sky-700 rounded-lg">
+                      <Building className="w-3.5 h-3.5" />
+                    </div>
+                    <span>Carwash Owner &amp; Business Enquiry</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    Interested in listing your carwash business on {infoCompanyName || 'Autoshine BN'}? Please contact our onboarding team:
+                  </p>
+                  <div className="flex flex-col gap-2 pt-1">
+                    {infoEmail && (
+                      <div className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-50 text-sky-700 font-bold text-xs border border-sky-200">
+                        <Mail className="w-3.5 h-3.5 shrink-0" />
+                        <span className="truncate">{infoEmail}</span>
+                      </div>
+                    )}
+                    {(infoWhatsapp || infoContact) && (
+                      <div className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 font-bold text-xs border border-emerald-200">
+                        <Phone className="w-3.5 h-3.5 shrink-0" />
+                        <span>WhatsApp: {infoWhatsapp || infoContact}</span>
+                      </div>
+                    )}
+                    {infoAddress && (
+                      <div className="flex items-center justify-center gap-1 text-[10px] text-slate-400 pt-1">
+                        <MapPin className="w-3 h-3 shrink-0" />
+                        <span className="truncate">{infoAddress}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Terms & Conditions Contact Section Preview */}
+                <div className="border-t border-slate-200/80 pt-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                      <FileText className="w-3.5 h-3.5 text-sky-600" />
+                      <span>Live Preview: Terms &amp; Conditions (Section 20)</span>
+                    </div>
+                    <span className="text-[9px] bg-sky-100 text-sky-700 font-bold px-1.5 py-0.5 rounded">T&amp;C Section 20</span>
+                  </div>
+                  <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2 text-left text-xs">
+                    <p className="text-[11px] text-slate-500 font-medium">For enquiries, support, or complaints, please contact:</p>
+                    <div className="space-y-1.5 pl-1">
+                      <div className="flex items-center gap-2 font-bold text-slate-800">
+                        <Building className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                        <span>{infoCompanyName || 'AUTOSHINE BN'}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-slate-600 text-[11px]">
+                        <Mail className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                        <span>Email: <strong className="text-sky-600">{infoEmail || 'info@autoshinebn.com'}</strong></span>
+                      </div>
+                      <div className="flex items-center gap-2 text-slate-600 text-[11px]">
+                        <Phone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        <span>WhatsApp: <strong className="text-emerald-700">{infoWhatsapp || infoContact || '+673 8974459'}</strong></span>
+                      </div>
+                      <div className="flex items-start gap-2 text-slate-600 text-[11px]">
+                        <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0 mt-0.5" />
+                        <span>Address: <strong className="text-slate-800 font-medium">{infoAddress || 'Unit 1, 1st Floor Block C, Kiarong Complex BSB BE1318'}</strong></span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -1169,7 +2749,7 @@ export const AdminDashboard: React.FC = () => {
                       <div className="space-y-2">
                         <input
                           type="email"
-                          placeholder="your-email@example.com"
+                          placeholder="Email Address"
                           value={testEmailAddress}
                           onChange={(e) => setTestEmailAddress(e.target.value)}
                           className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-500 bg-white text-slate-800 font-medium"
@@ -1306,6 +2886,170 @@ export const AdminDashboard: React.FC = () => {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Sub Tab: Review Moderation (Pre-wired & ready in structure) */}
+      {FEATURES.ENABLE_REVIEWS && activeSubTab === 'reviews' && (
+        <div className="space-y-6 animate-fade-in" id="admin-reviews-moderation-section">
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200">
+            <div>
+              <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                <Star className="h-5 w-5 text-amber-500 fill-amber-500" />
+                <span>Customer Reviews Moderation</span>
+                <span className="text-xs font-semibold bg-amber-50 text-amber-700 px-2.5 py-0.5 rounded-full border border-amber-200">
+                  {adminReviews.length} {adminReviews.length === 1 ? 'Review' : 'Reviews'}
+                </span>
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Oversee customer feedback across all registered car wash locations, combat spam, and permanently delete inappropriate reviews.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={fetchAdminReviews}
+              disabled={adminReviewsLoading}
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer self-start sm:self-auto"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${adminReviewsLoading ? 'animate-spin' : ''}`} />
+              <span>Refresh</span>
+            </button>
+          </div>
+
+          {/* Filter Bar */}
+          <div className="flex flex-col sm:flex-row gap-3 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
+            <div className="flex-1 relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search by customer, comment, or car wash..."
+                value={adminReviewsSearch}
+                onChange={(e) => setAdminReviewsSearch(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-500 font-medium"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Filter className="w-4 h-4 text-slate-400" />
+              <select
+                value={adminReviewsRatingFilter}
+                onChange={(e) => setAdminReviewsRatingFilter(e.target.value)}
+                className="text-xs border border-slate-200 rounded-xl px-3 py-2 bg-white text-slate-700 font-semibold focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-500"
+              >
+                <option value="ALL">All Star Ratings</option>
+                <option value="5">5 Stars ★★★★★</option>
+                <option value="4">4 Stars ★★★★☆</option>
+                <option value="3">3 Stars ★★★☆☆</option>
+                <option value="2">2 Stars ★★☆☆☆</option>
+                <option value="1">1 Star ★☆☆☆☆</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Reviews List */}
+          {adminReviewsLoading ? (
+            <div className="p-12 text-center bg-white rounded-2xl border border-slate-200">
+              <RefreshCw className="w-6 h-6 animate-spin text-slate-400 mx-auto mb-2" />
+              <p className="text-xs text-slate-500 font-medium">Loading platform customer reviews...</p>
+            </div>
+          ) : (() => {
+            const filtered = adminReviews.filter(rev => {
+              const matchesSearch = !adminReviewsSearch.trim() ||
+                rev.customerName.toLowerCase().includes(adminReviewsSearch.toLowerCase()) ||
+                (rev.customerEmail && rev.customerEmail.toLowerCase().includes(adminReviewsSearch.toLowerCase())) ||
+                rev.comment.toLowerCase().includes(adminReviewsSearch.toLowerCase()) ||
+                rev.carWashId.toLowerCase().includes(adminReviewsSearch.toLowerCase());
+              const matchesRating = adminReviewsRatingFilter === 'ALL' || rev.rating === Number(adminReviewsRatingFilter);
+              return matchesSearch && matchesRating;
+            });
+
+            if (filtered.length === 0) {
+              return (
+                <div className="p-10 text-center bg-white rounded-2xl border border-slate-200">
+                  <Star className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                  <p className="text-sm font-bold text-slate-700">No Reviews Found</p>
+                  <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                    {adminReviews.length === 0
+                      ? 'No customer reviews have been submitted on the platform yet.'
+                      : 'No reviews match your current search or rating filter.'}
+                  </p>
+                </div>
+              );
+            }
+
+            return (
+              <div className="space-y-3">
+                {filtered.map(rev => {
+                  const matchedLoc = locations.find(l => l.id === rev.carWashId);
+                  return (
+                    <div
+                      key={rev.id}
+                      className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-start justify-between gap-4 transition-all"
+                    >
+                      <div className="space-y-2 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-black text-slate-800">{rev.customerName}</span>
+                          {rev.customerEmail && (
+                            <span className="text-[11px] text-slate-400 font-mono">({rev.customerEmail})</span>
+                          )}
+                          <span className="text-[10px] text-slate-400">•</span>
+                          <span className="text-[11px] text-slate-500 font-semibold">
+                            Location: <strong>{matchedLoc ? matchedLoc.name : rev.carWashId}</strong>
+                          </span>
+                          <span className="text-[10px] text-slate-400">•</span>
+                          <span className="text-[10px] text-slate-400">{new Date(rev.createdAt).toLocaleDateString()}</span>
+                        </div>
+
+                        {/* Stars */}
+                        <div className="flex items-center gap-1">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <Star
+                              key={star}
+                              className={`w-3.5 h-3.5 ${
+                                star <= rev.rating
+                                  ? 'fill-amber-400 text-amber-400'
+                                  : 'text-slate-200'
+                              }`}
+                            />
+                          ))}
+                          <span className="text-xs font-bold text-slate-700 ml-1">{rev.rating}.0</span>
+                        </div>
+
+                        {/* Comment text */}
+                        <p className="text-xs text-slate-700 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100 font-medium">
+                          "{rev.comment}"
+                        </p>
+
+                        {/* Owner Reply if present */}
+                        {rev.ownerReply && (
+                          <div className="ml-4 pl-3 border-l-2 border-indigo-200 text-xs text-indigo-900 bg-indigo-50/50 p-2.5 rounded-r-xl space-y-0.5">
+                            <span className="font-bold text-[11px] text-indigo-700 block">
+                              {rev.ownerReplyBy || 'Business Owner Reply'}:
+                            </span>
+                            <p className="italic text-slate-600">"{rev.ownerReply}"</p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Admin Delete Action */}
+                      <div className="shrink-0 flex sm:flex-col items-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleAdminDeleteReview(rev.id)}
+                          disabled={deletingReviewId === rev.id}
+                          className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+                          title="Permanently delete review (Spam / Moderation)"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                          <span>{deletingReviewId === rev.id ? 'Deleting...' : 'Delete Review'}</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -1515,49 +3259,90 @@ export const AdminDashboard: React.FC = () => {
             <form onSubmit={handleOnboardSubmit} className="space-y-6 text-xs sm:text-sm">
               {/* Part 1: Owner Profile details */}
               <div className="space-y-3 bg-slate-50/50 p-4 rounded-2xl border border-slate-100">
-                <h4 className="font-bold text-slate-700 text-xs uppercase tracking-wider flex items-center gap-1.5">
-                  <span className="bg-red-50 text-red-700 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold">1</span>
-                  Merchant Account Profile (Owner)
-                </h4>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Owner Contact Name</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Jack Owner"
-                      value={onboardOwnerName}
-                      onChange={(e) => setOnboardOwnerName(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-500"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Email Address</label>
-                    <input
-                      type="email"
-                      placeholder="owner@carwash.com"
-                      value={onboardOwnerEmail}
-                      onChange={(e) => setOnboardOwnerEmail(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-500"
-                      required
-                    />
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-slate-700 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="bg-red-50 text-red-700 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold">1</span>
+                    Merchant Account Profile (Owner)
+                  </h4>
+                  <div className="flex items-center bg-slate-200/60 p-0.5 rounded-lg text-[10px] font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setOnboardOwnerMode('new')}
+                      className={`px-2 py-1 rounded-md transition-all cursor-pointer ${onboardOwnerMode === 'new' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500'}`}
+                    >
+                      New Owner
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOnboardOwnerMode('existing')}
+                      className={`px-2 py-1 rounded-md transition-all cursor-pointer ${onboardOwnerMode === 'existing' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500'}`}
+                    >
+                      Existing Owner
+                    </button>
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Initial Password</label>
-                  <div className="relative">
-                    <Key className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
-                    <input
-                      type="text"
-                      value={onboardOwnerPassword}
-                      onChange={(e) => setOnboardOwnerPassword(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-500 font-mono font-bold"
+                {onboardOwnerMode === 'existing' ? (
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Select Existing Owner Account</label>
+                    <select
+                      value={selectedOnboardOwnerId}
+                      onChange={(e) => setSelectedOnboardOwnerId(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-500 text-sm font-medium"
                       required
-                    />
+                    >
+                      <option value="">-- Choose Registered Owner --</option>
+                      {adminUsersList
+                        .filter((u) => u.role === Role.OWNER)
+                        .map((owner) => (
+                          <option key={owner.id} value={owner.id}>
+                            {owner.name} ({owner.email}) - {owner.id}
+                          </option>
+                        ))}
+                    </select>
                   </div>
-                </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-600 mb-1">Owner Contact Name</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Jack Wilson"
+                          value={onboardOwnerName}
+                          onChange={(e) => setOnboardOwnerName(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-500"
+                          required={onboardOwnerMode === 'new'}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-600 mb-1">Email Address</label>
+                        <input
+                          type="email"
+                          placeholder="Email Address"
+                          value={onboardOwnerEmail}
+                          onChange={(e) => setOnboardOwnerEmail(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-500"
+                          required={onboardOwnerMode === 'new'}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">Initial Password</label>
+                      <div className="relative">
+                        <Key className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+                        <input
+                          type="text"
+                          value={onboardOwnerPassword}
+                          onChange={(e) => setOnboardOwnerPassword(e.target.value)}
+                          className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-500 font-mono font-bold"
+                          required={onboardOwnerMode === 'new'}
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Part 2: Business Location details */}
@@ -1601,6 +3386,25 @@ export const AdminDashboard: React.FC = () => {
                     onChange={(e) => setOnboardBusinessDesc(e.target.value)}
                     className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-500"
                   />
+                </div>
+
+                {/* Loyalty & Rewards Membership Permission */}
+                <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-3.5 flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    id="admin-onboard-membership-toggle"
+                    checked={onboardMembership}
+                    onChange={(e) => setOnboardMembership(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 text-red-600 rounded border-slate-300 focus:ring-red-500 cursor-pointer"
+                  />
+                  <div>
+                    <label htmlFor="admin-onboard-membership-toggle" className="text-xs font-bold text-slate-800 cursor-pointer block">
+                      Enable Loyalty &amp; Rewards Programme Immediately
+                    </label>
+                    <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                      Enables the car wash loyalty club, points awarding per wash service, digital member passes, and rewards catalogue for this location.
+                    </p>
+                  </div>
                 </div>
 
                 {/* Map Coordinates Selection assist */}
@@ -1714,16 +3518,35 @@ export const AdminDashboard: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Physical Address</label>
-                    <input
-                      type="text"
-                      placeholder="455 Market St, San Francisco, CA"
-                      value={editLocAddress}
-                      onChange={(e) => setEditLocAddress(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-500"
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Assigned Business Owner</label>
+                    <select
+                      value={editLocOwnerId}
+                      onChange={(e) => setEditLocOwnerId(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-500 font-medium text-slate-800"
                       required
-                    />
+                    >
+                      <option value="">-- Select Owner Account --</option>
+                      {adminUsersList
+                        .filter((u) => u.role === Role.OWNER)
+                        .map((owner) => (
+                          <option key={owner.id} value={owner.id}>
+                            {owner.name} ({owner.email}) - {owner.id}
+                          </option>
+                        ))}
+                    </select>
                   </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Physical Address</label>
+                  <input
+                    type="text"
+                    placeholder="455 Market St, San Francisco, CA"
+                    value={editLocAddress}
+                    onChange={(e) => setEditLocAddress(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-500"
+                    required
+                  />
                 </div>
 
                 <div>
@@ -1771,6 +3594,28 @@ export const AdminDashboard: React.FC = () => {
                     >
                       <option value="active">Active (Visible)</option>
                       <option value="inactive">Inactive (Suspended)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Owner QR Code Access</label>
+                    <select
+                      value={editLocOwnerQr ? 'allowed' : 'hidden'}
+                      onChange={(e) => setEditLocOwnerQr(e.target.value === 'allowed')}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-500"
+                    >
+                      <option value="allowed">Allowed (Visible in Dashboard)</option>
+                      <option value="hidden">Hidden (Restricted from Owner)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Loyalty &amp; Membership Programme</label>
+                    <select
+                      value={editLocMembership ? 'enabled' : 'disabled'}
+                      onChange={(e) => setEditLocMembership(e.target.value === 'enabled')}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-500 font-medium"
+                    >
+                      <option value="enabled">Enabled (Active for Owner &amp; Customers)</option>
+                      <option value="disabled">Disabled (Feature Deactivated)</option>
                     </select>
                   </div>
                   <div>
@@ -1868,6 +3713,15 @@ export const AdminDashboard: React.FC = () => {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Car Wash Operations & Services Management Modal */}
+      {operationsModalCarWash && (
+        <CarWashOperationsModal
+          carWash={operationsModalCarWash}
+          isOpen={!!operationsModalCarWash}
+          onClose={() => setOperationsModalCarWash(null)}
+        />
       )}
     </div>
   );

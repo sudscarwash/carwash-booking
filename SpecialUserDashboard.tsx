@@ -3,242 +3,1277 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext.js';
 import { MapSimulation } from '../components/MapSimulation.js';
-import { Sparkles, User, Sliders, MapPin, Key, Info, HelpCircle } from 'lucide-react';
+import {
+  Sparkles,
+  MapPin,
+  Key,
+  Info,
+  Search,
+  Copy,
+  Check,
+  ExternalLink,
+  Edit3,
+  PlusCircle,
+  Building2,
+  Save,
+  Navigation,
+  Star,
+  Trash2,
+  RefreshCw,
+  Filter,
+  Lock,
+  Unlock,
+  Sliders,
+  QrCode,
+  EyeOff,
+  Award,
+} from 'lucide-react';
+import { CarWash, Role, Review } from '../types.js';
+import { FEATURES } from '../config/features.js';
+import { useTabBack } from '../utils/useBackHandler.js';
+import { CarWashOperationsModal } from '../components/CarWashOperationsModal.js';
+
+// Quick Brunei location presets for rapid mapping
+const BRUNEI_PRESETS = [
+  { name: 'Bandar Seri Begawan', lat: 4.8917, lng: 114.9401 },
+  { name: 'Gadong', lat: 4.9015, lng: 114.9175 },
+  { name: 'Kiulap', lat: 4.8892, lng: 114.9284 },
+  { name: 'Jerudong', lat: 4.9422, lng: 114.8322 },
+  { name: 'Sengkurong', lat: 4.9250, lng: 114.8500 },
+  { name: 'Berakas', lat: 4.9350, lng: 114.9450 },
+  { name: 'Tutong Town', lat: 4.8021, lng: 114.6534 },
+  { name: 'Kuala Belait', lat: 4.5833, lng: 114.2333 },
+  { name: 'Seria', lat: 4.6064, lng: 114.3267 },
+  { name: 'Bangar (Temburong)', lat: 4.7083, lng: 115.0667 },
+];
 
 export const SpecialUserDashboard: React.FC = () => {
-  const { createOwnerWithBusiness } = useApp();
+  const { locations, adminUsersList, createOwnerWithBusiness, updateLocationConfig, token } = useApp();
+
+  const [activeTab, setActiveTab] = useState<'onboard' | 'edit_existing' | 'reviews'>('onboard');
+  useTabBack(activeTab, setActiveTab, 'onboard', 'specialTab');
+
+  // Special User Review Moderation State (Structured and ready when reviews are activated)
+  const [specialReviews, setSpecialReviews] = useState<Review[]>([]);
+  const [specialReviewsLoading, setSpecialReviewsLoading] = useState(false);
+  const [specialReviewsSearch, setSpecialReviewsSearch] = useState('');
+  const [specialReviewsRatingFilter, setSpecialReviewsRatingFilter] = useState<string>('ALL');
+  const [deletingReviewId, setDeletingReviewId] = useState<string | null>(null);
+
+  const fetchSpecialReviews = async () => {
+    if (!token || !FEATURES.ENABLE_REVIEWS) return;
+    setSpecialReviewsLoading(true);
+    try {
+      const res = await fetch('/api/reviews', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSpecialReviews(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      console.warn('Failed to load reviews for special user:', err);
+    } finally {
+      setSpecialReviewsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (FEATURES.ENABLE_REVIEWS && activeTab === 'reviews') {
+      fetchSpecialReviews();
+    }
+  }, [activeTab, token]);
+
+  const handleSpecialDeleteReview = async (reviewId: string) => {
+    if (!window.confirm('Special User Moderation Action: Are you sure you want to permanently delete this review to combat spam or policy violations?')) {
+      return;
+    }
+    setDeletingReviewId(reviewId);
+    try {
+      const res = await fetch(`/api/reviews/${reviewId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to delete review');
+      }
+      setSpecialReviews(prev => prev.filter(r => r.id !== reviewId));
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete review');
+    } finally {
+      setDeletingReviewId(null);
+    }
+  };
 
   // Special onboard form states
+  const [onboardOwnerMode, setOnboardOwnerMode] = useState<'new' | 'existing'>('new');
+  const [selectedOnboardOwnerId, setSelectedOnboardOwnerId] = useState<string>('');
   const [ownerName, setOwnerName] = useState('');
   const [ownerEmail, setOwnerEmail] = useState('');
   const [ownerPassword, setOwnerPassword] = useState('owner123'); // Default initial
   const [businessName, setBusinessName] = useState('');
   const [businessAddress, setBusinessAddress] = useState('');
-  const [businessLat, setBusinessLat] = useState(4.8917);
-  const [businessLng, setBusinessLng] = useState(114.9401);
+  const [businessLat, setBusinessLat] = useState<number>(4.8917);
+  const [businessLng, setBusinessLng] = useState<number>(114.9401);
+  const [latInput, setLatInput] = useState<string>('4.8917');
+  const [lngInput, setLngInput] = useState<string>('114.9401');
   const [businessDesc, setBusinessDesc] = useState('');
+  const [allowOwnerQrImmediately, setAllowOwnerQrImmediately] = useState<boolean>(false);
+  const [allowMembershipImmediately, setAllowMembershipImmediately] = useState<boolean>(false);
+  const [operationsModalCarWash, setOperationsModalCarWash] = useState<CarWash | null>(null);
+  const [quickSearchQuery, setQuickSearchQuery] = useState('');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [copiedCoords, setCopiedCoords] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Existing location editor states
+  const [selectedExistingId, setSelectedExistingId] = useState<string>('');
+  const [existOwnerId, setExistOwnerId] = useState<string>('');
+  const [existLat, setExistLat] = useState<number>(4.8917);
+  const [existLng, setExistLng] = useState<number>(114.9401);
+  const [existLatInput, setExistLatInput] = useState<string>('4.8917');
+  const [existLngInput, setExistLngInput] = useState<string>('114.9401');
+  const [existMembership, setExistMembership] = useState<boolean>(true);
+  const [existQuickQuery, setExistQuickQuery] = useState('');
+  const [isUpdatingExisting, setIsUpdatingExisting] = useState(false);
+
+  // Initialize selected existing business when switching tabs or loading locations
+  useEffect(() => {
+    if (locations && locations.length > 0 && !selectedExistingId) {
+      const first = locations[0];
+      setSelectedExistingId(first.id);
+      setExistOwnerId(first.ownerId || '');
+      setExistLat(first.locationLat);
+      setExistLng(first.locationLng);
+      setExistLatInput(first.locationLat.toString());
+      setExistLngInput(first.locationLng.toString());
+      setExistMembership(first.membershipEnabled === true);
+    }
+  }, [locations]);
+
+  // Sync state when picking a different business to edit
+  const handleSelectExistingBusiness = (id: string) => {
+    setSelectedExistingId(id);
+    const found = locations.find((loc) => loc.id === id);
+    if (found) {
+      setExistOwnerId(found.ownerId || '');
+      setExistLat(found.locationLat);
+      setExistLng(found.locationLng);
+      setExistLatInput(found.locationLat.toString());
+      setExistLngInput(found.locationLng.toString());
+      setExistMembership(found.membershipEnabled === true);
+    }
+  };
+
+  // Helper to update Onboard Lat/Lng cleanly
+  const updateOnboardCoords = (lat: number, lng: number) => {
+    setBusinessLat(lat);
+    setBusinessLng(lng);
+    setLatInput(lat.toString());
+    setLngInput(lng.toString());
+  };
+
+  // Helper to update Existing Lat/Lng cleanly
+  const updateExistCoords = (lat: number, lng: number) => {
+    setExistLat(lat);
+    setExistLng(lng);
+    setExistLatInput(lat.toString());
+    setExistLngInput(lng.toString());
+  };
+
+  // Parse GPS coordinates string or landmark search
+  const handleApplyQuickSearch = (isForExisting = false) => {
+    const query = (isForExisting ? existQuickQuery : quickSearchQuery).trim();
+    if (!query) return;
+
+    // Check if query is formatted as "lat, lng" e.g., "4.8917, 114.9401"
+    const parts = query.split(/[\s,]+/);
+    if (parts.length >= 2) {
+      const lat = parseFloat(parts[0]);
+      const lng = parseFloat(parts[1]);
+      if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+        if (isForExisting) {
+          updateExistCoords(lat, lng);
+        } else {
+          updateOnboardCoords(lat, lng);
+        }
+        showToast(`Jumped to coordinates: ${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+        return;
+      }
+    }
+
+    // Match Brunei town presets
+    const matched = BRUNEI_PRESETS.find((p) => p.name.toLowerCase().includes(query.toLowerCase()));
+    if (matched) {
+      if (isForExisting) {
+        updateExistCoords(matched.lat, matched.lng);
+      } else {
+        updateOnboardCoords(matched.lat, matched.lng);
+      }
+      showToast(`Located area: ${matched.name}`);
+    } else {
+      showToast('Could not parse coordinates. Please enter as "Latitude, Longitude" (e.g. 4.8917, 114.9401)');
+    }
+  };
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedCoords(true);
+    setTimeout(() => setCopiedCoords(false), 2000);
+  };
 
   const handleSubmitOnboarding = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!ownerName || !ownerEmail || !businessName || !businessAddress) return;
+    if (!businessName || !businessAddress) return;
 
     setIsSubmitting(true);
-    const data = {
-      ownerEmail,
-      ownerPassword,
-      ownerName,
-      businessName,
-      businessAddress,
-      businessLat,
-      businessLng,
-      businessDesc,
-    };
+    let success = false;
 
-    const success = await createOwnerWithBusiness(data);
+    if (onboardOwnerMode === 'existing') {
+      if (!selectedOnboardOwnerId) {
+        setIsSubmitting(false);
+        return;
+      }
+      try {
+        const res = await fetch('/api/car-washes', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            name: businessName,
+            address: businessAddress,
+            description: businessDesc,
+            locationLat: businessLat,
+            locationLng: businessLng,
+            ownerId: selectedOnboardOwnerId,
+            slotDuration: 30,
+            capacityPerSlot: 2,
+            ownerNavigationEnabled: true,
+            ownerQrCodeEnabled: allowOwnerQrImmediately,
+            membershipEnabled: allowMembershipImmediately,
+          })
+        });
+        success = res.ok;
+      } catch (err) {
+        console.error(err);
+      }
+    } else {
+      if (!ownerName || !ownerEmail) {
+        setIsSubmitting(false);
+        return;
+      }
+      const data = {
+        ownerEmail,
+        ownerPassword,
+        ownerName,
+        businessName,
+        businessAddress,
+        businessLat,
+        businessLng,
+        businessDesc,
+        ownerNavigationEnabled: true,
+        ownerQrCodeEnabled: allowOwnerQrImmediately,
+        membershipEnabled: allowMembershipImmediately,
+      };
+      success = await createOwnerWithBusiness(data);
+    }
+
     setIsSubmitting(false);
 
     if (success) {
-      // Clear forms
+      showToast(`Successfully onboarded "${businessName}"!`);
       setOwnerName('');
       setOwnerEmail('');
       setOwnerPassword('owner123');
       setBusinessName('');
       setBusinessAddress('');
       setBusinessDesc('');
+      setSelectedOnboardOwnerId('');
     }
   };
 
+  const handleUpdateExistingCoords = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedExistingId) return;
+
+    const selectedWash = locations.find((loc) => loc.id === selectedExistingId);
+    if (!selectedWash) return;
+
+    setIsUpdatingExisting(true);
+    const success = await updateLocationConfig(selectedExistingId, {
+      locationLat: existLat,
+      locationLng: existLng,
+      ownerId: existOwnerId || undefined,
+      membershipEnabled: existMembership,
+    });
+    setIsUpdatingExisting(false);
+
+    if (success) {
+      showToast(`Updated location details for "${selectedWash.name}"!`);
+    } else {
+      showToast('Failed to update location. Please try again.');
+    }
+  };
+
+  const selectedWashObj = locations.find((loc) => loc.id === selectedExistingId);
+
   return (
-    <div className="space-y-6 animate-fade-in max-w-4xl mx-auto">
-      {/* Hero Banner */}
-      <div className="bg-gradient-to-tr from-emerald-600 to-teal-400 rounded-3xl p-6 sm:p-8 text-white shadow-md">
-        <span className="bg-white/20 text-white text-[10px] font-bold px-2.5 py-1 rounded-full border border-white/15 uppercase tracking-wider">
-          Partner Agent Console
+    <div className="space-y-6 animate-fade-in max-w-5xl mx-auto pb-12">
+      {/* Toast banner */}
+      {toastMessage && (
+        <div className="fixed top-20 right-4 z-[9999] bg-slate-900 text-white text-xs font-bold px-4 py-3 rounded-2xl shadow-2xl border border-slate-700 flex items-center gap-2 animate-bounce">
+          <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* Hero Header */}
+      <div className="bg-gradient-to-tr from-emerald-700 via-teal-600 to-cyan-500 rounded-3xl p-6 sm:p-8 text-white shadow-lg relative overflow-hidden">
+        <div className="absolute right-0 top-0 opacity-10 translate-x-1/4 -translate-y-1/4 pointer-events-none">
+          <MapPin className="w-96 h-96" />
+        </div>
+        <span className="bg-white/20 text-white text-[10px] font-extrabold px-3 py-1 rounded-full border border-white/20 uppercase tracking-wider backdrop-blur-xs">
+          Special Partner Agent Console
         </span>
-        <h1 className="text-xl sm:text-3xl font-extrabold mt-3 tracking-tight">Onboard New Businesses</h1>
-        <p className="text-xs sm:text-sm text-emerald-50 mt-1 max-w-xl">
-          Create new Owner accounts and register their physical car wash facilities on our platform. High-level merchant onboarding.
+        <h1 className="text-xl sm:text-3xl font-black mt-3 tracking-tight">Car Wash Merchant & Mapping Hub</h1>
+        <p className="text-xs sm:text-sm text-emerald-50 mt-1 max-w-2xl font-medium">
+          Onboard new car wash owners, pinpoint exact GPS coordinates via interactive map click, paste latitude/longitude values, or manage existing facility locations.
         </p>
+
+        {/* Tab Switcher */}
+        <div className="mt-6 flex flex-wrap gap-2 pt-4 border-t border-white/15">
+          <button
+            type="button"
+            onClick={() => setActiveTab('onboard')}
+            className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'onboard'
+                ? 'bg-white text-emerald-900 shadow-md ring-2 ring-white/50'
+                : 'bg-black/20 text-white hover:bg-black/30'
+            }`}
+          >
+            <PlusCircle className="w-4 h-4" />
+            <span>Onboard New Business</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('edit_existing')}
+            className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'edit_existing'
+                ? 'bg-white text-emerald-900 shadow-md ring-2 ring-white/50'
+                : 'bg-black/20 text-white hover:bg-black/30'
+            }`}
+          >
+            <Edit3 className="w-4 h-4" />
+            <span>Update Existing Location Coordinates ({locations.length})</span>
+          </button>
+
+          {FEATURES.ENABLE_REVIEWS && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('reviews')}
+              className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
+                activeTab === 'reviews'
+                  ? 'bg-white text-emerald-900 shadow-md ring-2 ring-white/50'
+                  : 'bg-black/20 text-white hover:bg-black/30'
+              }`}
+            >
+              <Star className="w-4 h-4" />
+              <span>Review Moderation</span>
+            </button>
+          )}
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
-        {/* Onboarding Form (7 columns) */}
-        <div className="md:col-span-7">
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
-            <h2 className="text-base sm:text-lg font-bold text-slate-800 pb-3 border-b border-slate-100 mb-6 flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-emerald-500" />
-              Onboarding Form details
-            </h2>
+      {/* TAB 1: ONBOARD NEW BUSINESS */}
+      {activeTab === 'onboard' && (
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
+          {/* Form Side (7 cols) */}
+          <div className="md:col-span-7">
+            <div className="bg-white border border-slate-200/90 rounded-3xl p-6 shadow-xs">
+              <h2 className="text-base sm:text-lg font-black text-slate-800 pb-3 border-b border-slate-100 mb-6 flex items-center gap-2">
+                <Building2 className="h-5 w-5 text-emerald-600" />
+                Merchant Onboarding Registration
+              </h2>
 
-            <form onSubmit={handleSubmitOnboarding} className="space-y-6 text-xs sm:text-sm">
-              {/* Part 1: Owner Details */}
-              <div className="space-y-4">
-                <h3 className="font-bold text-slate-700 text-xs uppercase tracking-wider flex items-center gap-1.5">
-                  <span className="bg-emerald-50 text-emerald-700 w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold">1</span>
-                  Merchant Account Profile
-                </h3>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Owner Contact Name</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Jack Owner"
-                      value={ownerName}
-                      onChange={(e) => setOwnerName(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-50 rounded-xl outline-none"
-                      required
-                    />
+              <form onSubmit={handleSubmitOnboarding} className="space-y-6 text-xs sm:text-sm">
+                {/* Part 1: Owner Profile */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-black text-slate-700 text-xs uppercase tracking-wider flex items-center gap-2">
+                      <span className="bg-emerald-100 text-emerald-800 w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-extrabold">
+                        1
+                      </span>
+                      Owner Account Credentials
+                    </h3>
+                    <div className="flex items-center bg-slate-100 p-0.5 rounded-lg text-[10px] font-bold">
+                      <button
+                        type="button"
+                        onClick={() => setOnboardOwnerMode('new')}
+                        className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${onboardOwnerMode === 'new' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500'}`}
+                      >
+                        New Owner
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setOnboardOwnerMode('existing')}
+                        className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${onboardOwnerMode === 'existing' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500'}`}
+                      >
+                        Existing Owner
+                      </button>
+                    </div>
                   </div>
+
+                  {onboardOwnerMode === 'existing' ? (
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">Select Existing Owner Account</label>
+                      <select
+                        value={selectedOnboardOwnerId}
+                        onChange={(e) => setSelectedOnboardOwnerId(e.target.value)}
+                        className="w-full px-3.5 py-2.5 border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-50 rounded-xl outline-none font-medium bg-white text-slate-800"
+                        required
+                      >
+                        <option value="">-- Select Registered Owner --</option>
+                        {adminUsersList
+                          .filter((u) => u.role === Role.OWNER)
+                          .map((owner) => (
+                            <option key={owner.id} value={owner.id}>
+                              {owner.name} ({owner.email}) - {owner.id}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-600 mb-1">Owner Full Name</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Haji Razak"
+                            value={ownerName}
+                            onChange={(e) => setOwnerName(e.target.value)}
+                            className="w-full px-3.5 py-2.5 border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-50 rounded-xl outline-none font-medium"
+                            required={onboardOwnerMode === 'new'}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-600 mb-1">Email Address (Login ID)</label>
+                          <input
+                            type="email"
+                            placeholder="Email Address"
+                            value={ownerEmail}
+                            onChange={(e) => setOwnerEmail(e.target.value)}
+                            className="w-full px-3.5 py-2.5 border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-50 rounded-xl outline-none font-medium"
+                            required={onboardOwnerMode === 'new'}
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-600 mb-1">Initial Password</label>
+                        <div className="relative">
+                          <Key className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+                          <input
+                            type="text"
+                            value={ownerPassword}
+                            onChange={(e) => setOwnerPassword(e.target.value)}
+                            className="w-full pl-9 pr-3.5 py-2.5 border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-50 rounded-xl outline-none font-mono font-bold"
+                            required={onboardOwnerMode === 'new'}
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Part 2: Facility Info */}
+                <div className="space-y-4 pt-4 border-t border-slate-100">
+                  <h3 className="font-black text-slate-700 text-xs uppercase tracking-wider flex items-center gap-2">
+                    <span className="bg-emerald-100 text-emerald-800 w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-extrabold">
+                      2
+                    </span>
+                    Car Wash Facility Details
+                  </h3>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">Car Wash Name</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. ShinePro Detailing Jerudong"
+                        value={businessName}
+                        onChange={(e) => setBusinessName(e.target.value)}
+                        className="w-full px-3.5 py-2.5 border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-50 rounded-xl outline-none font-medium"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">Physical Address</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Spg 45, Jalan Jerudong, Brunei"
+                        value={businessAddress}
+                        onChange={(e) => setBusinessAddress(e.target.value)}
+                        className="w-full px-3.5 py-2.5 border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-50 rounded-xl outline-none font-medium"
+                        required
+                      />
+                    </div>
+                  </div>
+
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Email Address</label>
-                    <input
-                      type="email"
-                      placeholder="owner@carwash.com"
-                      value={ownerEmail}
-                      onChange={(e) => setOwnerEmail(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-50 rounded-xl outline-none"
-                      required
+                    <label className="block text-xs font-bold text-slate-600 mb-1">Short Description & Amenities</label>
+                    <textarea
+                      placeholder="Describe services offered (e.g., Premium Foam Wash, Ceramic Coating, Underbody Wash)..."
+                      rows={2}
+                      value={businessDesc}
+                      onChange={(e) => setBusinessDesc(e.target.value)}
+                      className="w-full px-3.5 py-2.5 border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-50 rounded-xl outline-none font-medium"
                     />
                   </div>
                 </div>
 
+                {/* Owner QR Code Permission Configuration */}
+                <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-4 flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    id="allow-owner-qr-toggle"
+                    checked={allowOwnerQrImmediately}
+                    onChange={(e) => setAllowOwnerQrImmediately(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
+                  />
+                  <div>
+                    <label htmlFor="allow-owner-qr-toggle" className="text-xs font-bold text-slate-800 cursor-pointer block">
+                      Allow Owner QR Code Access Immediately
+                    </label>
+                    <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                      Default is unchecked: keeps the QR Code & printable poster hidden from the owner until verified, while the owner can immediately access and navigate all other operational tabs (Bookings, Calendar, Services, Operations).
+                    </p>
+                  </div>
+                </div>
+
+                {/* Loyalty & Rewards Membership Permission Configuration */}
+                <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-4 flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    id="allow-membership-toggle"
+                    checked={allowMembershipImmediately}
+                    onChange={(e) => setAllowMembershipImmediately(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
+                  />
+                  <div>
+                    <label htmlFor="allow-membership-toggle" className="text-xs font-bold text-slate-800 cursor-pointer block">
+                      Enable Loyalty &amp; Rewards Programme Immediately
+                    </label>
+                    <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                      Activates points earning on online bookings and walk-ins, digital QR membership passes, and redeemable rewards catalogue for this facility.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-sm rounded-2xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+                  id="submit-onboarding-btn"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  <span>{isSubmitting ? 'Registering Merchant...' : 'Complete Business Onboarding'}</span>
+                </button>
+              </form>
+            </div>
+          </div>
+
+          {/* Map & Coordinates Picker Side (5 cols) */}
+          <div className="md:col-span-5 space-y-4">
+            <div className="bg-white border border-slate-200/90 rounded-3xl p-5 shadow-xs space-y-4">
+              <div className="flex items-center justify-between">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Initial Password</label>
-                  <div className="relative">
-                    <Key className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
-                    <input
-                      type="text"
-                      value={ownerPassword}
-                      onChange={(e) => setOwnerPassword(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2 border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-50 rounded-xl outline-none font-mono font-bold"
-                      required
-                    />
-                  </div>
+                  <h3 className="font-black text-slate-800 text-sm flex items-center gap-1.5">
+                    <MapPin className="w-4 h-4 text-emerald-600" />
+                    Set Location GPS Coordinates
+                  </h3>
+                  <p className="text-[11px] text-slate-500">Click anywhere on the map to place pin</p>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(`${businessLat}, ${businessLng}`)}
+                  className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-extrabold rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
+                  title="Copy Lat, Lng"
+                >
+                  {copiedCoords ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                  <span>{copiedCoords ? 'Copied' : 'Copy GPS'}</span>
+                </button>
               </div>
 
-              {/* Part 2: Business details */}
-              <div className="space-y-4 pt-4 border-t border-slate-100">
-                <h3 className="font-bold text-slate-700 text-xs uppercase tracking-wider flex items-center gap-1.5">
-                  <span className="bg-emerald-50 text-emerald-700 w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold">2</span>
-                  Business Location Details
-                </h3>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Facility Name</label>
-                    <input
-                      type="text"
-                      placeholder="Downtown Crystal Clean"
-                      value={businessName}
-                      onChange={(e) => setBusinessName(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-50 rounded-xl outline-none"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Physical Address</label>
-                    <input
-                      type="text"
-                      placeholder="455 Market St, San Francisco, CA"
-                      value={businessAddress}
-                      onChange={(e) => setBusinessAddress(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-50 rounded-xl outline-none"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Short Description</label>
-                  <textarea
-                    placeholder="Describe specific cleaning and detailing amenities..."
-                    rows={2}
-                    value={businessDesc}
-                    onChange={(e) => setBusinessDesc(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-50 rounded-xl outline-none"
+              {/* Quick Search or Paste Coords Input */}
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Search area or paste 'Lat, Lng'..."
+                    value={quickSearchQuery}
+                    onChange={(e) => setQuickSearchQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleApplyQuickSearch(false);
+                      }
+                    }}
+                    className="w-full pl-8 pr-2 py-1.5 border border-slate-200 rounded-xl text-xs font-medium focus:border-emerald-500 outline-none"
                   />
                 </div>
+                <button
+                  type="button"
+                  onClick={() => handleApplyQuickSearch(false)}
+                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl cursor-pointer transition-colors"
+                >
+                  Go
+                </button>
               </div>
 
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                id="submit-onboarding-btn"
-              >
-                {isSubmitting ? 'Onboarding in progress...' : 'Complete Business Onboarding'}
-              </button>
-            </form>
+              {/* Quick Brunei Presets */}
+              <div className="space-y-1.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                  Quick Brunei Town Presets:
+                </span>
+                <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1 scrollbar-thin">
+                  {BRUNEI_PRESETS.map((preset) => (
+                    <button
+                      key={preset.name}
+                      type="button"
+                      onClick={() => updateOnboardCoords(preset.lat, preset.lng)}
+                      className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/80 text-emerald-800 font-bold text-[10px] rounded-lg transition-colors cursor-pointer"
+                    >
+                      {preset.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Map Canvas */}
+              <div className="rounded-2xl border border-slate-200 overflow-hidden relative h-[320px] shadow-inner">
+                <MapSimulation
+                  locations={[]}
+                  interactiveSelectCoords={{ lat: businessLat, lng: businessLng }}
+                  onMapClickSelectCoords={(coords) => {
+                    updateOnboardCoords(coords.lat, coords.lng);
+                  }}
+                  userLat={businessLat}
+                  userLng={businessLng}
+                  compact={true}
+                />
+              </div>
+
+              {/* Manual Lat & Lng Input Fields */}
+              <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 space-y-3">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">
+                  Manual Coordinate Inputs (Decimal GPS)
+                </span>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 mb-1">Latitude</label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={latInput}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setLatInput(val);
+                        const parsed = parseFloat(val);
+                        if (!isNaN(parsed) && parsed >= -90 && parsed <= 90) {
+                          setBusinessLat(parsed);
+                        }
+                      }}
+                      className="w-full px-2.5 py-1.5 border border-slate-200 focus:border-emerald-500 rounded-xl bg-white font-mono font-bold text-xs text-slate-800"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 mb-1">Longitude</label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={lngInput}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setLngInput(val);
+                        const parsed = parseFloat(val);
+                        if (!isNaN(parsed) && parsed >= -180 && parsed <= 180) {
+                          setBusinessLng(parsed);
+                        }
+                      }}
+                      className="w-full px-2.5 py-1.5 border border-slate-200 focus:border-emerald-500 rounded-xl bg-white font-mono font-bold text-xs text-slate-800"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium pt-1 border-t border-slate-200/60">
+                  <span>Pin: {businessLat.toFixed(6)}, {businessLng.toFixed(6)}</span>
+                  <a
+                    href={`https://www.google.com/maps?q=${businessLat},${businessLng}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-emerald-700 hover:underline flex items-center gap-1 font-bold"
+                  >
+                    <span>Google Maps</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
+      )}
 
-        {/* Coords Selection Assist map on Right (5 columns) */}
-        <div className="md:col-span-5 space-y-6">
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm flex flex-col h-full">
-            <div>
-              <h3 className="font-bold text-slate-800 text-base">Select Map Coordinates</h3>
-              <p className="text-xs text-slate-400 mt-0.5">Click the map to drop a visual pin</p>
+      {/* TAB 2: EDIT EXISTING CAR WASH COORDINATES */}
+      {activeTab === 'edit_existing' && (
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-8 animate-fade-in">
+          {/* Select & Details Side (5 cols) */}
+          <div className="md:col-span-5 space-y-6">
+            <div className="bg-white border border-slate-200/90 rounded-3xl p-6 shadow-xs space-y-5">
+              <h2 className="text-base font-black text-slate-800 pb-2 border-b border-slate-100 flex items-center gap-2">
+                <Edit3 className="w-5 h-5 text-emerald-600" />
+                Select Existing Business
+              </h2>
+
+              {locations.length === 0 ? (
+                <p className="text-xs text-slate-500">No car wash businesses registered yet.</p>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">Choose Car Wash Facility</label>
+                    <select
+                      value={selectedExistingId}
+                      onChange={(e) => handleSelectExistingBusiness(e.target.value)}
+                      className="w-full px-3.5 py-2.5 border border-slate-200 focus:border-emerald-500 rounded-2xl text-xs font-bold text-slate-800 bg-white"
+                    >
+                      {locations.map((wash) => (
+                        <option key={wash.id} value={wash.id}>
+                          {wash.name} ({wash.address || 'No Address'})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {selectedWashObj && (
+                    <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-3">
+                      <div>
+                        <span className="text-[10px] font-extrabold text-emerald-700 uppercase tracking-wider block">
+                          Current Record
+                        </span>
+                        <h3 className="font-extrabold text-slate-800 text-sm">{selectedWashObj.name}</h3>
+                        <p className="text-xs text-slate-600">{selectedWashObj.address}</p>
+                      </div>
+
+                      <div className="space-y-1.5 pt-2 border-t border-slate-200/60 text-xs">
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-500 font-medium">Owner QR Code:</span>
+                          <span
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase tracking-wider ${
+                              selectedWashObj.ownerQrCodeEnabled
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-amber-100 text-amber-800'
+                            }`}
+                          >
+                            {selectedWashObj.ownerQrCodeEnabled ? 'Allowed (Visible)' : 'Hidden'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-500 font-medium">Loyalty &amp; Rewards:</span>
+                          <span
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase tracking-wider ${
+                              selectedWashObj.membershipEnabled
+                                ? 'bg-indigo-100 text-indigo-800 border border-indigo-200'
+                                : 'bg-slate-100 text-slate-600 border border-slate-200'
+                            }`}
+                          >
+                            {selectedWashObj.membershipEnabled ? '⭐ Active (Enabled)' : 'Disabled'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500 font-medium">Owner Email:</span>
+                          <span className="font-mono font-bold text-slate-800">{selectedWashObj.ownerEmail || 'N/A'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500 font-medium">Current Lat:</span>
+                          <span className="font-mono font-bold text-slate-800">{selectedWashObj.locationLat}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500 font-medium">Current Lng:</span>
+                          <span className="font-mono font-bold text-slate-800">{selectedWashObj.locationLng}</span>
+                        </div>
+                      </div>
+
+                      {/* Owner QR Code & Loyalty Quick Toggles & Operations Button */}
+                      <div className="pt-2 border-t border-slate-200/60 space-y-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-xs text-slate-600 font-bold">Quick Toggles:</span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const next = !selectedWashObj.ownerQrCodeEnabled;
+                                const success = await updateLocationConfig(selectedWashObj.id, {
+                                  ownerNavigationEnabled: true,
+                                  ownerQrCodeEnabled: next,
+                                });
+                                if (success) {
+                                  showToast(`Owner QR Code ${next ? 'enabled' : 'hidden'} for "${selectedWashObj.name}"`);
+                                }
+                              }}
+                              className={`px-2.5 py-1 rounded-xl text-[11px] font-extrabold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs ${
+                                selectedWashObj.ownerQrCodeEnabled
+                                  ? 'bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300'
+                                  : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300'
+                              }`}
+                              id="special-quick-toggle-owner-qr-btn"
+                              title="Toggle Owner QR code access"
+                            >
+                              {selectedWashObj.ownerQrCodeEnabled ? (
+                                <>
+                                  <EyeOff className="w-3.5 h-3.5" />
+                                  <span>Hide QR</span>
+                                </>
+                              ) : (
+                                <>
+                                  <QrCode className="w-3.5 h-3.5" />
+                                  <span>Allow QR</span>
+                                </>
+                              )}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const next = !selectedWashObj.membershipEnabled;
+                                const success = await updateLocationConfig(selectedWashObj.id, {
+                                  membershipEnabled: next,
+                                });
+                                if (success) {
+                                  showToast(`Loyalty Programme ${next ? 'enabled' : 'disabled'} for "${selectedWashObj.name}"`);
+                                }
+                              }}
+                              className={`px-2.5 py-1 rounded-xl text-[11px] font-extrabold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs ${
+                                selectedWashObj.membershipEnabled
+                                  ? 'bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200'
+                                  : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200'
+                              }`}
+                              id="special-quick-toggle-loyalty-btn"
+                              title="Toggle Loyalty & Rewards membership for this car wash"
+                            >
+                              <Award className="w-3.5 h-3.5" />
+                              <span>{selectedWashObj.membershipEnabled ? 'Disable Loyalty' : 'Enable Loyalty'}</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setOperationsModalCarWash(selectedWashObj)}
+                          className="w-full py-2.5 px-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 rounded-xl text-xs font-extrabold flex items-center justify-center gap-2 cursor-pointer transition-colors"
+                          id="special-manage-operations-btn"
+                        >
+                          <Sliders className="w-4 h-4" />
+                          <span>Configure Operations, Services & Schedule</span>
+                        </button>
+                      </div>
+
+                      <a
+                        href={`https://www.google.com/maps?q=${selectedWashObj.locationLat},${selectedWashObj.locationLng}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-xs font-extrabold text-emerald-700 hover:underline pt-1"
+                      >
+                        <Navigation className="w-3.5 h-3.5" />
+                        <span>View Current Pin on Google Maps</span>
+                      </a>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
+          </div>
 
-            <div className="flex-1 mt-4 rounded-2xl border border-slate-200 overflow-hidden relative min-h-[480px] sm:min-h-[350px]">
-              <MapSimulation
-                locations={[]}
-                interactiveSelectCoords={{ lat: businessLat, lng: businessLng }}
-                onMapClickSelectCoords={(coords) => {
-                  setBusinessLat(coords.lat);
-                  setBusinessLng(coords.lng);
-                }}
-                userLat={businessLat}
-                userLng={businessLng}
-                compact={true}
+          {/* Interactive Map & Coords Form (7 cols) */}
+          <div className="md:col-span-7 space-y-4">
+            <div className="bg-white border border-slate-200/90 rounded-3xl p-6 shadow-xs space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-black text-slate-800 text-sm flex items-center gap-2">
+                    <MapPin className="w-4 h-4 text-emerald-600" />
+                    Reposition Map Pin & Update Coordinates
+                  </h3>
+                  <p className="text-[11px] text-slate-500">Click anywhere on map to reposition the pin</p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(`${existLat}, ${existLng}`)}
+                  className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-extrabold rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
+                >
+                  {copiedCoords ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                  <span>{copiedCoords ? 'Copied' : 'Copy GPS'}</span>
+                </button>
+              </div>
+
+              {/* Quick Search Box */}
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Search town or paste 'Lat, Lng'..."
+                    value={existQuickQuery}
+                    onChange={(e) => setExistQuickQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleApplyQuickSearch(true);
+                      }
+                    }}
+                    className="w-full pl-8 pr-2 py-1.5 border border-slate-200 rounded-xl text-xs font-medium focus:border-emerald-500 outline-none"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleApplyQuickSearch(true)}
+                  className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl cursor-pointer transition-colors"
+                >
+                  Go
+                </button>
+              </div>
+
+              {/* Quick Brunei Town Presets */}
+              <div className="space-y-1.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                  Quick Brunei Town Presets:
+                </span>
+                <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1 scrollbar-thin">
+                  {BRUNEI_PRESETS.map((preset) => (
+                    <button
+                      key={preset.name}
+                      type="button"
+                      onClick={() => updateExistCoords(preset.lat, preset.lng)}
+                      className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/80 text-emerald-800 font-bold text-[10px] rounded-lg transition-colors cursor-pointer"
+                    >
+                      {preset.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Map Component */}
+              <div className="rounded-2xl border border-slate-200 overflow-hidden relative h-[360px] shadow-inner">
+                <MapSimulation
+                  locations={selectedWashObj ? [selectedWashObj] : []}
+                  interactiveSelectCoords={{ lat: existLat, lng: existLng }}
+                  onMapClickSelectCoords={(coords) => {
+                    updateExistCoords(coords.lat, coords.lng);
+                  }}
+                  userLat={existLat}
+                  userLng={existLng}
+                  compact={true}
+                />
+              </div>
+
+              {/* Lat/Lng Input & Save */}
+              <form onSubmit={handleUpdateExistingCoords} className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 mb-1 uppercase tracking-wider">
+                    Assigned Business Owner
+                  </label>
+                  <select
+                    value={existOwnerId}
+                    onChange={(e) => setExistOwnerId(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 focus:border-emerald-500 rounded-xl bg-white font-medium text-xs text-slate-800 outline-none"
+                  >
+                    <option value="">-- Select Owner Account --</option>
+                    {adminUsersList
+                      .filter((u) => u.role === Role.OWNER)
+                      .map((owner) => (
+                        <option key={owner.id} value={owner.id}>
+                          {owner.name} ({owner.email}) - {owner.id}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 mb-1 uppercase tracking-wider">
+                    Loyalty &amp; Membership Programme
+                  </label>
+                  <select
+                    value={existMembership ? 'enabled' : 'disabled'}
+                    onChange={(e) => setExistMembership(e.target.value === 'enabled')}
+                    className="w-full px-3 py-2 border border-slate-200 focus:border-emerald-500 rounded-xl bg-white font-medium text-xs text-slate-800 outline-none"
+                  >
+                    <option value="enabled">⭐ Enabled (Loyalty Club &amp; Points Active)</option>
+                    <option value="disabled">Disabled (Hidden from Customers &amp; Inactive)</option>
+                  </select>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Enabling grants the car wash owner and bay operators active loyalty points awarding and customer reward redemptions.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 mb-1 uppercase tracking-wider">
+                      Latitude Coordinate
+                    </label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={existLatInput}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setExistLatInput(val);
+                        const parsed = parseFloat(val);
+                        if (!isNaN(parsed) && parsed >= -90 && parsed <= 90) {
+                          setExistLat(parsed);
+                        }
+                      }}
+                      className="w-full px-3 py-2 border border-slate-200 focus:border-emerald-500 rounded-xl bg-white font-mono font-bold text-xs text-slate-800"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 mb-1 uppercase tracking-wider">
+                      Longitude Coordinate
+                    </label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={existLngInput}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setExistLngInput(val);
+                        const parsed = parseFloat(val);
+                        if (!isNaN(parsed) && parsed >= -180 && parsed <= 180) {
+                          setExistLng(parsed);
+                        }
+                      }}
+                      className="w-full px-3 py-2 border border-slate-200 focus:border-emerald-500 rounded-xl bg-white font-mono font-bold text-xs text-slate-800"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isUpdatingExisting || !selectedExistingId}
+                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{isUpdatingExisting ? 'Saving GPS Changes...' : 'Save Updated GPS Location'}</span>
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: REVIEW MODERATION (Pre-wired & ready in structure) */}
+      {FEATURES.ENABLE_REVIEWS && activeTab === 'reviews' && (
+        <div className="space-y-6 animate-fade-in" id="special-reviews-moderation-section">
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200">
+            <div>
+              <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                <Star className="h-5 w-5 text-emerald-600 fill-emerald-600" />
+                <span>Customer Reviews Moderation</span>
+                <span className="text-xs font-semibold bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                  {specialReviews.length} {specialReviews.length === 1 ? 'Review' : 'Reviews'}
+                </span>
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Monitor reviews across all car wash locations and remove spam or offensive entries to maintain platform quality.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={fetchSpecialReviews}
+              disabled={specialReviewsLoading}
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer self-start sm:self-auto"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${specialReviewsLoading ? 'animate-spin' : ''}`} />
+              <span>Refresh</span>
+            </button>
+          </div>
+
+          {/* Filter Bar */}
+          <div className="flex flex-col sm:flex-row gap-3 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
+            <div className="flex-1 relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search by customer, comment, or car wash..."
+                value={specialReviewsSearch}
+                onChange={(e) => setSpecialReviewsSearch(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-100 focus:border-emerald-500 font-medium"
               />
             </div>
-
-            <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 mt-4 text-xs font-mono text-slate-500 space-y-3">
-              <div>
-                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Latitude (GPS Coordinate)</label>
-                <input
-                  type="number"
-                  step="0.0001"
-                  min="-90"
-                  max="90"
-                  value={businessLat}
-                  onChange={(e) => setBusinessLat(parseFloat(e.target.value) || 37.7749)}
-                  className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-slate-800 bg-white font-mono font-bold text-xs"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Longitude (GPS Coordinate)</label>
-                <input
-                  type="number"
-                  step="0.0001"
-                  min="-180"
-                  max="180"
-                  value={businessLng}
-                  onChange={(e) => setBusinessLng(parseFloat(e.target.value) || -122.4194)}
-                  className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-slate-800 bg-white font-mono font-bold text-xs"
-                  required
-                />
-              </div>
+            <div className="flex items-center gap-2">
+              <Filter className="w-4 h-4 text-slate-400" />
+              <select
+                value={specialReviewsRatingFilter}
+                onChange={(e) => setSpecialReviewsRatingFilter(e.target.value)}
+                className="text-xs border border-slate-200 rounded-xl px-3 py-2 bg-white text-slate-700 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-100 focus:border-emerald-500"
+              >
+                <option value="ALL">All Star Ratings</option>
+                <option value="5">5 Stars ★★★★★</option>
+                <option value="4">4 Stars ★★★★☆</option>
+                <option value="3">3 Stars ★★★☆☆</option>
+                <option value="2">2 Stars ★★☆☆☆</option>
+                <option value="1">1 Star ★☆☆☆☆</option>
+              </select>
             </div>
           </div>
-        </div>
-      </div>
 
-      <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4 text-xs text-emerald-800 flex gap-3">
+          {/* Reviews List */}
+          {specialReviewsLoading ? (
+            <div className="p-12 text-center bg-white rounded-2xl border border-slate-200">
+              <RefreshCw className="w-6 h-6 animate-spin text-slate-400 mx-auto mb-2" />
+              <p className="text-xs text-slate-500 font-medium">Loading platform customer reviews...</p>
+            </div>
+          ) : (() => {
+            const filtered = specialReviews.filter(rev => {
+              const matchesSearch = !specialReviewsSearch.trim() ||
+                rev.customerName.toLowerCase().includes(specialReviewsSearch.toLowerCase()) ||
+                (rev.customerEmail && rev.customerEmail.toLowerCase().includes(specialReviewsSearch.toLowerCase())) ||
+                rev.comment.toLowerCase().includes(specialReviewsSearch.toLowerCase()) ||
+                rev.carWashId.toLowerCase().includes(specialReviewsSearch.toLowerCase());
+              const matchesRating = specialReviewsRatingFilter === 'ALL' || rev.rating === Number(specialReviewsRatingFilter);
+              return matchesSearch && matchesRating;
+            });
+
+            if (filtered.length === 0) {
+              return (
+                <div className="p-10 text-center bg-white rounded-2xl border border-slate-200">
+                  <Star className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                  <p className="text-sm font-bold text-slate-700">No Reviews Found</p>
+                  <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                    {specialReviews.length === 0
+                      ? 'No customer reviews have been submitted on the platform yet.'
+                      : 'No reviews match your current search or rating filter.'}
+                  </p>
+                </div>
+              );
+            }
+
+            return (
+              <div className="space-y-3">
+                {filtered.map(rev => {
+                  const matchedLoc = locations.find(l => l.id === rev.carWashId);
+                  return (
+                    <div
+                      key={rev.id}
+                      className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-start justify-between gap-4 transition-all"
+                    >
+                      <div className="space-y-2 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-black text-slate-800">{rev.customerName}</span>
+                          {rev.customerEmail && (
+                            <span className="text-[11px] text-slate-400 font-mono">({rev.customerEmail})</span>
+                          )}
+                          <span className="text-[10px] text-slate-400">•</span>
+                          <span className="text-[11px] text-slate-500 font-semibold">
+                            Location: <strong>{matchedLoc ? matchedLoc.name : rev.carWashId}</strong>
+                          </span>
+                          <span className="text-[10px] text-slate-400">•</span>
+                          <span className="text-[10px] text-slate-400">{new Date(rev.createdAt).toLocaleDateString()}</span>
+                        </div>
+
+                        {/* Stars */}
+                        <div className="flex items-center gap-1">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <Star
+                              key={star}
+                              className={`w-3.5 h-3.5 ${
+                                star <= rev.rating
+                                  ? 'fill-amber-400 text-amber-400'
+                                  : 'text-slate-200'
+                              }`}
+                            />
+                          ))}
+                          <span className="text-xs font-bold text-slate-700 ml-1">{rev.rating}.0</span>
+                        </div>
+
+                        {/* Comment text */}
+                        <p className="text-xs text-slate-700 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100 font-medium">
+                          "{rev.comment}"
+                        </p>
+
+                        {/* Owner Reply if present */}
+                        {rev.ownerReply && (
+                          <div className="ml-4 pl-3 border-l-2 border-emerald-200 text-xs text-emerald-900 bg-emerald-50/50 p-2.5 rounded-r-xl space-y-0.5">
+                            <span className="font-bold text-[11px] text-emerald-700 block">
+                              {rev.ownerReplyBy || 'Business Owner Reply'}:
+                            </span>
+                            <p className="italic text-slate-600">"{rev.ownerReply}"</p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Special User Delete Action */}
+                      <div className="shrink-0 flex sm:flex-col items-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleSpecialDeleteReview(rev.id)}
+                          disabled={deletingReviewId === rev.id}
+                          className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+                          title="Permanently delete review (Spam / Policy Moderation)"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                          <span>{deletingReviewId === rev.id ? 'Deleting...' : 'Delete Review'}</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* Footer Info Box */}
+      <div className="bg-emerald-50/80 border border-emerald-200/80 rounded-2xl p-4 text-xs text-emerald-900 flex gap-3 shadow-xs">
         <Info className="h-5 w-5 text-emerald-600 shrink-0" />
-        <p>
-          Special Partner accounts help expand the marketplace dynamically. Merchants onboarded through this form will have full OWNER access instantly. Their default login credentials will be their provided email and the specified password.
+        <p className="font-medium">
+          <strong>Special Partner Mapping Notice:</strong> Accurate GPS coordinates ensure customer distance calculations and nearest-facility maps work flawlessly across Brunei. Clicking directly on the interactive map sets exact pin locations with 6-digit decimal precision.
         </p>
       </div>
+
+      {/* Car Wash Operations & Services Management Modal */}
+      {operationsModalCarWash && (
+        <CarWashOperationsModal
+          carWash={operationsModalCarWash}
+          isOpen={!!operationsModalCarWash}
+          onClose={() => setOperationsModalCarWash(null)}
+        />
+      )}
     </div>
   );
 };
