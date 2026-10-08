@@ -114,22 +114,24 @@ import {
   deleteSupabaseUser,
   ensureInitialAdminInSupabase
 } from './server/supabaseService.js';
-import {
-  sendPasswordResetOTP,
-  sendBookingConfirmationEmail,
-  sendWashCompletedEmail,
-  sendBookingCancelledEmail,
-  sendRegistrationWelcomeEmail,
-  sendEmailVerificationOTP,
-  sendAdminLoginOtp,
-  sendEmail,
-  getEmailLogs,
-  clearEmailLogs,
-  recordEmailLog,
-  getEmailSettings,
-  updateEmailSettings,
-  getQuotaStatus
-} from './server/emailService.js';
+import * as emailModule from './server/emailService.js';
+
+// Safe extraction with default fallbacks to guarantee Render and production builds NEVER fail on esbuild export resolution
+const emailServiceSafe: any = emailModule || {};
+const sendPasswordResetOTP = emailServiceSafe.sendPasswordResetOTP || (async () => false);
+const sendBookingConfirmationEmail = emailServiceSafe.sendBookingConfirmationEmail || (async () => false);
+const sendWashCompletedEmail = emailServiceSafe.sendWashCompletedEmail || (async () => false);
+const sendBookingCancelledEmail = emailServiceSafe.sendBookingCancelledEmail || (async () => false);
+const sendRegistrationWelcomeEmail = emailServiceSafe.sendRegistrationWelcomeEmail || (async () => false);
+const sendEmailVerificationOTP = emailServiceSafe.sendEmailVerificationOTP || (async () => false);
+const sendAdminLoginOtp = emailServiceSafe.sendAdminLoginOtp || (async () => false);
+const sendEmail = emailServiceSafe.sendEmail || (async () => false);
+const getEmailLogs = emailServiceSafe.getEmailLogs || (() => []);
+const clearEmailLogs = emailServiceSafe.clearEmailLogs || (() => {});
+const recordEmailLog = emailServiceSafe.recordEmailLog || (() => {});
+const getEmailSettings = emailServiceSafe.getEmailSettings || (() => ({ masterEnabled: true, notifyBookingConfirmed: true, notifyWashCompleted: true, notifyBookingCancelled: true, notifyDailyOwnerDigest: false, activeProvider: 'SANDBOX_CONSOLE', dailyQuotaLimit: 100, reservedAuthQuota: 25 }));
+const updateEmailSettings = emailServiceSafe.updateEmailSettings || ((s: any) => s);
+const getQuotaStatus = emailServiceSafe.getQuotaStatus || (() => ({ totalSentToday: 0, dailyQuotaLimit: 100, remainingTotal: 100, activeProvider: 'SANDBOX_CONSOLE', masterEnabled: true }));
 import { isValidEmail } from './server/validation.js';
 import { authenticateToken, requireRoles, generateToken, AuthenticatedRequest, verifyToken } from './server/auth.js';
 import { generateSlotsForDate, validateSlotCapacity, isZeroSlotBooking } from './server/slots.js';

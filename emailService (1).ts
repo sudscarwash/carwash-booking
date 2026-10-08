@@ -159,3 +159,6 @@ export class EmailService {
     return this.sendRawEmail({ to: options.customerEmail, subject, html });
   }
 }
+
+// Re-export all functions from main emailService so imports across folders always resolve
+export * from '../../emailService.js';
