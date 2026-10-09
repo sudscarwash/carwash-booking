@@ -30,6 +30,7 @@ export interface EmailNotificationSettings {
   masterEnabled: boolean;
   // Granular notification toggles
   notifyBookingConfirmed: boolean;
+  notifyBookingReminder: boolean;
   notifyWashCompleted: boolean;
   notifyBookingCancelled: boolean;
   notifyDailyOwnerDigest: boolean;
@@ -102,6 +103,7 @@ function ensureTodayTracker(): DailyQuotaTracker {
 const DEFAULT_SETTINGS: EmailNotificationSettings = {
   masterEnabled: true,
   notifyBookingConfirmed: true,  // Enabled by default so booking confirmations dispatch & log
+  notifyBookingReminder: true,   // Enabled by default so upcoming appointment reminders dispatch
   notifyWashCompleted: true,     // Default on: "Car Ready for Pick Up" has highest customer value
   notifyBookingCancelled: true,  // Default on: Urgent cancellation alerts
   notifyDailyOwnerDigest: false,
@@ -803,6 +805,98 @@ export async function sendBookingConfirmationEmail(options: {
 }
 
 /**
+ * Send Appointment Reminder Email (Toggleable Notification)
+ */
+export async function sendBookingReminderEmail(options: {
+  customerEmail: string;
+  customerName: string;
+  bookingId: string;
+  businessName: string;
+  address: string;
+  date: string;
+  timeSlot: string;
+  serviceName?: string;
+  price?: number;
+}): Promise<boolean> {
+  const settings = getEmailSettings();
+  if (settings.notifyBookingReminder === false) {
+    console.log('[EmailService] Skipped booking reminder email (toggle is OFF).');
+    recordEmailLog({
+      to: options.customerEmail,
+      from: formatResendFromAddress(settings.emailFromAddress),
+      subject: `⏰ Reminder: Your Car Wash Appointment - ${options.businessName}`,
+      html: '<p>Skipped: "Appointment Reminder Email" toggle is switched OFF in Admin Settings.</p>',
+      status: 'SKIPPED',
+      provider: settings.activeProvider,
+      errorDetails: 'Skipped: "Appointment Reminder Email" toggle is switched OFF in Admin Settings.',
+    });
+    return false;
+  }
+
+  const subject = `⏰ Reminder: Your Car Wash Appointment - ${options.businessName}`;
+  const formattedPrice = options.price ? `$${options.price.toFixed(2)}` : 'N/A';
+
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; border: 1px solid #bfdbfe; border-radius: 16px; background-color: #ffffff; color: #1e293b;">
+      <div style="text-align: center; margin-bottom: 24px;">
+        <div style="display: inline-block; background-color: #dbeafe; color: #1e40af; font-size: 12px; font-weight: 800; padding: 6px 14px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">
+          Appointment Reminder
+        </div>
+        <h1 style="color: #0284c7; margin: 6px 0 0 0; font-size: 26px; font-weight: 800; letter-spacing: -0.025em;">Upcoming Appointment</h1>
+        <p style="color: #64748b; margin: 4px 0 0 0; font-size: 14px;">Autoshine BN Booking Alert</p>
+      </div>
+      <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 20px 0;" />
+
+      <p style="font-size: 15px; line-height: 1.6; color: #334155;">Hi <strong>${options.customerName}</strong>,</p>
+      <p style="font-size: 15px; line-height: 1.6; color: #334155;">This is a friendly reminder for your upcoming car wash reservation at <strong>${options.businessName}</strong>.</p>
+
+      <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; padding: 20px; border-radius: 12px; margin: 22px 0; font-size: 14px;">
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 6px 0; color: #1e40af; font-weight: 600; width: 120px;">Booking ID:</td>
+            <td style="padding: 6px 0; color: #0f172a; font-family: monospace; font-weight: bold;">${options.bookingId}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #1e40af; font-weight: 600;">Location:</td>
+            <td style="padding: 6px 0; color: #0f172a; font-weight: bold;">${options.businessName}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #1e40af; font-weight: 600;">Address:</td>
+            <td style="padding: 6px 0; color: #475569;">${options.address}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #1e40af; font-weight: 600;">Date:</td>
+            <td style="padding: 6px 0; color: #0f172a; font-weight: bold;">${options.date}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #1e40af; font-weight: 600;">Time Slot:</td>
+            <td style="padding: 6px 0; color: #0284c7; font-weight: bold; font-size: 15px;">${options.timeSlot}</td>
+          </tr>
+          ${options.serviceName ? `
+          <tr>
+            <td style="padding: 6px 0; color: #1e40af; font-weight: 600;">Service:</td>
+            <td style="padding: 6px 0; color: #0f172a;">${options.serviceName}</td>
+          </tr>
+          ` : ''}
+          <tr>
+            <td style="padding: 6px 0; color: #1e40af; font-weight: 600;">Estimated Amount:</td>
+            <td style="padding: 6px 0; color: #0f172a; font-weight: bold;">${formattedPrice}</td>
+          </tr>
+        </table>
+      </div>
+
+      <p style="font-size: 14px; line-height: 1.6; color: #475569;">Please plan to arrive 5–10 minutes before your slot to ensure prompt bay entry. We look forward to seeing you!</p>
+      <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 24px 0;" />
+      <div style="text-align: center;">
+        <p style="color: #94a3b8; font-size: 11px; margin: 0;">&copy; ${new Date().getFullYear()} Autoshine BN. All rights reserved.</p>
+      </div>
+    </div>
+  `;
+
+  return sendEmail(options.customerEmail, subject, html, false);
+}
+
+/**
  * Send "Car Ready for Collection / Wash Completed" Email (Highest Utility Notification!)
  */
 export async function sendWashCompletedEmail(options: {
@@ -886,6 +980,158 @@ export async function sendWashCompletedEmail(options: {
   `;
 
   return sendEmail(options.customerEmail, subject, html, false);
+}
+
+/**
+ * Send "Wash Started / In Bay / Booking Accepted" Email to Customer
+ */
+export async function sendWashStartedEmail(options: {
+  customerEmail: string;
+  customerName: string;
+  bookingId: string;
+  businessName: string;
+  vehiclePlate?: string;
+  serviceName?: string;
+}): Promise<boolean> {
+  const settings = getEmailSettings();
+  if (!settings.masterEnabled) {
+    return false;
+  }
+
+  const subject = `🚗 Wash Started: Your Car is in the Bay! - ${options.businessName}`;
+
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; border: 1px solid #bae6fd; border-radius: 16px; background-color: #ffffff; color: #1e293b;">
+      <div style="text-align: center; margin-bottom: 24px;">
+        <div style="display: inline-block; background-color: #e0f2fe; color: #0369a1; font-size: 12px; font-weight: 800; padding: 6px 14px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">
+          Wash In Progress
+        </div>
+        <h1 style="color: #0284c7; margin: 6px 0 0 0; font-size: 26px; font-weight: 800; letter-spacing: -0.025em;">Vehicle Accepted & In Bay</h1>
+        <p style="color: #64748b; margin: 4px 0 0 0; font-size: 14px;">Autoshine BN Live Service Update</p>
+      </div>
+      <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 20px 0;" />
+
+      <p style="font-size: 15px; line-height: 1.6; color: #334155;">Hi <strong>${options.customerName}</strong>,</p>
+      <p style="font-size: 15px; line-height: 1.6; color: #334155;">Your booking has been accepted! Our detailing crew at <strong>${options.businessName}</strong> has checked in your vehicle (${options.vehiclePlate || 'Vehicle'}) and washing has begun.</p>
+
+      <div style="background-color: #f0f9ff; border: 1px solid #bae6fd; padding: 20px; border-radius: 12px; margin: 22px 0; font-size: 14px;">
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 5px 0; color: #0369a1; font-weight: 600; width: 130px;">Car Wash:</td>
+            <td style="padding: 5px 0; color: #0f172a; font-weight: bold;">${options.businessName}</td>
+          </tr>
+          ${options.serviceName ? `
+          <tr>
+            <td style="padding: 5px 0; color: #0369a1; font-weight: 600;">Service:</td>
+            <td style="padding: 5px 0; color: #0f172a; font-weight: bold;">${options.serviceName}</td>
+          </tr>
+          ` : ''}
+          <tr>
+            <td style="padding: 5px 0; color: #0369a1; font-weight: 600;">Status:</td>
+            <td style="padding: 5px 0; color: #0284c7; font-weight: bold;">🧼 Cleaning & Detailing in Progress</td>
+          </tr>
+        </table>
+      </div>
+
+      <p style="font-size: 14px; line-height: 1.6; color: #475569;">Estimated wash duration: <strong>~20–35 minutes</strong>. We will notify you by email the instant your car is dry, inspected, and ready for key collection!</p>
+      <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 24px 0;" />
+      <div style="text-align: center;">
+        <p style="color: #94a3b8; font-size: 11px; margin: 0;">&copy; ${new Date().getFullYear()} Autoshine BN. All rights reserved.</p>
+      </div>
+    </div>
+  `;
+
+  return sendEmail(options.customerEmail, subject, html, false);
+}
+
+/**
+ * Send "New Customer Booking Alert" Email to Business Owner
+ */
+export async function sendOwnerNewBookingEmail(options: {
+  ownerEmail: string;
+  ownerName: string;
+  businessName: string;
+  customerName: string;
+  customerPhone?: string;
+  date: string;
+  timeSlot: string;
+  serviceName?: string;
+  price?: number;
+  bookingId: string;
+  txnReference?: string;
+}): Promise<boolean> {
+  const settings = getEmailSettings();
+  if (!settings.masterEnabled) {
+    return false;
+  }
+
+  const subject = `🔔 New Booking Alert: ${options.customerName} - ${options.businessName}`;
+  const formattedPrice = options.price ? `$${options.price.toFixed(2)}` : 'N/A';
+
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; border: 1px solid #cbd5e1; border-radius: 16px; background-color: #ffffff; color: #1e293b;">
+      <div style="text-align: center; margin-bottom: 24px;">
+        <div style="display: inline-block; background-color: #f1f5f9; color: #334155; font-size: 12px; font-weight: 800; padding: 6px 14px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">
+          Owner Operations Alert
+        </div>
+        <h1 style="color: #0f172a; margin: 6px 0 0 0; font-size: 26px; font-weight: 800; letter-spacing: -0.025em;">New Booking Received!</h1>
+        <p style="color: #64748b; margin: 4px 0 0 0; font-size: 14px;">Autoshine BN Station Notification</p>
+      </div>
+      <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 20px 0;" />
+
+      <p style="font-size: 15px; line-height: 1.6; color: #334155;">Hello <strong>${options.ownerName}</strong>,</p>
+      <p style="font-size: 15px; line-height: 1.6; color: #334155;">A new reservation has just been booked for <strong>${options.businessName}</strong>:</p>
+
+      <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 20px; border-radius: 12px; margin: 22px 0; font-size: 14px;">
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 5px 0; color: #64748b; font-weight: 600; width: 130px;">Booking ID:</td>
+            <td style="padding: 5px 0; color: #0f172a; font-family: monospace; font-weight: bold;">${options.bookingId}</td>
+          </tr>
+          <tr>
+            <td style="padding: 5px 0; color: #64748b; font-weight: 600;">Customer:</td>
+            <td style="padding: 5px 0; color: #0f172a; font-weight: bold;">${options.customerName}</td>
+          </tr>
+          ${options.customerPhone ? `
+          <tr>
+            <td style="padding: 5px 0; color: #64748b; font-weight: 600;">Phone:</td>
+            <td style="padding: 5px 0; color: #0f172a; font-family: monospace;">${options.customerPhone}</td>
+          </tr>
+          ` : ''}
+          <tr>
+            <td style="padding: 5px 0; color: #64748b; font-weight: 600;">Date:</td>
+            <td style="padding: 5px 0; color: #0f172a; font-weight: bold;">${options.date}</td>
+          </tr>
+          <tr>
+            <td style="padding: 5px 0; color: #64748b; font-weight: 600;">Time Slot:</td>
+            <td style="padding: 5px 0; color: #0284c7; font-weight: bold;">${options.timeSlot}</td>
+          </tr>
+          <tr>
+            <td style="padding: 5px 0; color: #64748b; font-weight: 600;">Service:</td>
+            <td style="padding: 5px 0; color: #0f172a; font-weight: bold;">${options.serviceName || 'Standard Wash'}</td>
+          </tr>
+          <tr>
+            <td style="padding: 5px 0; color: #64748b; font-weight: 600;">Total:</td>
+            <td style="padding: 5px 0; color: #16a34a; font-weight: bold;">${formattedPrice}</td>
+          </tr>
+          ${options.txnReference ? `
+          <tr>
+            <td style="padding: 5px 0; color: #64748b; font-weight: 600;">Bank Ref:</td>
+            <td style="padding: 5px 0; color: #7c3aed; font-family: monospace; font-weight: bold;">${options.txnReference}</td>
+          </tr>
+          ` : ''}
+        </table>
+      </div>
+
+      <p style="font-size: 14px; line-height: 1.6; color: #475569;">You can view and manage this appointment in your <strong>Owner Dashboard</strong>.</p>
+      <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 24px 0;" />
+      <div style="text-align: center;">
+        <p style="color: #94a3b8; font-size: 11px; margin: 0;">&copy; ${new Date().getFullYear()} Autoshine BN. All rights reserved.</p>
+      </div>
+    </div>
+  `;
+
+  return sendEmail(options.ownerEmail, subject, html, false);
 }
 
 /**

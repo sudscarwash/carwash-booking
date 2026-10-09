@@ -140,7 +140,7 @@ const getCatalogForLocation = (loc?: CarWash | null): WashService[] => {
 };
 
 export const EmployeeDashboard: React.FC = () => {
-  const { user, token, bookings, updateBookingStatus, locations, createManualBooking, requestBookingEta } = useApp();
+  const { user, token, bookings, updateBookingStatus, sendBookingReminder, locations, createManualBooking, requestBookingEta } = useApp();
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [requestingEtaBookingId, setRequestingEtaBookingId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'queue' | 'calendar' | 'loyalty'>('queue');
@@ -869,6 +869,16 @@ export const EmployeeDashboard: React.FC = () => {
                             {/* Secondary Actions Row */}
                             <div className="flex items-center gap-2 flex-wrap justify-between pt-1">
                               <div className="flex items-center gap-2 flex-wrap">
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    await sendBookingReminder(bk.id);
+                                  }}
+                                  className="px-3 py-2 border border-sky-200 text-sky-700 hover:bg-sky-50 font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                                  title="Send appointment reminder email to customer"
+                                >
+                                  <span>⏰ Send Reminder</span>
+                                </button>
                                 <button
                                   type="button"
                                   onClick={() => {

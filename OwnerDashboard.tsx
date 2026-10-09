@@ -159,6 +159,7 @@ export const OwnerDashboard: React.FC = () => {
     fetchBookings,
     showNotification,
     updateBookingStatus,
+    sendBookingReminder,
     requestBookingEta,
     updateLocationConfig,
     createEmployee,
@@ -4881,6 +4882,15 @@ export const OwnerDashboard: React.FC = () => {
                     <div className="flex flex-wrap items-center justify-end gap-2 pt-1 text-xs">
                       {bk.status === BookingStatus.PENDING && (
                         <>
+                          <button
+                            onClick={async () => {
+                              await sendBookingReminder(bk.id);
+                            }}
+                            className="bg-sky-50 border border-sky-200 text-sky-700 hover:bg-sky-100 font-bold px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                            title="Dispatch appointment reminder email to customer"
+                          >
+                            ⏰ Send Reminder
+                          </button>
                           <button
                             onClick={() => handleStatusChange(bk.id, BookingStatus.IN_PROGRESS)}
                             className="bg-sky-600 hover:bg-sky-500 text-white font-bold px-3 py-1.5 rounded-lg transition-colors cursor-pointer"

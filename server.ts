@@ -116,20 +116,214 @@ import {
 } from './server/supabaseService.js';
 import * as emailModule from './server/emailService.js';
 
-// Safe extraction with default fallbacks to guarantee Render and production builds NEVER fail on esbuild export resolution
+// Safe extraction with default active fallbacks to guarantee Render and Cloud Run builds NEVER fail
 const emailServiceSafe: any = emailModule || {};
+const EMAIL_LOGS_FILE = path.resolve(process.cwd(), 'data', 'email_logs.json');
+
+function internalRecordEmailLog(entry: {
+  to: string;
+  from?: string;
+  subject: string;
+  html: string;
+  status: 'DELIVERED' | 'SIMULATED' | 'FAILED' | 'HELD_QUOTA' | 'SKIPPED';
+  provider?: string;
+  errorDetails?: string;
+}) {
+  if (typeof emailServiceSafe.recordEmailLog === 'function') {
+    try {
+      emailServiceSafe.recordEmailLog(entry);
+      return;
+    } catch (e) {
+      console.warn('[EmailService] Delegated recordEmailLog failed, using internal fallback:', e);
+    }
+  }
+  try {
+    let logs: any[] = [];
+    if (fs.existsSync(EMAIL_LOGS_FILE)) {
+      try { logs = JSON.parse(fs.readFileSync(EMAIL_LOGS_FILE, 'utf-8')); } catch {}
+    }
+    const logItem = {
+      ...entry,
+      id: `log_${Math.random().toString(36).substring(2, 9)}_${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      provider: entry.provider || 'SANDBOX_CONSOLE',
+      from: entry.from || 'AutoShine BN <sandbox@autoshinebn.dev>',
+    };
+    logs.unshift(logItem);
+    if (logs.length > 100) logs.pop();
+    const dir = path.dirname(EMAIL_LOGS_FILE);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(EMAIL_LOGS_FILE, JSON.stringify(logs, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('[InternalEmailLog] Fallback log write error:', err);
+  }
+}
+
+const recordEmailLog = (entry: any) => internalRecordEmailLog(entry);
+
+const sendWashCompletedEmail = async (options: {
+  customerEmail: string;
+  customerName: string;
+  bookingId: string;
+  businessName: string;
+  vehiclePlate?: string;
+  serviceName?: string;
+  totalAmount?: number;
+}): Promise<boolean> => {
+  if (typeof emailServiceSafe.sendWashCompletedEmail === 'function') {
+    return emailServiceSafe.sendWashCompletedEmail(options);
+  }
+  console.log(`[EmailService] Wash completed email simulated for ${options.customerEmail}`);
+  internalRecordEmailLog({
+    to: options.customerEmail,
+    from: 'AutoShine BN <sandbox@autoshinebn.dev>',
+    subject: `✨ Your Vehicle is Clean & Ready for Collection! - ${options.businessName}`,
+    html: `<p>Hi <strong>${options.customerName}</strong>, great news! The team at <strong>${options.businessName}</strong> has completed washing your vehicle (${options.vehiclePlate || 'Vehicle'}). It is clean and ready for collection!</p>`,
+    status: 'SIMULATED',
+    provider: 'SANDBOX_CONSOLE',
+  });
+  return true;
+};
+
+const sendBookingReminderEmail = async (options: {
+  customerEmail: string;
+  customerName: string;
+  bookingId: string;
+  businessName: string;
+  address: string;
+  date: string;
+  timeSlot: string;
+  serviceName?: string;
+  price?: number;
+}): Promise<boolean> => {
+  if (typeof emailServiceSafe.sendBookingReminderEmail === 'function') {
+    return emailServiceSafe.sendBookingReminderEmail(options);
+  }
+  console.log(`[EmailService] Appointment reminder simulated for ${options.customerEmail}`);
+  internalRecordEmailLog({
+    to: options.customerEmail,
+    from: 'AutoShine BN <sandbox@autoshinebn.dev>',
+    subject: `⏰ Reminder: Your Car Wash Appointment - ${options.businessName}`,
+    html: `<p>Hi <strong>${options.customerName}</strong>, this is a friendly reminder for your upcoming car wash reservation at <strong>${options.businessName}</strong> on <strong>${options.date}</strong> (${options.timeSlot}).</p>`,
+    status: 'SIMULATED',
+    provider: 'SANDBOX_CONSOLE',
+  });
+  return true;
+};
+
+const sendBookingConfirmationEmail = async (options: any): Promise<boolean> => {
+  if (typeof emailServiceSafe.sendBookingConfirmationEmail === 'function') {
+    return emailServiceSafe.sendBookingConfirmationEmail(options);
+  }
+  internalRecordEmailLog({
+    to: options.customerEmail,
+    from: 'AutoShine BN <sandbox@autoshinebn.dev>',
+    subject: `Booking Confirmed: ${options.businessName} - Autoshine BN`,
+    html: `<p>Hi <strong>${options.customerName}</strong>, your reservation with ${options.businessName} on ${options.date} (${options.timeSlot}) is confirmed!</p>`,
+    status: 'SIMULATED',
+    provider: 'SANDBOX_CONSOLE',
+  });
+  return true;
+};
+
+const sendBookingCancelledEmail = async (options: any): Promise<boolean> => {
+  if (typeof emailServiceSafe.sendBookingCancelledEmail === 'function') {
+    return emailServiceSafe.sendBookingCancelledEmail(options);
+  }
+  internalRecordEmailLog({
+    to: options.customerEmail,
+    from: 'AutoShine BN <sandbox@autoshinebn.dev>',
+    subject: `⚠️ Reservation Cancelled - ${options.businessName} (Autoshine BN)`,
+    html: `<p>Hi <strong>${options.customerName}</strong>, your booking with ${options.businessName} on ${options.date} has been cancelled.</p>`,
+    status: 'SIMULATED',
+    provider: 'SANDBOX_CONSOLE',
+  });
+  return true;
+};
+
+const sendWashStartedEmail = async (options: {
+  customerEmail: string;
+  customerName: string;
+  bookingId: string;
+  businessName: string;
+  vehiclePlate?: string;
+  serviceName?: string;
+}): Promise<boolean> => {
+  if (typeof emailServiceSafe.sendWashStartedEmail === 'function') {
+    return emailServiceSafe.sendWashStartedEmail(options);
+  }
+  console.log(`[EmailService] Wash started (in bay) email simulated for ${options.customerEmail}`);
+  internalRecordEmailLog({
+    to: options.customerEmail,
+    from: 'AutoShine BN <sandbox@autoshinebn.dev>',
+    subject: `🚗 Wash Started: Your Car is in the Bay! - ${options.businessName}`,
+    html: `<p>Hi <strong>${options.customerName}</strong>, your booking has been accepted! Our crew at <strong>${options.businessName}</strong> has started washing your vehicle (${options.vehiclePlate || 'Vehicle'}). Estimated duration: ~20-35 mins.</p>`,
+    status: 'SIMULATED',
+    provider: 'SANDBOX_CONSOLE',
+  });
+  return true;
+};
+
+const sendOwnerNewBookingEmail = async (options: {
+  ownerEmail: string;
+  ownerName: string;
+  businessName: string;
+  customerName: string;
+  customerPhone?: string;
+  date: string;
+  timeSlot: string;
+  serviceName?: string;
+  price?: number;
+  bookingId: string;
+  txnReference?: string;
+}): Promise<boolean> => {
+  if (typeof emailServiceSafe.sendOwnerNewBookingEmail === 'function') {
+    return emailServiceSafe.sendOwnerNewBookingEmail(options);
+  }
+  console.log(`[EmailService] Owner new booking alert email simulated for ${options.ownerEmail}`);
+  internalRecordEmailLog({
+    to: options.ownerEmail,
+    from: 'AutoShine BN <sandbox@autoshinebn.dev>',
+    subject: `🔔 New Booking Alert: ${options.customerName} - ${options.businessName}`,
+    html: `<p>Hello <strong>${options.ownerName}</strong>, a new reservation (${options.serviceName || 'Car Wash'}) has been booked for ${options.businessName} on ${options.date} at ${options.timeSlot} by ${options.customerName}.</p>`,
+    status: 'SIMULATED',
+    provider: 'SANDBOX_CONSOLE',
+  });
+  return true;
+};
+
 const sendPasswordResetOTP = emailServiceSafe.sendPasswordResetOTP || (async () => false);
-const sendBookingConfirmationEmail = emailServiceSafe.sendBookingConfirmationEmail || (async () => false);
-const sendWashCompletedEmail = emailServiceSafe.sendWashCompletedEmail || (async () => false);
-const sendBookingCancelledEmail = emailServiceSafe.sendBookingCancelledEmail || (async () => false);
 const sendRegistrationWelcomeEmail = emailServiceSafe.sendRegistrationWelcomeEmail || (async () => false);
 const sendEmailVerificationOTP = emailServiceSafe.sendEmailVerificationOTP || (async () => false);
 const sendAdminLoginOtp = emailServiceSafe.sendAdminLoginOtp || (async () => false);
 const sendEmail = emailServiceSafe.sendEmail || (async () => false);
-const getEmailLogs = emailServiceSafe.getEmailLogs || (() => []);
-const clearEmailLogs = emailServiceSafe.clearEmailLogs || (() => {});
-const recordEmailLog = emailServiceSafe.recordEmailLog || (() => {});
-const getEmailSettings = emailServiceSafe.getEmailSettings || (() => ({ masterEnabled: true, notifyBookingConfirmed: true, notifyWashCompleted: true, notifyBookingCancelled: true, notifyDailyOwnerDigest: false, activeProvider: 'SANDBOX_CONSOLE', dailyQuotaLimit: 100, reservedAuthQuota: 25 }));
+
+const getEmailLogs = (): any[] => {
+  if (typeof emailServiceSafe.getEmailLogs === 'function') {
+    const list = emailServiceSafe.getEmailLogs();
+    if (Array.isArray(list) && list.length > 0) return list;
+  }
+  try {
+    if (fs.existsSync(EMAIL_LOGS_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(EMAIL_LOGS_FILE, 'utf-8'));
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {}
+  return [];
+};
+
+const clearEmailLogs = (): void => {
+  if (typeof emailServiceSafe.clearEmailLogs === 'function') {
+    emailServiceSafe.clearEmailLogs();
+  }
+  try {
+    if (fs.existsSync(EMAIL_LOGS_FILE)) {
+      fs.writeFileSync(EMAIL_LOGS_FILE, JSON.stringify([], null, 2), 'utf-8');
+    }
+  } catch {}
+};
+
+const getEmailSettings = emailServiceSafe.getEmailSettings || (() => ({ masterEnabled: true, notifyBookingConfirmed: true, notifyBookingReminder: true, notifyWashCompleted: true, notifyBookingCancelled: true, notifyDailyOwnerDigest: false, activeProvider: 'SANDBOX_CONSOLE', dailyQuotaLimit: 100, reservedAuthQuota: 25 }));
 const updateEmailSettings = emailServiceSafe.updateEmailSettings || ((s: any) => s);
 const getQuotaStatus = emailServiceSafe.getQuotaStatus || (() => ({ totalSentToday: 0, dailyQuotaLimit: 100, remainingTotal: 100, activeProvider: 'SANDBOX_CONSOLE', masterEnabled: true }));
 import { isValidEmail } from './server/validation.js';
@@ -2176,6 +2370,31 @@ async function startServer() {
         });
       }
 
+      // Also dispatch alert email to car wash business owner
+      if (carWash.ownerId) {
+        try {
+          const allUsers = await getUsers();
+          const ownerUser = allUsers.find((u) => u.id === carWash.ownerId);
+          if (ownerUser && ownerUser.email) {
+            sendOwnerNewBookingEmail({
+              ownerEmail: ownerUser.email,
+              ownerName: ownerUser.name,
+              businessName: carWash.name,
+              customerName: targetCustomerName,
+              customerPhone: newBooking.customerPhone,
+              date: newBooking.date,
+              timeSlot: newBooking.timeSlot,
+              serviceName: newBooking.serviceName,
+              price: newBooking.price,
+              bookingId: newBooking.id,
+              txnReference: newBooking.txnReference,
+            }).catch((err) => console.error('[EmailService] Owner alert email error:', err));
+          }
+        } catch (ownerErr) {
+          console.error('[EmailService] Failed to dispatch owner booking alert:', ownerErr);
+        }
+      }
+
       res.status(201).json(newBooking);
     } catch (error: any) {
       console.error('Secure booking creation error details:', error);
@@ -2639,7 +2858,31 @@ async function startServer() {
       const targetCustomerEmail = booking.customerEmail || users.find((u) => u.id === booking.customerId)?.email;
       const targetCustomerName = booking.customerName || users.find((u) => u.id === booking.customerId)?.name || 'Customer';
 
-      if (status === BookingStatus.COMPLETED) {
+      if (status === BookingStatus.IN_PROGRESS) {
+        if (targetCustomerEmail && !targetCustomerEmail.endsWith('@walkin.guest')) {
+          const cw = carWashes.find((c) => c.id === booking.carWashId);
+          sendWashStartedEmail({
+            customerEmail: targetCustomerEmail,
+            customerName: targetCustomerName,
+            bookingId: booking.id,
+            businessName: cw ? cw.name : 'Autoshine Car Wash',
+            vehiclePlate: booking.vehicleInfo,
+            serviceName: booking.serviceName,
+          }).catch((err) => {
+            console.error('[EmailService] Failed to send wash started email:', err);
+          });
+        } else {
+          recordEmailLog({
+            to: targetCustomerName || 'Walk-in Customer',
+            from: 'System <notifications@autoshinebn.com>',
+            subject: '🚗 Vehicle Accepted & In Bay Notification',
+            html: '<p>Wash in bay notification skipped: No customer email address associated with this booking.</p>',
+            status: 'SKIPPED',
+            provider: getEmailSettings().activeProvider,
+            errorDetails: 'Skipped: No customer email address is attached to this booking.',
+          });
+        }
+      } else if (status === BookingStatus.COMPLETED) {
         if (targetCustomerEmail && !targetCustomerEmail.endsWith('@walkin.guest')) {
           const cw = carWashes.find((c) => c.id === booking.carWashId);
           sendWashCompletedEmail({
@@ -2715,6 +2958,74 @@ async function startServer() {
       res.json({ ...booking, ...updatedData });
     } catch (error: any) {
       res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Authenticated: Dispatch an Appointment Reminder Email to Customer
+  app.post('/api/bookings/:id/send-reminder', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const booking = await getBookingById(req.params.id);
+      if (!booking) {
+        res.status(404).json({ error: 'Booking not found.' });
+        return;
+      }
+
+      const user = req.user!;
+      const carWashes = await getCarWashes();
+      const users = await getUsers();
+
+      const isOwner = user.role === Role.OWNER && carWashes.some((cw) => cw.id === booking.carWashId && cw.ownerId === user.id);
+      const isEmployeeAtBusiness = user.role === Role.EMPLOYEE && users.some((u) => u.id === user.id && u.businessId === booking.carWashId);
+      const isAdmin = user.role === Role.ADMIN;
+
+      if (!isOwner && !isEmployeeAtBusiness && !isAdmin) {
+        res.status(403).json({ error: 'Only staff can dispatch appointment reminders.' });
+        return;
+      }
+
+      const targetCustomerEmail = booking.customerEmail || users.find((u) => u.id === booking.customerId)?.email;
+      const targetCustomerName = booking.customerName || users.find((u) => u.id === booking.customerId)?.name || 'Customer';
+
+      if (!targetCustomerEmail || targetCustomerEmail.endsWith('@walkin.guest')) {
+        recordEmailLog({
+          to: targetCustomerName || 'Walk-in Customer',
+          from: 'System <notifications@autoshinebn.com>',
+          subject: '⏰ Appointment Reminder Notification',
+          html: '<p>Reminder skipped: No customer email address associated with this booking.</p>',
+          status: 'SKIPPED',
+          provider: getEmailSettings().activeProvider,
+          errorDetails: 'Skipped: No customer email address is attached to this booking.',
+        });
+        res.status(400).json({ error: 'No email address attached to this booking to send a reminder to.' });
+        return;
+      }
+
+      const cw = carWashes.find((c) => c.id === booking.carWashId);
+      const sent = await sendBookingReminderEmail({
+        customerEmail: targetCustomerEmail,
+        customerName: targetCustomerName,
+        bookingId: booking.id,
+        businessName: cw ? cw.name : 'Autoshine Car Wash',
+        address: cw ? cw.address : 'Brunei Darussalam',
+        date: booking.date,
+        timeSlot: booking.timeSlot,
+        serviceName: booking.serviceName,
+        price: booking.price,
+      });
+
+      await addAuditLog(
+        user.id,
+        user.email,
+        'BOOKING_REMINDER_SENT',
+        `Dispatched appointment reminder to ${targetCustomerEmail} for booking ${booking.id} (${booking.date} ${booking.timeSlot})`
+      );
+
+      res.json({
+        success: sent,
+        message: `Appointment reminder dispatched to ${targetCustomerEmail}!`,
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to dispatch appointment reminder' });
     }
   });
 

@@ -120,6 +120,7 @@ interface AppContextType {
     paymentBank?: string,
     txnReference?: string
   ) => Promise<boolean>;
+  sendBookingReminder: (bookingId: string) => Promise<boolean>;
   updateBookingDetails: (bookingId: string, data: { serviceId?: string; serviceName?: string; price?: number; vehicleInfo?: string; notes?: string; paymentBank?: string; txnReference?: string }) => Promise<boolean>;
   rescheduleBooking: (bookingId: string, date: string, timeSlot: string) => Promise<boolean>;
   reportProximity: (bookingId: string, lat: number, lng: number) => Promise<{ success: boolean; proximityStatus?: string; proximityDistanceKm?: number; proximityEtaMinutes?: number; message?: string }>;
@@ -967,6 +968,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const sendBookingReminder = async (bookingId: string): Promise<boolean> => {
+    try {
+      const res = await apiFetch(`/api/bookings/${bookingId}/send-reminder`, {
+        method: 'POST',
+      });
+      showNotification(res.message || 'Appointment reminder dispatched to customer!', 'success');
+      return true;
+    } catch (err: any) {
+      showNotification(err.message || 'Failed to send appointment reminder', 'error');
+      return false;
+    }
+  };
+
   const updateBookingDetails = async (
     bookingId: string,
     data: { serviceId?: string; serviceName?: string; price?: number; vehicleInfo?: string; notes?: string; paymentBank?: string; txnReference?: string }
@@ -1459,6 +1473,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         createBooking,
         createManualBooking,
         updateBookingStatus,
+        sendBookingReminder,
         updateBookingDetails,
         rescheduleBooking,
         reportProximity,

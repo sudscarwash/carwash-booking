@@ -209,6 +209,7 @@ export const AdminDashboard: React.FC = () => {
   interface EmailNotificationSettings {
     masterEnabled: boolean;
     notifyBookingConfirmed: boolean;
+    notifyBookingReminder?: boolean;
     notifyWashCompleted: boolean;
     notifyBookingCancelled: boolean;
     notifyDailyOwnerDigest: boolean;
@@ -1209,7 +1210,28 @@ export const AdminDashboard: React.FC = () => {
                   </button>
                 </div>
 
-                {/* 3. Booking Cancellation */}
+                {/* 3. Appointment Reminder Alert */}
+                <div className="p-3.5 bg-slate-50 hover:bg-slate-50/80 border border-slate-200/80 rounded-2xl flex items-center justify-between gap-3 transition-colors">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-800">⏰ Upcoming Appointment Reminder Alert</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500">Sends appointment reminder email to customer with date, bay arrival details, and slot time.</p>
+                  </div>
+                  <button
+                    onClick={() => handleUpdateEmailSetting({ notifyBookingReminder: emailSettings?.notifyBookingReminder === false ? true : false })}
+                    disabled={savingEmailSettings || !emailSettings?.masterEnabled}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 ${
+                      emailSettings?.notifyBookingReminder !== false && emailSettings?.masterEnabled ? 'bg-sky-600' : 'bg-slate-300'
+                    }`}
+                  >
+                    <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      emailSettings?.notifyBookingReminder !== false && emailSettings?.masterEnabled ? 'translate-x-5' : 'translate-x-0'
+                    }`} />
+                  </button>
+                </div>
+
+                {/* 4. Booking Cancellation */}
                 <div className="p-3.5 bg-slate-50 hover:bg-slate-50/80 border border-slate-200/80 rounded-2xl flex items-center justify-between gap-3 transition-colors">
                   <div className="space-y-0.5">
                     <div className="flex items-center gap-2">
