@@ -23,7 +23,7 @@ import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
 import { uploadReceipt } from './server/upload.js';
 
-import { Role, BookingStatus, User, UserWithPassword, CarWash, Booking, MapPreset, AppNotification, Review } from './src/types.js';
+import { Role, BookingStatus, User, UserWithPassword, CarWash, Booking, MapPreset, AppNotification, Review, ReportedIssue, IssueCategory, IssuePriority, IssueStatus } from './src/types.js';
 import { 
   seedFirestoreIfEmpty,
   waitForDbReady,
@@ -103,7 +103,12 @@ import {
   getRedemptionByToken,
   confirmMembershipRedemption,
   getCarWashRedemptions,
-  getCustomerRedemptions
+  getCustomerRedemptions,
+  createReportedIssue,
+  getReportedIssues,
+  getReportedIssueById,
+  updateReportedIssue,
+  deleteReportedIssue
 } from './server/db.js';
 import { 
   isSupabaseAuthEnabled, 
@@ -3574,6 +3579,274 @@ async function startServer() {
       }
     }
   );
+
+  // ==========================================
+  // ISSUE REPORTING & TICKETING ENDPOINTS
+  // ==========================================
+
+  // In-memory rate limiting map for issue submissions (clientIdentifier -> timestamps)
+  const issueReportRateLimit = new Map<string, number[]>();
+
+  // Optional authentication middleware for issue reporting
+  const optionalAuth = (req: any, res: any, next: any) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    if (token) {
+      try {
+        const decoded = verifyToken(token);
+        if (decoded) req.user = decoded;
+      } catch (e) {}
+    }
+    next();
+  };
+
+  // Submit Issue Report (Logged in or Guest with anti-spam rate limiting & deduplication)
+  app.post('/api/issues', optionalAuth, async (req: any, res) => {
+    try {
+      const { title, description, category, priority, userName, userEmail, bookingId, carWashId, deviceInfo, pageUrl } = req.body;
+
+      if (!title || typeof title !== 'string' || title.trim().length < 5) {
+        res.status(400).json({ error: 'Please enter an issue title (minimum 5 characters).' });
+        return;
+      }
+
+      if (!description || typeof description !== 'string' || description.trim().length < 15) {
+        res.status(400).json({ error: 'Please provide a detailed description (minimum 15 characters).' });
+        return;
+      }
+
+      const validCategories = Object.values(IssueCategory);
+      const chosenCategory = (category && validCategories.includes(category)) ? category : IssueCategory.OTHER;
+
+      const validPriorities = Object.values(IssuePriority);
+      const chosenPriority = (priority && validPriorities.includes(priority)) ? priority : IssuePriority.MEDIUM;
+
+      const reporterName = (req.user?.name || userName || 'Guest User').trim();
+      const reporterEmail = (req.user?.email || userEmail || '').trim().toLowerCase();
+
+      if (!reporterEmail || !isValidEmail(reporterEmail)) {
+        res.status(400).json({ error: 'A valid contact email address is required so we can follow up with you.' });
+        return;
+      }
+
+      // 🛡️ Anti-Spam Rate Limiter: Max 3 reports per user/IP per 15 minutes
+      const clientIdentifier = req.user?.id || reporterEmail || req.ip || 'unknown';
+      const now = Date.now();
+      const windowMs = 15 * 60 * 1000;
+      const history = (issueReportRateLimit.get(clientIdentifier) || []).filter(t => now - t < windowMs);
+
+      if (history.length >= 3) {
+        res.status(429).json({ error: 'You have submitted multiple reports recently. Please wait a few minutes before submitting another report.' });
+        return;
+      }
+
+      // 🛡️ Deduplication Guard: Check if identical issue was submitted in the last 10 minutes
+      const recentIssues = await getReportedIssues({ userId: req.user?.id });
+      const tenMinutesAgo = new Date(now - 10 * 60 * 1000).toISOString();
+      const duplicate = recentIssues.find(iss => 
+        iss.createdAt >= tenMinutesAgo &&
+        (iss.title.trim().toLowerCase() === title.trim().toLowerCase() ||
+         iss.description.trim().toLowerCase() === description.trim().toLowerCase())
+      );
+
+      if (duplicate) {
+        res.status(400).json({ error: 'A similar issue was already submitted recently. Our team has received it and is reviewing it.' });
+        return;
+      }
+
+      history.push(now);
+      issueReportRateLimit.set(clientIdentifier, history);
+
+      const newIssue: ReportedIssue = {
+        id: `iss_${Math.random().toString(36).substr(2, 9)}_${Date.now()}`,
+        userId: req.user?.id || undefined,
+        userName: reporterName,
+        userEmail: reporterEmail,
+        userRole: req.user?.role || 'GUEST',
+        category: chosenCategory,
+        priority: chosenPriority,
+        status: IssueStatus.OPEN,
+        title: title.trim().slice(0, 150),
+        description: description.trim().slice(0, 3000),
+        bookingId: bookingId ? String(bookingId).trim() : undefined,
+        carWashId: carWashId ? String(carWashId).trim() : undefined,
+        deviceInfo: deviceInfo ? String(deviceInfo).slice(0, 300) : undefined,
+        pageUrl: pageUrl ? String(pageUrl).slice(0, 300) : undefined,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      await createReportedIssue(newIssue);
+
+      // Audit Log
+      await addAuditLog(
+        req.user?.id || 'GUEST',
+        reporterEmail,
+        'ISSUE_REPORTED',
+        `Issue reported: "${newIssue.title}" [${newIssue.category}] by ${reporterName}`
+      );
+
+      // Realtime Event for Admin & Special Dashboard Badges
+      broadcastRealtimeEvent({
+        type: 'ISSUE_REPORTED',
+        data: newIssue,
+      });
+
+      // In-app notifications to all Admins and Special users
+      try {
+        const allUsers = await getUsers();
+        const managementUsers = allUsers.filter(u => u.role === Role.ADMIN || u.role === Role.SPECIAL);
+        for (const adminOrSpecial of managementUsers) {
+          await createNotification({
+            id: `notif_${Math.random().toString(36).substr(2, 9)}`,
+            userId: adminOrSpecial.id,
+            title: `🚨 Issue Reported: ${newIssue.title.slice(0, 40)}`,
+            message: `${newIssue.userName} reported a ${newIssue.category} problem (${newIssue.priority} priority).`,
+            type: 'SYSTEM_ALERT',
+            isRead: false,
+            createdAt: new Date().toISOString(),
+          }).catch(() => {});
+        }
+      } catch (notifErr) {
+        console.error('Failed to notify staff of reported issue:', notifErr);
+      }
+
+      res.status(201).json({
+        success: true,
+        issue: newIssue,
+        message: 'Thank you! Your issue report has been logged. Our administration and support team will investigate it promptly.'
+      });
+    } catch (error: any) {
+      console.error('Failed to submit issue report:', error);
+      res.status(500).json({ error: error.message || 'Failed to submit issue report' });
+    }
+  });
+
+  // Get Issues List (Admin & Special see all; regular users see only their own)
+  app.get('/api/issues', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const isManagement = user.role === Role.ADMIN || user.role === Role.SPECIAL;
+
+      const filters: any = {};
+      if (req.query.status && req.query.status !== 'ALL') filters.status = String(req.query.status);
+      if (req.query.category && req.query.category !== 'ALL') filters.category = String(req.query.category);
+      if (req.query.search) filters.search = String(req.query.search);
+
+      if (!isManagement) {
+        // Regular user only sees their own reported issues
+        filters.userId = user.id;
+      }
+
+      const issues = await getReportedIssues(filters);
+      res.json(issues);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to fetch issues' });
+    }
+  });
+
+  // Get Single Issue Details
+  app.get('/api/issues/:id', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const issue = await getReportedIssueById(req.params.id);
+      if (!issue) {
+        res.status(404).json({ error: 'Reported issue not found.' });
+        return;
+      }
+
+      const user = req.user!;
+      const isManagement = user.role === Role.ADMIN || user.role === Role.SPECIAL;
+      if (!isManagement && issue.userId !== user.id) {
+        res.status(403).json({ error: 'You are not authorized to view this issue.' });
+        return;
+      }
+
+      res.json(issue);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to fetch issue details' });
+    }
+  });
+
+  // Update Issue Status / Priority / Resolution (Admin & Special Only)
+  app.put('/api/issues/:id', authenticateToken, requireRoles([Role.ADMIN, Role.SPECIAL]), async (req: AuthenticatedRequest, res) => {
+    try {
+      const { status, priority, category, adminNotes, resolutionNote } = req.body;
+      const existing = await getReportedIssueById(req.params.id);
+      if (!existing) {
+        res.status(404).json({ error: 'Reported issue not found.' });
+        return;
+      }
+
+      const updates: Partial<ReportedIssue> = {};
+      if (status && Object.values(IssueStatus).includes(status)) {
+        updates.status = status;
+        if (status === IssueStatus.RESOLVED || status === IssueStatus.CLOSED) {
+          updates.resolvedBy = req.user!.id;
+          updates.resolvedByName = req.user!.name;
+          updates.resolvedAt = new Date().toISOString();
+        }
+      }
+      if (priority && Object.values(IssuePriority).includes(priority)) updates.priority = priority;
+      if (category && Object.values(IssueCategory).includes(category)) updates.category = category;
+      if (adminNotes !== undefined) updates.adminNotes = adminNotes ? String(adminNotes).trim() : undefined;
+      if (resolutionNote !== undefined) updates.resolutionNote = resolutionNote ? String(resolutionNote).trim() : undefined;
+
+      const updated = await updateReportedIssue(req.params.id, updates);
+
+      await addAuditLog(
+        req.user!.id,
+        req.user!.email,
+        'ISSUE_UPDATED',
+        `Updated issue ${req.params.id}: status=${updated?.status}, priority=${updated?.priority}`
+      );
+
+      // In-app notification to the original reporter if registered user
+      if (existing.userId && (status || resolutionNote)) {
+        try {
+          await createNotification({
+            id: `notif_${Math.random().toString(36).substr(2, 9)}`,
+            userId: existing.userId,
+            title: `Issue Report Update: ${existing.title.slice(0, 35)}`,
+            message: `Your reported issue status is now "${updates.status || existing.status}". ${resolutionNote ? `Resolution: ${resolutionNote}` : ''}`,
+            type: 'STATUS_CHANGE',
+            isRead: false,
+            createdAt: new Date().toISOString(),
+          });
+        } catch (e) {}
+      }
+
+      broadcastRealtimeEvent({
+        type: 'ISSUE_UPDATED',
+        data: updated,
+      });
+
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to update issue' });
+    }
+  });
+
+  // Delete Issue (Admin Only)
+  app.delete('/api/issues/:id', authenticateToken, requireRoles([Role.ADMIN]), async (req: AuthenticatedRequest, res) => {
+    try {
+      const deleted = await deleteReportedIssue(req.params.id);
+      if (!deleted) {
+        res.status(404).json({ error: 'Issue not found or could not be deleted.' });
+        return;
+      }
+
+      await addAuditLog(
+        req.user!.id,
+        req.user!.email,
+        'ISSUE_DELETED',
+        `Deleted reported issue ${req.params.id}`
+      );
+
+      res.json({ success: true, message: 'Issue report deleted.' });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to delete issue' });
+    }
+  });
 
   // ==========================================
   // MAP PRESETS ENDPOINTS

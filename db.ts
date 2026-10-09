@@ -967,6 +967,8 @@ async function executeSeedFirestore() {
     'ALTER TABLE platform_info ADD COLUMN companyName TEXT',
     'ALTER TABLE platform_info ADD COLUMN description TEXT',
     'ALTER TABLE platform_info ADD COLUMN adminOtpRequired INTEGER DEFAULT 1',
+    'ALTER TABLE audit_logs ADD COLUMN user_id TEXT',
+    'ALTER TABLE audit_logs ADD COLUMN user_email TEXT',
   ];
 
   // Try renaming un-underscored Postgres columns if present from legacy schemas
@@ -1003,6 +1005,8 @@ async function executeSeedFirestore() {
       'ALTER TABLE reviews RENAME COLUMN ownerreplyat TO owner_reply_at',
       'ALTER TABLE reviews RENAME COLUMN ownerreplyby TO owner_reply_by',
       'ALTER TABLE reviews RENAME COLUMN bookingid TO booking_id',
+      'ALTER TABLE audit_logs RENAME COLUMN userid TO user_id',
+      'ALTER TABLE audit_logs RENAME COLUMN useremail TO user_email',
     ];
     for (const renameSql of renameQueries) {
       try {
@@ -1011,6 +1015,18 @@ async function executeSeedFirestore() {
         // Ignore if column doesn't exist or target already exists
       }
     }
+
+    // Auto-heal audit_logs columns if table was created in Supabase with legacy structure
+    try {
+      await pgPool!.query('ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS user_id TEXT');
+      await pgPool!.query('ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS user_email TEXT');
+      try {
+        await pgPool!.query('UPDATE audit_logs SET user_id = userid WHERE user_id IS NULL AND userid IS NOT NULL');
+      } catch {}
+      try {
+        await pgPool!.query('UPDATE audit_logs SET user_email = useremail WHERE user_email IS NULL AND useremail IS NOT NULL');
+      } catch {}
+    } catch (e) {}
   }
 
   for (const query of alterColumns) {
@@ -1738,10 +1754,7 @@ async function executeSeedFirestore() {
       ]);
     }
     for (const log of auditLogs) {
-      await runQueryRun(`
-        INSERT INTO audit_logs (id, userId, userEmail, action, details, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `, [log.id, log.userId, log.userEmail, log.action, log.details, log.timestamp]);
+      await addAuditLog(log.userId, log.userEmail, log.action, log.details);
     }
     console.log('Database seeding completed successfully!');
   } catch (err) {
@@ -1869,7 +1882,15 @@ export async function updateUserIdAcrossTables(oldId: string, newId: string): Pr
     // 3. Update car washes owned by this user
     await runQueryRun('UPDATE car_washes SET ownerId = ? WHERE ownerId = ?', [newId, oldId]);
     // 4. Update audit logs
-    await runQueryRun('UPDATE audit_logs SET userId = ? WHERE userId = ?', [newId, oldId]);
+    try {
+      await runQueryRun('UPDATE audit_logs SET userId = ? WHERE userId = ?', [newId, oldId]);
+    } catch {
+      if (usePostgres && pgPool) {
+        try {
+          await pgPool.query('UPDATE audit_logs SET userid = $1 WHERE userid = $2', [newId, oldId]);
+        } catch {}
+      }
+    }
   } catch (err: any) {
     console.error(`[Database Sync] Failed to update user ID across tables from ${oldId} to ${newId}:`, err);
     throw err;
@@ -2478,7 +2499,14 @@ export async function updateBooking(id: string, data: Partial<Booking>): Promise
 export async function getAuditLogs(): Promise<AuditLog[]> {
   try {
     const rows = await runQueryAll('SELECT * FROM audit_logs ORDER BY timestamp DESC');
-    return rows as AuditLog[];
+    return rows.map((r: any) => ({
+      id: r.id,
+      userId: r.userId ?? r.user_id ?? r.userid ?? '',
+      userEmail: r.userEmail ?? r.user_email ?? r.useremail ?? '',
+      action: r.action,
+      details: r.details,
+      timestamp: r.timestamp
+    })) as AuditLog[];
   } catch (error) {
     console.error('Database getAuditLogs Error:', error);
     return [];
@@ -2494,8 +2522,31 @@ export async function addAuditLog(userId: string, email: string, action: string,
       INSERT INTO audit_logs (id, userId, userEmail, action, details, timestamp)
       VALUES (?, ?, ?, ?, ?, ?)
     `, [logId, userId, email, action, details, timestamp]);
-  } catch (error) {
-    console.error('Database addAuditLog Error:', error);
+  } catch (error: any) {
+    // If PostgreSQL schema on Supabase has alternate naming (user_id vs userid), recover automatically
+    if (usePostgres && pgPool) {
+      try {
+        await pgPool.query(`
+          INSERT INTO audit_logs (id, userid, useremail, action, details, timestamp)
+          VALUES ($1, $2, $3, $4, $5, $6)
+        `, [logId, userId, email, action, details, timestamp]);
+        return;
+      } catch (err1) {
+        try {
+          await pgPool.query('ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS user_id TEXT');
+          await pgPool.query('ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS user_email TEXT');
+          await pgPool.query(`
+            INSERT INTO audit_logs (id, user_id, user_email, action, details, timestamp)
+            VALUES ($1, $2, $3, $4, $5, $6)
+          `, [logId, userId, email, action, details, timestamp]);
+          return;
+        } catch (err2) {
+          console.warn('[addAuditLog Suppressed Error]:', (err2 as any)?.message || err2);
+        }
+      }
+    } else {
+      console.error('Database addAuditLog Error:', error?.message || error);
+    }
   }
 }
 
