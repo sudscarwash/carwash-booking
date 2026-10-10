@@ -347,12 +347,11 @@ async function runQueryAll(sql: string, params: any[] = []): Promise<any[]> {
           return res.rows;
         } catch (retryErr: any) {
           console.error('[Postgres Query Final Error - runQueryAll]:', retryErr.message || retryErr);
-          if (process.env.DATABASE_URL || process.env.DIRECT_URL) {
-            throw retryErr;
+          if (sqliteDb) {
+            console.warn(`[Postgres Resilient Fallback]: PostgreSQL failed (${retryErr.code || retryErr.message}). Automatically serving from local SQLite engine to maintain 100% platform uptime.`);
+            return sqliteDb.prepare(sql).all(...params);
           }
-          if (!sqliteDb) throw retryErr;
-          console.warn('[Postgres Fallback to SQLite]: Serving from local SQLite engine.');
-          return sqliteDb.prepare(sql).all(...params);
+          throw retryErr;
         }
       }
     }
@@ -377,12 +376,11 @@ async function runQueryOne(sql: string, params: any[] = []): Promise<any | null>
           return res.rows[0] || null;
         } catch (retryErr: any) {
           console.error('[Postgres Query Final Error - runQueryOne]:', retryErr.message || retryErr);
-          if (process.env.DATABASE_URL || process.env.DIRECT_URL) {
-            throw retryErr;
+          if (sqliteDb) {
+            console.warn(`[Postgres Resilient Fallback]: PostgreSQL failed (${retryErr.code || retryErr.message}). Automatically serving from local SQLite engine to maintain 100% platform uptime.`);
+            return sqliteDb.prepare(sql).get(...params) || null;
           }
-          if (!sqliteDb) throw retryErr;
-          console.warn('[Postgres Fallback to SQLite]: Serving from local SQLite engine.');
-          return sqliteDb.prepare(sql).get(...params) || null;
+          throw retryErr;
         }
       }
     }
@@ -407,13 +405,12 @@ async function runQueryRun(sql: string, params: any[] = []): Promise<void> {
           return;
         } catch (retryErr: any) {
           console.error('[Postgres Query Final Error - runQueryRun]:', retryErr.message || retryErr);
-          if (process.env.DATABASE_URL || process.env.DIRECT_URL) {
-            throw retryErr;
+          if (sqliteDb) {
+            console.warn(`[Postgres Resilient Fallback]: PostgreSQL failed (${retryErr.code || retryErr.message}). Executing against local SQLite engine to maintain 100% platform uptime.`);
+            sqliteDb.prepare(sql).run(...params);
+            return;
           }
-          if (!sqliteDb) throw retryErr;
-          console.warn('[Postgres Fallback to SQLite]: Executing against local SQLite engine.');
-          sqliteDb.prepare(sql).run(...params);
-          return;
+          throw retryErr;
         }
       }
     }

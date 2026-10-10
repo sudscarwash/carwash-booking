@@ -777,13 +777,15 @@ async function startServer() {
 
       const salt = bcrypt.genSaltSync(10);
       const passwordHash = bcrypt.hashSync(password, salt);
+      const initialAdminEnv = process.env.INITIAL_ADMIN_EMAIL ? process.env.INITIAL_ADMIN_EMAIL.toLowerCase().trim() : null;
+      const isInitialAdmin = initialAdminEnv ? sanitizedEmail.toLowerCase() === initialAdminEnv : false;
       const newUser: UserWithPassword = {
         id: userId,
         email: sanitizedEmail,
         name,
-        role: Role.CUSTOMER,
+        role: isInitialAdmin ? Role.ADMIN : Role.CUSTOMER,
         isActive: true,
-        isEmailVerified: false,
+        isEmailVerified: isInitialAdmin ? true : false,
         passwordHash,
         createdAt: new Date().toISOString(),
         dateOfBirth: dateOfBirth || undefined,
@@ -985,6 +987,12 @@ async function startServer() {
       if (!user.isActive) {
         res.status(403).json({ error: 'Your account is suspended. Please contact support.' });
         return;
+      }
+
+      const initialAdminEnv = process.env.INITIAL_ADMIN_EMAIL ? process.env.INITIAL_ADMIN_EMAIL.toLowerCase().trim() : null;
+      if (initialAdminEnv && user.email.toLowerCase() === initialAdminEnv && user.role !== Role.ADMIN) {
+        user.role = Role.ADMIN;
+        updateUser(user.id, { role: Role.ADMIN }).catch(() => {});
       }
 
       // Authenticate via Supabase Auth if configured (only if we didn't just authenticate them above)
