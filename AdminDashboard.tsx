@@ -144,7 +144,17 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
-  const [activeSubTab, setActiveSubTab] = useState<'users' | 'logs' | 'emails' | 'businesses' | 'memberships' | 'presets' | 'info' | 'system' | 'reviews'>('users');
+  const [activeSubTab, setActiveSubTab] = useState<'users' | 'logs' | 'emails' | 'businesses' | 'memberships' | 'presets' | 'info' | 'system' | 'reviews'>(() => {
+    try {
+      const hash = window.location.hash.replace('#', '').toLowerCase();
+      const tabParam = new URLSearchParams(window.location.search).get('tab')?.toLowerCase();
+      const candidate = tabParam || hash;
+      if (candidate && ['users', 'logs', 'emails', 'businesses', 'memberships', 'presets', 'info', 'system', 'reviews'].includes(candidate)) {
+        return candidate as any;
+      }
+    } catch {}
+    return 'users';
+  });
 
   // Platform & Enquiry Info States
   const [infoEmail, setInfoEmail] = useState('');
@@ -777,6 +787,22 @@ export const AdminDashboard: React.FC = () => {
             <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider">Bookings</span>
             <strong className="text-lg font-black text-white font-mono">{bookings.length}</strong>
           </div>
+          <button
+            onClick={() => setActiveSubTab('emails')}
+            className={`px-4 py-2 rounded-xl text-center min-w-28 transition-all cursor-pointer border flex flex-col items-center justify-center ${
+              activeSubTab === 'emails'
+                ? 'bg-sky-500/20 border-sky-400 text-sky-300 ring-2 ring-sky-500/30'
+                : 'bg-slate-800 hover:bg-slate-700 border-slate-700/70 text-slate-300'
+            }`}
+            title="Open Email Notification Toggles & Delivery Engine"
+          >
+            <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider flex items-center gap-1">
+              <Mail className="h-3 w-3 text-sky-400" /> Email Engine
+            </span>
+            <strong className="text-xs font-bold text-sky-300 font-mono">
+              {emailSettings?.masterEnabled ? 'ACTIVE (ON)' : 'MUTED (OFF)'}
+            </strong>
+          </button>
         </div>
       </div>
 
@@ -810,13 +836,16 @@ export const AdminDashboard: React.FC = () => {
           onClick={() => setActiveSubTab('emails')}
           className={`pb-3 pt-1.5 px-2.5 sm:px-1 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap ${
             activeSubTab === 'emails'
-              ? 'border-red-600 text-red-600 font-bold'
+              ? 'border-sky-600 text-sky-600 font-bold'
               : 'border-transparent text-slate-500 hover:text-slate-700'
           }`}
           id="admin-subtab-emails"
         >
-          <Mail className="h-4 w-4 shrink-0" />
+          <Mail className="h-4 w-4 shrink-0 text-sky-500" />
           <span>Email Sandbox &amp; Logs</span>
+          <span className="bg-sky-100 text-sky-700 text-[10px] font-extrabold px-1.5 py-0.2 rounded-full uppercase tracking-wider ml-0.5">
+            Engine
+          </span>
         </button>
         <button
           onClick={() => setActiveSubTab('businesses')}

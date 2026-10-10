@@ -11,7 +11,7 @@ import {
   Clock, MapPin, BarChart3, ChevronRight, Edit2, Plus, Info, Briefcase, Trash2, Edit, Lock, Key,
   Phone, Car, User as UserIcon, Search, ChevronLeft, Filter, ShieldCheck, CheckCircle2, AlertCircle, CalendarDays, ChevronDown,
   FileText, Printer, Download, TrendingUp, PieChart, CreditCard, Package, FileSpreadsheet, Tag, Layers, RefreshCw, Bell, CheckCheck, MessageCircle, Mail, Save, Sparkles, Pencil, Upload,
-  Star, CornerDownRight, MessageSquare, QrCode, Eye, Award, Coins
+  Star, CornerDownRight, MessageSquare, QrCode, Eye, Award, Coins, Server
 } from 'lucide-react';
 import { BookingStatus, CarWash, Booking, WeeklySchedule, CustomPaymentMethod, WashService, Role, Review, ReviewSummary } from '../types.js';
 import { EditBookingModal } from '../components/EditBookingModal.js';
@@ -4586,6 +4586,66 @@ export const OwnerDashboard: React.FC = () => {
                 Ensure your owner credentials remain highly secure. We recommend using a unique password of at least 6 characters, mixing numbers and symbols.
               </p>
             )}
+          </div>
+
+          {/* Transactional Email & Notification Alerts Card */}
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm" id="owner-email-notifications-card">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-sky-50 text-sky-600 rounded-2xl">
+                  <Mail className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800 text-base">Transactional Emails & Pick-Up Alerts</h3>
+                  <p className="text-xs text-slate-400 mt-0.5">Automated customer collection notifications and owner reservation alerts</p>
+                </div>
+              </div>
+
+              {user?.role === Role.ADMIN && (
+                <a
+                  href="/admin?tab=emails"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer"
+                >
+                  <Server className="h-3.5 w-3.5 text-sky-400" />
+                  <span>Open Master Email Delivery Engine</span>
+                </a>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+              <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                    <span>Customer Car Ready & Pick-Up Alerts</span>
+                  </span>
+                  <span className="text-[10px] bg-emerald-100 text-emerald-800 font-extrabold px-2 py-0.5 rounded-full uppercase">Active</span>
+                </div>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  When your crew marks a wash as Completed, an instant email is automatically dispatched to the customer informing them their vehicle is clean, inspected, and ready for collection.
+                </p>
+              </div>
+
+              <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <Bell className="h-4 w-4 text-sky-600" />
+                    <span>Owner New Booking Alerts</span>
+                  </span>
+                  <span className="text-[10px] bg-sky-100 text-sky-800 font-extrabold px-2 py-0.5 rounded-full uppercase">Active</span>
+                </div>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  Delivered directly to your email address (<strong>{user?.email || 'owner'}</strong>) whenever a customer books a slot at your station.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 p-3.5 bg-sky-50/70 border border-sky-100 rounded-2xl text-[11px] text-sky-900 flex items-start gap-2.5">
+              <Info className="h-4 w-4 text-sky-600 shrink-0 mt-0.5" />
+              <p className="leading-relaxed">
+                <strong>Platform Operator Control:</strong> Master email switches, SMTP / Resend providers, and daily quota toggles (Quota Saver) are centrally operated under the <strong>Admin Dashboard &rarr; Email Sandbox & Logs</strong> tab.
+              </p>
+            </div>
           </div>
         </div>
       )}
