@@ -287,6 +287,7 @@ function convertQueryToPg(sql: string): string {
       tableName === 'car_washes' ||
       tableName === 'bookings' ||
       tableName === 'audit_logs' ||
+      tableName === 'email_logs' ||
       tableName === 'map_presets' ||
       tableName === 'notifications' ||
       tableName === 'reviews' ||
@@ -777,6 +778,18 @@ async function executeSeedFirestore() {
       companyName TEXT,
       description TEXT,
       updatedAt TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS email_logs (
+      id TEXT PRIMARY KEY,
+      recipient TEXT NOT NULL,
+      sender TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      html TEXT,
+      status TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      errorDetails TEXT,
+      timestamp TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS reviews (
@@ -2548,6 +2561,71 @@ export async function addAuditLog(userId: string, email: string, action: string,
       console.error('Database addAuditLog Error:', error?.message || error);
     }
   }
+}
+
+// Persistent Email Logs Helpers (Guarantees logs never disappear across server restarts/sleeps)
+export async function saveDbEmailLog(log: {
+  id: string;
+  recipient: string;
+  sender: string;
+  subject: string;
+  html?: string;
+  status: string;
+  provider: string;
+  errorDetails?: string;
+  timestamp: string;
+}): Promise<void> {
+  try {
+    await runQueryRun(`
+      INSERT OR IGNORE INTO email_logs (id, recipient, sender, subject, html, status, provider, errorDetails, timestamp)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      log.id,
+      log.recipient,
+      log.sender,
+      log.subject,
+      log.html || '',
+      log.status,
+      log.provider,
+      log.errorDetails || null,
+      log.timestamp
+    ]);
+  } catch (err: any) {
+    if (usePostgres && pgPool) {
+      try {
+        await pgPool.query(`
+          INSERT INTO email_logs (id, recipient, sender, subject, html, status, provider, errordetails, timestamp)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          ON CONFLICT (id) DO NOTHING
+        `, [log.id, log.recipient, log.sender, log.subject, log.html || '', log.status, log.provider, log.errorDetails || null, log.timestamp]);
+      } catch {}
+    }
+  }
+}
+
+export async function getDbEmailLogs(): Promise<any[]> {
+  try {
+    const rows = await runQueryAll('SELECT * FROM email_logs ORDER BY timestamp DESC LIMIT 100');
+    return rows.map((r: any) => ({
+      id: r.id,
+      to: r.recipient || r.to,
+      from: r.sender || r.from,
+      subject: r.subject,
+      html: r.html,
+      status: r.status,
+      provider: r.provider,
+      errorDetails: r.errorDetails ?? r.errordetails ?? r.error_details,
+      timestamp: r.timestamp
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export async function clearDbEmailLogs(): Promise<void> {
+  try {
+    await runQueryRun('DELETE FROM email_logs');
+  } catch {}
 }
 
 // Password Reset helpers

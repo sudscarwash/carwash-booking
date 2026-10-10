@@ -158,6 +158,7 @@ export const EmployeeDashboard: React.FC = () => {
   // Quick Walk-In / Phone Booking Modal states
   const [showManualBookingModal, setShowManualBookingModal] = useState(false);
   const [mbName, setMbName] = useState('');
+  const [mbEmail, setMbEmail] = useState('');
   const [mbPhone, setMbPhone] = useState('');
   const [mbVehicle, setMbVehicle] = useState('');
   const [mbDate, setMbDate] = useState<string>(getTodayDateString());
@@ -411,6 +412,7 @@ export const EmployeeDashboard: React.FC = () => {
       timeSlot: finalSlot,
       customerName: mbName.trim(),
       customerPhone: mbPhone.trim(),
+      customerEmail: mbEmail.trim() || undefined,
       vehicleInfo: mbVehicle.trim() || undefined,
       bookingSource: mbSource,
       serviceId: mbSelectedItems.length > 0 ? mbSelectedItems[0].id : catalog[0]?.id,
@@ -427,6 +429,7 @@ export const EmployeeDashboard: React.FC = () => {
     if (success) {
       setShowManualBookingModal(false);
       setMbName('');
+      setMbEmail('');
       setMbPhone('');
       setMbVehicle('');
       setMbNotes('');
@@ -1494,6 +1497,20 @@ export const EmployeeDashboard: React.FC = () => {
                     value={mbPhone}
                     onChange={(e) => setMbPhone(e.target.value)}
                     className="w-full px-3 py-2 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm outline-none focus:border-amber-500 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1 flex items-center gap-1">
+                    <Mail className="w-3 h-3 text-sky-600 shrink-0" />
+                    <span>Customer Email (Optional - for pickup notifications)</span>
+                  </label>
+                  <input
+                    type="email"
+                    placeholder="e.g. customer@gmail.com"
+                    value={mbEmail}
+                    onChange={(e) => setMbEmail(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm outline-none focus:border-amber-500 font-medium"
                   />
                 </div>
               </div>

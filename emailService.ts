@@ -1062,6 +1062,31 @@ export async function sendOwnerNewBookingEmail(options: {
 }): Promise<boolean> {
   const settings = getEmailSettings();
   if (!settings.masterEnabled) {
+    console.log('[EmailService] Skipped owner new booking alert (Master notifications OFF).');
+    recordEmailLog({
+      to: options.ownerEmail,
+      from: formatResendFromAddress(settings.emailFromAddress),
+      subject: `🔔 New Booking Alert: ${options.customerName} - ${options.businessName}`,
+      html: '<p>Skipped: Master Email Notifications switch is turned OFF in Admin Settings.</p>',
+      status: 'SKIPPED',
+      provider: settings.activeProvider,
+      errorDetails: 'Skipped: Master Notifications switch is OFF in Admin Settings.',
+    });
+    return false;
+  }
+
+  // Quota Saver: If Booking Confirmation is turned OFF, also skip instant owner alert to save daily quota
+  if (!settings.notifyBookingConfirmed) {
+    console.log('[EmailService] Skipped owner new booking alert (Quota Saver / Booking Confirmation is OFF).');
+    recordEmailLog({
+      to: options.ownerEmail,
+      from: formatResendFromAddress(settings.emailFromAddress),
+      subject: `🔔 New Booking Alert: ${options.customerName} - ${options.businessName}`,
+      html: '<p>Skipped: "Booking Confirmation Email (Quota Saver)" toggle is turned OFF in Admin Settings to preserve daily email quota.</p>',
+      status: 'SKIPPED',
+      provider: settings.activeProvider,
+      errorDetails: 'Skipped: "Booking Confirmation Email (Quota Saver)" is turned OFF in Admin Settings to preserve daily quota.',
+    });
     return false;
   }
 
