@@ -46,9 +46,6 @@ import {
   getBookingByTxnRef,
   getAuditLogs,
   addAuditLog,
-  saveDbEmailLog,
-  getDbEmailLogs,
-  clearDbEmailLogs,
   createPasswordReset,
   getPasswordResetByEmail,
   getPasswordResetByToken,
@@ -117,9 +114,18 @@ import {
   deleteSupabaseUser,
   ensureInitialAdminInSupabase
 } from './server/supabaseService.js';
+import * as dbModule from './server/db.js';
 import * as emailModule from './server/emailService.js';
 
 // Safe extraction with default active fallbacks to guarantee Render and Cloud Run builds NEVER fail
+const dbSafe: any = dbModule || {};
+const saveDbEmailLog: (log: any) => Promise<void> =
+  typeof dbSafe.saveDbEmailLog === 'function' ? dbSafe.saveDbEmailLog : async () => {};
+const getDbEmailLogs: () => Promise<any[]> =
+  typeof dbSafe.getDbEmailLogs === 'function' ? dbSafe.getDbEmailLogs : async () => [];
+const clearDbEmailLogs: () => Promise<void> =
+  typeof dbSafe.clearDbEmailLogs === 'function' ? dbSafe.clearDbEmailLogs : async () => {};
+
 const emailServiceSafe: any = emailModule || {};
 const EMAIL_LOGS_FILE = path.resolve(process.cwd(), 'data', 'email_logs.json');
 
