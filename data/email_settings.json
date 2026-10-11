@@ -1,0 +1,13 @@
+{
+  "masterEnabled": true,
+  "notifyBookingConfirmed": true,
+  "notifyBookingReminder": true,
+  "notifyWashCompleted": true,
+  "notifyBookingCancelled": true,
+  "notifyDailyOwnerDigest": false,
+  "activeProvider": "SANDBOX_CONSOLE",
+  "dailyQuotaLimit": 100,
+  "reservedAuthQuota": 25,
+  "emailFromAddress": "AutoShine BN <onboarding@resend.dev>",
+  "replyToAddress": ""
+}

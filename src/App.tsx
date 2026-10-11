@@ -60,7 +60,13 @@ const MainAppContent: React.FC = () => {
   const [adminOtpDevCode, setAdminOtpDevCode] = useState<string | null>(null);
   const [showExitConfirmModal, setShowExitConfirmModal] = useState(false);
 
-  const isDevMode = import.meta.env.DEV || window.location.hostname === 'localhost' || window.location.hostname.includes('127.0.0.1');
+  const isDevMode = 
+    import.meta.env.DEV || 
+    window.location.hostname === 'localhost' || 
+    window.location.hostname.includes('127.0.0.1') ||
+    window.location.hostname.includes('onrender.com') ||
+    window.location.hostname.includes('-dev-') ||
+    Boolean(adminOtpDevCode);
 
   // Direct QR Code / Operator Vanity URL State
   const [publicOperatorSlug, setPublicOperatorSlug] = useState<string | null>(() => {

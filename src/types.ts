@@ -373,3 +373,51 @@ export interface MembershipRedemption {
   createdAt: string;
 }
 
+export enum IssueCategory {
+  BOOKING = 'BOOKING',
+  PAYMENT = 'PAYMENT',
+  ACCOUNT = 'ACCOUNT',
+  CAR_WASH = 'CAR_WASH',
+  BUG = 'BUG',
+  SUGGESTION = 'SUGGESTION',
+  OTHER = 'OTHER'
+}
+
+export enum IssuePriority {
+  LOW = 'LOW',
+  MEDIUM = 'MEDIUM',
+  HIGH = 'HIGH',
+  CRITICAL = 'CRITICAL'
+}
+
+export enum IssueStatus {
+  OPEN = 'OPEN',
+  INVESTIGATING = 'INVESTIGATING',
+  RESOLVED = 'RESOLVED',
+  CLOSED = 'CLOSED'
+}
+
+export interface ReportedIssue {
+  id: string;
+  userId?: string;
+  userName: string;
+  userEmail: string;
+  userRole?: string;
+  category: IssueCategory;
+  priority: IssuePriority;
+  status: IssueStatus;
+  title: string;
+  description: string;
+  bookingId?: string;
+  carWashId?: string;
+  deviceInfo?: string;
+  pageUrl?: string;
+  adminNotes?: string;
+  resolutionNote?: string;
+  resolvedBy?: string;
+  resolvedByName?: string;
+  resolvedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+

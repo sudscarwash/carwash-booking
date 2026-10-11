@@ -4,7 +4,7 @@
  */
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { User, CarWash, Booking, AuditLog, Role, BookingStatus, AppNotification, PlatformInfo, CustomerMembership, CarWashMembershipConfig, MembershipReward, MembershipRedemption } from '../types.js';
+import { User, CarWash, Booking, AuditLog, Role, BookingStatus, AppNotification, PlatformInfo, CustomerMembership, CarWashMembershipConfig, MembershipReward, MembershipRedemption, ReportedIssue, IssueCategory, IssuePriority, IssueStatus } from '../types.js';
 import {
   isDeviceNotificationSupported,
   getDeviceNotificationPermission,
@@ -120,6 +120,7 @@ interface AppContextType {
     paymentBank?: string,
     txnReference?: string
   ) => Promise<boolean>;
+  sendBookingReminder: (bookingId: string) => Promise<boolean>;
   updateBookingDetails: (bookingId: string, data: { serviceId?: string; serviceName?: string; price?: number; vehicleInfo?: string; notes?: string; paymentBank?: string; txnReference?: string }) => Promise<boolean>;
   rescheduleBooking: (bookingId: string, date: string, timeSlot: string) => Promise<boolean>;
   reportProximity: (bookingId: string, lat: number, lng: number) => Promise<{ success: boolean; proximityStatus?: string; proximityDistanceKm?: number; proximityEtaMinutes?: number; message?: string }>;
@@ -141,6 +142,24 @@ interface AppContextType {
   leaveCarWashMembership: (carWashId: string) => Promise<boolean>;
   redeemMembershipReward: (carWashId: string, rewardId: string) => Promise<{ redemption: MembershipRedemption; newBalance: number } | null>;
   fetchCustomerRedemptions: () => Promise<MembershipRedemption[]>;
+  reportIssue: (data: {
+    title: string;
+    description: string;
+    category?: IssueCategory;
+    priority?: IssuePriority;
+    userName?: string;
+    userEmail?: string;
+    bookingId?: string;
+    carWashId?: string;
+  }) => Promise<{ success: boolean; message?: string; error?: string }>;
+  fetchIssues: (filters?: { status?: string; category?: string; search?: string }) => Promise<ReportedIssue[]>;
+  updateIssue: (id: string, updates: Partial<ReportedIssue>) => Promise<boolean>;
+  deleteIssue: (id: string) => Promise<boolean>;
+  isReportModalOpen: boolean;
+  setIsReportModalOpen: (open: boolean) => void;
+  reportPrefill: { bookingId?: string; carWashId?: string; category?: IssueCategory } | null;
+  openReportModal: (prefill?: { bookingId?: string; carWashId?: string; category?: IssueCategory }) => void;
+  closeReportModal: () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -163,6 +182,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [deviceNotificationPermission, setDeviceNotificationPermission] = useState<NotificationPermission>(() => {
     return getDeviceNotificationPermission();
   });
+  const [isReportModalOpen, setIsReportModalOpen] = useState<boolean>(false);
+  const [reportPrefill, setReportPrefill] = useState<{ bookingId?: string; carWashId?: string; category?: IssueCategory } | null>(null);
+
+  const openReportModal = (prefill?: { bookingId?: string; carWashId?: string; category?: IssueCategory }) => {
+    setReportPrefill(prefill || null);
+    setIsReportModalOpen(true);
+  };
+
+  const closeReportModal = () => {
+    setIsReportModalOpen(false);
+    setReportPrefill(null);
+  };
 
   // Auto-register service worker on startup
   useEffect(() => {
@@ -967,6 +998,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const sendBookingReminder = async (bookingId: string): Promise<boolean> => {
+    try {
+      const res = await apiFetch(`/api/bookings/${bookingId}/send-reminder`, {
+        method: 'POST',
+      });
+      showNotification(res.message || 'Appointment reminder dispatched to customer!', 'success');
+      return true;
+    } catch (err: any) {
+      showNotification(err.message || 'Failed to send appointment reminder', 'error');
+      return false;
+    }
+  };
+
   const updateBookingDetails = async (
     bookingId: string,
     data: { serviceId?: string; serviceName?: string; price?: number; vehicleInfo?: string; notes?: string; paymentBank?: string; txnReference?: string }
@@ -1459,6 +1503,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         createBooking,
         createManualBooking,
         updateBookingStatus,
+        sendBookingReminder,
         updateBookingDetails,
         rescheduleBooking,
         reportProximity,

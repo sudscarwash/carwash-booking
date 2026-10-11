@@ -1323,12 +1323,16 @@ export const AdminDashboard: React.FC = () => {
 
                 {/* Quota Gauge */}
                 {(() => {
-                  const sent = quotaStatus?.totalSentToday || 0;
-                  const limit = quotaStatus?.dailyQuotaLimit || 100;
-                  const usagePct = Math.min(100, Math.round((sent / limit) * 100));
-                  const notifsLeft = quotaStatus?.remainingForNotifications || 0;
+                  const sent = quotaStatus?.totalSentToday ?? 0;
+                  const limit = quotaStatus?.dailyQuotaLimit ?? emailSettings?.dailyQuotaLimit ?? 100;
+                  const reserved = quotaStatus?.reservedAuthQuota ?? emailSettings?.reservedAuthQuota ?? 25;
+                  const maxNotifsAllowed = Math.max(0, limit - reserved);
+                  const notifsLeft = (quotaStatus?.remainingForNotifications !== undefined && quotaStatus.remainingForNotifications !== null)
+                    ? quotaStatus.remainingForNotifications
+                    : Math.max(0, maxNotifsAllowed - sent);
+                  const usagePct = limit > 0 ? Math.min(100, Math.round((sent / limit) * 100)) : 0;
                   const isNearLimit = usagePct >= 80;
-                  const isCapped = notifsLeft <= 0;
+                  const isCapped = sent >= maxNotifsAllowed && sent > 0;
 
                   return (
                     <div className="bg-slate-800/90 border border-slate-700/80 rounded-2xl p-4 space-y-2.5">

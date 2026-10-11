@@ -399,7 +399,21 @@ const clearEmailLogs = async (): Promise<void> => {
 
 const getEmailSettings = emailServiceSafe.getEmailSettings || (() => ({ masterEnabled: true, notifyBookingConfirmed: true, notifyBookingReminder: true, notifyWashCompleted: true, notifyBookingCancelled: true, notifyDailyOwnerDigest: false, activeProvider: 'SANDBOX_CONSOLE', dailyQuotaLimit: 100, reservedAuthQuota: 25 }));
 const updateEmailSettings = emailServiceSafe.updateEmailSettings || ((s: any) => s);
-const getQuotaStatus = emailServiceSafe.getQuotaStatus || (() => ({ totalSentToday: 0, dailyQuotaLimit: 100, remainingTotal: 100, activeProvider: 'SANDBOX_CONSOLE', masterEnabled: true }));
+const getQuotaStatus = emailServiceSafe.getQuotaStatus || (() => ({
+  date: new Date().toISOString().slice(0, 10),
+  totalSentToday: 0,
+  authSentToday: 0,
+  notificationsSentToday: 0,
+  notificationsHeldToday: 0,
+  dailyQuotaLimit: 100,
+  reservedAuthQuota: 25,
+  remainingTotal: 100,
+  remainingForNotifications: 75,
+  activeProvider: 'SANDBOX_CONSOLE',
+  hasResendKey: false,
+  hasGmailConfig: false,
+  masterEnabled: true,
+}));
 import { isValidEmail } from './server/validation.js';
 import { authenticateToken, requireRoles, generateToken, AuthenticatedRequest, verifyToken } from './server/auth.js';
 import { generateSlotsForDate, validateSlotCapacity, isZeroSlotBooking } from './server/slots.js';
