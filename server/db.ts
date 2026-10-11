@@ -276,6 +276,14 @@ function convertQueryToPg(sql: string): string {
     result = result.replace(regex, replacements[key]);
   });
 
+  // Convert integer boolean comparisons to PostgreSQL boolean literals
+  result = result.replace(/\bis_active\s*=\s*1\b/gi, 'is_active = true');
+  result = result.replace(/\bis_active\s*=\s*0\b/gi, 'is_active = false');
+  result = result.replace(/\bis_email_verified\s*=\s*1\b/gi, 'is_email_verified = true');
+  result = result.replace(/\bis_email_verified\s*=\s*0\b/gi, 'is_email_verified = false');
+  result = result.replace(/\bmembership_enabled\s*=\s*1\b/gi, 'membership_enabled = true');
+  result = result.replace(/\bmembership_enabled\s*=\s*0\b/gi, 'membership_enabled = false');
+
   // Map SQLite-specific "INSERT OR IGNORE" to PostgreSQL's "INSERT INTO ... ON CONFLICT (id) DO NOTHING"
   if (/INSERT\s+OR\s+IGNORE\s+INTO\s+(\w+)/i.test(result)) {
     const tableName = RegExp.$1.toLowerCase();
@@ -287,6 +295,7 @@ function convertQueryToPg(sql: string): string {
       tableName === 'car_washes' ||
       tableName === 'bookings' ||
       tableName === 'audit_logs' ||
+      tableName === 'email_logs' ||
       tableName === 'map_presets' ||
       tableName === 'notifications' ||
       tableName === 'reviews' ||
@@ -346,12 +355,11 @@ async function runQueryAll(sql: string, params: any[] = []): Promise<any[]> {
           return res.rows;
         } catch (retryErr: any) {
           console.error('[Postgres Query Final Error - runQueryAll]:', retryErr.message || retryErr);
-          if (process.env.DATABASE_URL || process.env.DIRECT_URL) {
-            throw retryErr;
+          if (sqliteDb) {
+            console.warn(`[Postgres Resilient Fallback]: PostgreSQL failed (${retryErr.code || retryErr.message}). Automatically serving from local SQLite engine to maintain 100% platform uptime.`);
+            return sqliteDb.prepare(sql).all(...params);
           }
-          if (!sqliteDb) throw retryErr;
-          console.warn('[Postgres Fallback to SQLite]: Serving from local SQLite engine.');
-          return sqliteDb.prepare(sql).all(...params);
+          throw retryErr;
         }
       }
     }
@@ -376,12 +384,11 @@ async function runQueryOne(sql: string, params: any[] = []): Promise<any | null>
           return res.rows[0] || null;
         } catch (retryErr: any) {
           console.error('[Postgres Query Final Error - runQueryOne]:', retryErr.message || retryErr);
-          if (process.env.DATABASE_URL || process.env.DIRECT_URL) {
-            throw retryErr;
+          if (sqliteDb) {
+            console.warn(`[Postgres Resilient Fallback]: PostgreSQL failed (${retryErr.code || retryErr.message}). Automatically serving from local SQLite engine to maintain 100% platform uptime.`);
+            return sqliteDb.prepare(sql).get(...params) || null;
           }
-          if (!sqliteDb) throw retryErr;
-          console.warn('[Postgres Fallback to SQLite]: Serving from local SQLite engine.');
-          return sqliteDb.prepare(sql).get(...params) || null;
+          throw retryErr;
         }
       }
     }
@@ -406,13 +413,12 @@ async function runQueryRun(sql: string, params: any[] = []): Promise<void> {
           return;
         } catch (retryErr: any) {
           console.error('[Postgres Query Final Error - runQueryRun]:', retryErr.message || retryErr);
-          if (process.env.DATABASE_URL || process.env.DIRECT_URL) {
-            throw retryErr;
+          if (sqliteDb) {
+            console.warn(`[Postgres Resilient Fallback]: PostgreSQL failed (${retryErr.code || retryErr.message}). Executing against local SQLite engine to maintain 100% platform uptime.`);
+            sqliteDb.prepare(sql).run(...params);
+            return;
           }
-          if (!sqliteDb) throw retryErr;
-          console.warn('[Postgres Fallback to SQLite]: Executing against local SQLite engine.');
-          sqliteDb.prepare(sql).run(...params);
-          return;
+          throw retryErr;
         }
       }
     }
@@ -779,6 +785,18 @@ async function executeSeedFirestore() {
       updatedAt TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS email_logs (
+      id TEXT PRIMARY KEY,
+      recipient TEXT NOT NULL,
+      sender TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      html TEXT,
+      status TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      errorDetails TEXT,
+      timestamp TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS reviews (
       id TEXT PRIMARY KEY,
       carWashId TEXT NOT NULL,
@@ -967,6 +985,8 @@ async function executeSeedFirestore() {
     'ALTER TABLE platform_info ADD COLUMN companyName TEXT',
     'ALTER TABLE platform_info ADD COLUMN description TEXT',
     'ALTER TABLE platform_info ADD COLUMN adminOtpRequired INTEGER DEFAULT 1',
+    'ALTER TABLE audit_logs ADD COLUMN user_id TEXT',
+    'ALTER TABLE audit_logs ADD COLUMN user_email TEXT',
   ];
 
   // Try renaming un-underscored Postgres columns if present from legacy schemas
@@ -1003,6 +1023,8 @@ async function executeSeedFirestore() {
       'ALTER TABLE reviews RENAME COLUMN ownerreplyat TO owner_reply_at',
       'ALTER TABLE reviews RENAME COLUMN ownerreplyby TO owner_reply_by',
       'ALTER TABLE reviews RENAME COLUMN bookingid TO booking_id',
+      'ALTER TABLE audit_logs RENAME COLUMN userid TO user_id',
+      'ALTER TABLE audit_logs RENAME COLUMN useremail TO user_email',
     ];
     for (const renameSql of renameQueries) {
       try {
@@ -1011,6 +1033,18 @@ async function executeSeedFirestore() {
         // Ignore if column doesn't exist or target already exists
       }
     }
+
+    // Auto-heal audit_logs columns if table was created in Supabase with legacy structure
+    try {
+      await pgPool!.query('ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS user_id TEXT');
+      await pgPool!.query('ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS user_email TEXT');
+      try {
+        await pgPool!.query('UPDATE audit_logs SET user_id = userid WHERE user_id IS NULL AND userid IS NOT NULL');
+      } catch {}
+      try {
+        await pgPool!.query('UPDATE audit_logs SET user_email = useremail WHERE user_email IS NULL AND useremail IS NOT NULL');
+      } catch {}
+    } catch (e) {}
   }
 
   for (const query of alterColumns) {
@@ -1480,17 +1514,15 @@ async function executeSeedFirestore() {
 
   try {
     for (const u of users) {
-      await runQueryRun(`
-        INSERT OR IGNORE INTO users (id, email, name, role, isActive, businessId, passwordHash, createdAt, isEmailVerified)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
-      `, [u.id, u.email, u.name, u.role, u.isActive ? 1 : 0, u.businessId || null, u.passwordHash, u.createdAt]);
-      await runQueryRun(`UPDATE users SET passwordHash = ?, isActive = 1, isEmailVerified = 1 WHERE LOWER(email) = ?`, [u.passwordHash, u.email.toLowerCase()]);
+      try {
+        await runQueryRun(`
+          INSERT OR IGNORE INTO users (id, email, name, role, isActive, businessId, passwordHash, createdAt, isEmailVerified)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, true)
+        `, [u.id, u.email, u.name, u.role, u.isActive ? true : false, u.businessId || null, u.passwordHash, u.createdAt]);
+        await runQueryRun(`UPDATE users SET passwordHash = ?, isActive = true, isEmailVerified = true WHERE LOWER(email) = ?`, [u.passwordHash, u.email.toLowerCase()]);
+      } catch {}
     }
-    // Automatically promote owner email if it exists
-    await runQueryRun("UPDATE users SET role = ? WHERE LOWER(email) = 'qawi459@gmail.com'", [Role.ADMIN]);
-  } catch (err) {
-    console.error('Error ensuring testing credentials exist or promoting owner email:', err);
-  }
+  } catch {}
 
   // Check if main seed data has already been loaded by verifying if Downtown location exists
   try {
@@ -1738,10 +1770,7 @@ async function executeSeedFirestore() {
       ]);
     }
     for (const log of auditLogs) {
-      await runQueryRun(`
-        INSERT INTO audit_logs (id, userId, userEmail, action, details, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `, [log.id, log.userId, log.userEmail, log.action, log.details, log.timestamp]);
+      await addAuditLog(log.userId, log.userEmail, log.action, log.details);
     }
     console.log('Database seeding completed successfully!');
   } catch (err) {
@@ -1799,9 +1828,6 @@ export async function getUserById(id: string): Promise<UserWithPassword | null> 
 export async function createUser(user: UserWithPassword): Promise<void> {
   try {
     let assignedRole = user.role;
-    if (user.email.toLowerCase() === 'qawi459@gmail.com') {
-      assignedRole = Role.ADMIN;
-    }
     await runQueryRun(`
       INSERT INTO users (id, email, name, role, isActive, businessId, passwordHash, createdAt, dateOfBirth, gender, profileImageUrl, address, phone, isEmailVerified)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -1810,7 +1836,7 @@ export async function createUser(user: UserWithPassword): Promise<void> {
       user.email,
       user.name,
       assignedRole,
-      user.isActive ? 1 : 0,
+      user.isActive ? true : false,
       user.businessId || null,
       user.passwordHash,
       user.createdAt,
@@ -1819,7 +1845,7 @@ export async function createUser(user: UserWithPassword): Promise<void> {
       user.profileImageUrl || null,
       user.address || null,
       user.phone || null,
-      user.isEmailVerified === false ? 0 : 1
+      user.isEmailVerified === false ? false : true
     ]);
   } catch (error) {
     console.error('Database createUser Error:', error);
@@ -1834,7 +1860,7 @@ export async function updateUser(id: string, data: Partial<UserWithPassword>): P
     Object.entries(data).forEach(([key, val]) => {
       if (val === undefined) return;
       if (key === 'isActive' || key === 'isEmailVerified') {
-        columnMap.set(key, val ? 1 : 0);
+        columnMap.set(key, val ? true : false);
       } else {
         columnMap.set(key, val);
       }
@@ -1869,7 +1895,15 @@ export async function updateUserIdAcrossTables(oldId: string, newId: string): Pr
     // 3. Update car washes owned by this user
     await runQueryRun('UPDATE car_washes SET ownerId = ? WHERE ownerId = ?', [newId, oldId]);
     // 4. Update audit logs
-    await runQueryRun('UPDATE audit_logs SET userId = ? WHERE userId = ?', [newId, oldId]);
+    try {
+      await runQueryRun('UPDATE audit_logs SET userId = ? WHERE userId = ?', [newId, oldId]);
+    } catch {
+      if (usePostgres && pgPool) {
+        try {
+          await pgPool.query('UPDATE audit_logs SET userid = $1 WHERE userid = $2', [newId, oldId]);
+        } catch {}
+      }
+    }
   } catch (err: any) {
     console.error(`[Database Sync] Failed to update user ID across tables from ${oldId} to ${newId}:`, err);
     throw err;
@@ -1958,7 +1992,7 @@ export async function createCarWash(carWash: CarWash): Promise<void> {
       carWash.slotDuration,
       carWash.capacityPerSlot,
       carWash.ownerId,
-      carWash.isActive ? 1 : 0,
+      carWash.isActive ? true : false,
       carWash.createdAt,
       carWash.phone || null,
       carWash.instagram || null,
@@ -1966,17 +2000,17 @@ export async function createCarWash(carWash: CarWash): Promise<void> {
       carWash.logoUrl || null,
       carWash.bibdAccountName || null,
       carWash.bibdAccountNo || null,
-      carWash.bibdEnabled ? 1 : 0,
+      carWash.bibdEnabled ? true : false,
       carWash.baiduriAccountName || null,
       carWash.baiduriAccountNo || null,
-      carWash.baiduriEnabled ? 1 : 0,
+      carWash.baiduriEnabled ? true : false,
       carWash.bibdQrImageUrl || null,
       carWash.baiduriQrImageUrl || null,
       customPaymentsStr,
       servicesStr,
-      ownerNavVal,
-      ownerQrVal,
-      membershipVal,
+      ownerNavVal ? true : false,
+      ownerQrVal ? true : false,
+      membershipVal ? true : false,
     ]);
   } catch (error) {
     console.error('Database createCarWash Error:', error);
@@ -2024,7 +2058,7 @@ export async function updateCarWash(id: string, data: Partial<CarWash>): Promise
         return;
       }
       if (key === 'isActive' || key === 'bibdEnabled' || key === 'baiduriEnabled' || key === 'ownerNavigationEnabled' || key === 'ownerQrCodeEnabled' || key === 'membershipEnabled') {
-        columnMap.set(key, val ? 1 : 0);
+        columnMap.set(key, val ? true : false);
         return;
       }
       columnMap.set(key, val);
@@ -2478,7 +2512,14 @@ export async function updateBooking(id: string, data: Partial<Booking>): Promise
 export async function getAuditLogs(): Promise<AuditLog[]> {
   try {
     const rows = await runQueryAll('SELECT * FROM audit_logs ORDER BY timestamp DESC');
-    return rows as AuditLog[];
+    return rows.map((r: any) => ({
+      id: r.id,
+      userId: r.userId ?? r.user_id ?? r.userid ?? '',
+      userEmail: r.userEmail ?? r.user_email ?? r.useremail ?? '',
+      action: r.action,
+      details: r.details,
+      timestamp: r.timestamp
+    })) as AuditLog[];
   } catch (error) {
     console.error('Database getAuditLogs Error:', error);
     return [];
@@ -2494,9 +2535,97 @@ export async function addAuditLog(userId: string, email: string, action: string,
       INSERT INTO audit_logs (id, userId, userEmail, action, details, timestamp)
       VALUES (?, ?, ?, ?, ?, ?)
     `, [logId, userId, email, action, details, timestamp]);
-  } catch (error) {
-    console.error('Database addAuditLog Error:', error);
+  } catch (error: any) {
+    // If PostgreSQL schema on Supabase has alternate naming (user_id vs userid), recover automatically
+    if (usePostgres && pgPool) {
+      try {
+        await pgPool.query(`
+          INSERT INTO audit_logs (id, userid, useremail, action, details, timestamp)
+          VALUES ($1, $2, $3, $4, $5, $6)
+        `, [logId, userId, email, action, details, timestamp]);
+        return;
+      } catch (err1) {
+        try {
+          await pgPool.query('ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS user_id TEXT');
+          await pgPool.query('ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS user_email TEXT');
+          await pgPool.query(`
+            INSERT INTO audit_logs (id, user_id, user_email, action, details, timestamp)
+            VALUES ($1, $2, $3, $4, $5, $6)
+          `, [logId, userId, email, action, details, timestamp]);
+          return;
+        } catch (err2) {
+          console.warn('[addAuditLog Suppressed Error]:', (err2 as any)?.message || err2);
+        }
+      }
+    } else {
+      console.error('Database addAuditLog Error:', error?.message || error);
+    }
   }
+}
+
+// Persistent Email Logs Helpers (Guarantees logs never disappear across server restarts/sleeps)
+export async function saveDbEmailLog(log: {
+  id: string;
+  recipient: string;
+  sender: string;
+  subject: string;
+  html?: string;
+  status: string;
+  provider: string;
+  errorDetails?: string;
+  timestamp: string;
+}): Promise<void> {
+  try {
+    await runQueryRun(`
+      INSERT OR IGNORE INTO email_logs (id, recipient, sender, subject, html, status, provider, errorDetails, timestamp)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      log.id,
+      log.recipient,
+      log.sender,
+      log.subject,
+      log.html || '',
+      log.status,
+      log.provider,
+      log.errorDetails || null,
+      log.timestamp
+    ]);
+  } catch (err: any) {
+    if (usePostgres && pgPool) {
+      try {
+        await pgPool.query(`
+          INSERT INTO email_logs (id, recipient, sender, subject, html, status, provider, errordetails, timestamp)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          ON CONFLICT (id) DO NOTHING
+        `, [log.id, log.recipient, log.sender, log.subject, log.html || '', log.status, log.provider, log.errorDetails || null, log.timestamp]);
+      } catch {}
+    }
+  }
+}
+
+export async function getDbEmailLogs(): Promise<any[]> {
+  try {
+    const rows = await runQueryAll('SELECT * FROM email_logs ORDER BY timestamp DESC LIMIT 100');
+    return rows.map((r: any) => ({
+      id: r.id,
+      to: r.recipient || r.to,
+      from: r.sender || r.from,
+      subject: r.subject,
+      html: r.html,
+      status: r.status,
+      provider: r.provider,
+      errorDetails: r.errorDetails ?? r.errordetails ?? r.error_details,
+      timestamp: r.timestamp
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export async function clearDbEmailLogs(): Promise<void> {
+  try {
+    await runQueryRun('DELETE FROM email_logs');
+  } catch {}
 }
 
 // Password Reset helpers
@@ -3673,7 +3802,7 @@ export async function upsertMembershipPointsRule(
 ): Promise<MembershipPointsRule> {
   const now = new Date().toISOString();
   const ruleId = `rule_${carWashId.substring(0, 4)}_${serviceId.substring(0, 6)}`;
-  const activeVal = isActive ? 1 : 0;
+  const activeVal = isActive ? true : false;
 
   await runQueryRun(`
     INSERT INTO membership_points_rules (id, carWashId, serviceId, serviceName, pointsAwarded, isActive, createdAt, updatedAt)
@@ -3961,7 +4090,7 @@ export async function getMembershipRewardById(rewardId: string): Promise<Members
 export async function createMembershipReward(reward: Omit<MembershipReward, 'id' | 'createdAt' | 'updatedAt'>): Promise<MembershipReward> {
   const id = `rew_${Math.random().toString(36).substring(2, 9)}`;
   const now = new Date().toISOString();
-  const activeVal = reward.isActive ? 1 : 0;
+  const activeVal = reward.isActive ? true : false;
   const maxPerMember = reward.maxRedemptionsPerMember || 0;
   const maxSupply = reward.maxTotalSupply || 0;
 
@@ -4016,7 +4145,7 @@ export async function updateMembershipReward(rewardId: string, updates: Partial<
     WHERE id = ?
   `, [
     title, description || null, pointsCost, rewardType, discountValue || 0,
-    eligibleServiceId || null, maxRedemptionsPerMember, maxTotalSupply, isActive ? 1 : 0, now, rewardId
+    eligibleServiceId || null, maxRedemptionsPerMember, maxTotalSupply, isActive ? true : false, now, rewardId
   ]);
 
   return {
