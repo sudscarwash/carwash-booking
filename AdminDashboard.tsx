@@ -354,6 +354,10 @@ export const AdminDashboard: React.FC = () => {
   };
 
   useEffect(() => {
+    fetchEmailSettings();
+  }, [token]);
+
+  useEffect(() => {
     if (activeSubTab === 'emails') {
       fetchEmailLogs();
       fetchEmailSettings();

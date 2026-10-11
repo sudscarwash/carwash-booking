@@ -1514,15 +1514,15 @@ async function executeSeedFirestore() {
 
   try {
     for (const u of users) {
-      await runQueryRun(`
-        INSERT OR IGNORE INTO users (id, email, name, role, isActive, businessId, passwordHash, createdAt, isEmailVerified)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, true)
-      `, [u.id, u.email, u.name, u.role, u.isActive ? true : false, u.businessId || null, u.passwordHash, u.createdAt]);
-      await runQueryRun(`UPDATE users SET passwordHash = ?, isActive = true, isEmailVerified = true WHERE LOWER(email) = ?`, [u.passwordHash, u.email.toLowerCase()]);
+      try {
+        await runQueryRun(`
+          INSERT OR IGNORE INTO users (id, email, name, role, isActive, businessId, passwordHash, createdAt, isEmailVerified)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, true)
+        `, [u.id, u.email, u.name, u.role, u.isActive ? true : false, u.businessId || null, u.passwordHash, u.createdAt]);
+        await runQueryRun(`UPDATE users SET passwordHash = ?, isActive = true, isEmailVerified = true WHERE LOWER(email) = ?`, [u.passwordHash, u.email.toLowerCase()]);
+      } catch {}
     }
-  } catch (err) {
-    console.error('Error ensuring testing credentials exist or promoting owner email:', err);
-  }
+  } catch {}
 
   // Check if main seed data has already been loaded by verifying if Downtown location exists
   try {
@@ -1828,9 +1828,6 @@ export async function getUserById(id: string): Promise<UserWithPassword | null> 
 export async function createUser(user: UserWithPassword): Promise<void> {
   try {
     let assignedRole = user.role;
-    if (user.email.toLowerCase() === 'qawi459@gmail.com') {
-      assignedRole = Role.ADMIN;
-    }
     await runQueryRun(`
       INSERT INTO users (id, email, name, role, isActive, businessId, passwordHash, createdAt, dateOfBirth, gender, profileImageUrl, address, phone, isEmailVerified)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -1839,7 +1836,7 @@ export async function createUser(user: UserWithPassword): Promise<void> {
       user.email,
       user.name,
       assignedRole,
-      user.isActive ? 1 : 0,
+      user.isActive ? true : false,
       user.businessId || null,
       user.passwordHash,
       user.createdAt,
@@ -1848,7 +1845,7 @@ export async function createUser(user: UserWithPassword): Promise<void> {
       user.profileImageUrl || null,
       user.address || null,
       user.phone || null,
-      user.isEmailVerified === false ? 0 : 1
+      user.isEmailVerified === false ? false : true
     ]);
   } catch (error) {
     console.error('Database createUser Error:', error);
@@ -1863,7 +1860,7 @@ export async function updateUser(id: string, data: Partial<UserWithPassword>): P
     Object.entries(data).forEach(([key, val]) => {
       if (val === undefined) return;
       if (key === 'isActive' || key === 'isEmailVerified') {
-        columnMap.set(key, val ? 1 : 0);
+        columnMap.set(key, val ? true : false);
       } else {
         columnMap.set(key, val);
       }
@@ -1995,7 +1992,7 @@ export async function createCarWash(carWash: CarWash): Promise<void> {
       carWash.slotDuration,
       carWash.capacityPerSlot,
       carWash.ownerId,
-      carWash.isActive ? 1 : 0,
+      carWash.isActive ? true : false,
       carWash.createdAt,
       carWash.phone || null,
       carWash.instagram || null,
@@ -2003,17 +2000,17 @@ export async function createCarWash(carWash: CarWash): Promise<void> {
       carWash.logoUrl || null,
       carWash.bibdAccountName || null,
       carWash.bibdAccountNo || null,
-      carWash.bibdEnabled ? 1 : 0,
+      carWash.bibdEnabled ? true : false,
       carWash.baiduriAccountName || null,
       carWash.baiduriAccountNo || null,
-      carWash.baiduriEnabled ? 1 : 0,
+      carWash.baiduriEnabled ? true : false,
       carWash.bibdQrImageUrl || null,
       carWash.baiduriQrImageUrl || null,
       customPaymentsStr,
       servicesStr,
-      ownerNavVal,
-      ownerQrVal,
-      membershipVal,
+      ownerNavVal ? true : false,
+      ownerQrVal ? true : false,
+      membershipVal ? true : false,
     ]);
   } catch (error) {
     console.error('Database createCarWash Error:', error);
@@ -2061,7 +2058,7 @@ export async function updateCarWash(id: string, data: Partial<CarWash>): Promise
         return;
       }
       if (key === 'isActive' || key === 'bibdEnabled' || key === 'baiduriEnabled' || key === 'ownerNavigationEnabled' || key === 'ownerQrCodeEnabled' || key === 'membershipEnabled') {
-        columnMap.set(key, val ? 1 : 0);
+        columnMap.set(key, val ? true : false);
         return;
       }
       columnMap.set(key, val);
@@ -3805,7 +3802,7 @@ export async function upsertMembershipPointsRule(
 ): Promise<MembershipPointsRule> {
   const now = new Date().toISOString();
   const ruleId = `rule_${carWashId.substring(0, 4)}_${serviceId.substring(0, 6)}`;
-  const activeVal = isActive ? 1 : 0;
+  const activeVal = isActive ? true : false;
 
   await runQueryRun(`
     INSERT INTO membership_points_rules (id, carWashId, serviceId, serviceName, pointsAwarded, isActive, createdAt, updatedAt)
@@ -4093,7 +4090,7 @@ export async function getMembershipRewardById(rewardId: string): Promise<Members
 export async function createMembershipReward(reward: Omit<MembershipReward, 'id' | 'createdAt' | 'updatedAt'>): Promise<MembershipReward> {
   const id = `rew_${Math.random().toString(36).substring(2, 9)}`;
   const now = new Date().toISOString();
-  const activeVal = reward.isActive ? 1 : 0;
+  const activeVal = reward.isActive ? true : false;
   const maxPerMember = reward.maxRedemptionsPerMember || 0;
   const maxSupply = reward.maxTotalSupply || 0;
 
@@ -4148,7 +4145,7 @@ export async function updateMembershipReward(rewardId: string, updates: Partial<
     WHERE id = ?
   `, [
     title, description || null, pointsCost, rewardType, discountValue || 0,
-    eligibleServiceId || null, maxRedemptionsPerMember, maxTotalSupply, isActive ? 1 : 0, now, rewardId
+    eligibleServiceId || null, maxRedemptionsPerMember, maxTotalSupply, isActive ? true : false, now, rewardId
   ]);
 
   return {
