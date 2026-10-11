@@ -10,7 +10,7 @@ import {
   ShieldAlert, ShieldCheck, Users, Activity, Sliders, Check, X,
   Plus, Edit, UserPlus, FileText, Ban, CheckCircle, Info, Lock, Key, Sparkles, MapPin, Navigation,
   Database, Mail, AlertTriangle, RefreshCw, Server, Send, Eye, Trash2, Terminal, Building, Phone, Star,
-  Search, Filter, Award, Gift
+  Search, Filter, Award, Gift, Bell, BellOff, Shield, Zap, Settings, HelpCircle, CheckCircle2
 } from 'lucide-react';
 import { Role, User, MapPreset, Review, CarWash } from '../types.js';
 import { isValidEmail } from '../lib/validation.js';
@@ -20,6 +20,7 @@ import { CarWashOperationsModal } from '../components/CarWashOperationsModal.js'
 
 export const AdminDashboard: React.FC = () => {
   const {
+    user,
     adminUsersList,
     bookings,
     locations,
@@ -143,7 +144,17 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
-  const [activeSubTab, setActiveSubTab] = useState<'users' | 'logs' | 'emails' | 'businesses' | 'memberships' | 'presets' | 'info' | 'system' | 'reviews'>('users');
+  const [activeSubTab, setActiveSubTab] = useState<'users' | 'logs' | 'emails' | 'businesses' | 'memberships' | 'presets' | 'info' | 'system' | 'reviews'>(() => {
+    try {
+      const hash = window.location.hash.replace('#', '').toLowerCase();
+      const tabParam = new URLSearchParams(window.location.search).get('tab')?.toLowerCase();
+      const candidate = tabParam || hash;
+      if (candidate && ['users', 'logs', 'emails', 'businesses', 'memberships', 'presets', 'info', 'system', 'reviews'].includes(candidate)) {
+        return candidate as any;
+      }
+    } catch {}
+    return 'users';
+  });
 
   // Platform & Enquiry Info States
   const [infoEmail, setInfoEmail] = useState('');
@@ -200,19 +211,64 @@ export const AdminDashboard: React.FC = () => {
     from: string;
     subject: string;
     html: string;
-    status: 'DELIVERED' | 'SIMULATED' | 'FAILED';
-    provider: 'RESEND' | 'SANDBOX_CONSOLE';
+    status: 'DELIVERED' | 'SIMULATED' | 'FAILED' | 'HELD_QUOTA' | 'SKIPPED';
+    provider: 'RESEND' | 'GMAIL_SMTP' | 'SANDBOX_CONSOLE';
     errorDetails?: string;
+  }
+
+  interface EmailNotificationSettings {
+    masterEnabled: boolean;
+    notifyBookingConfirmed: boolean;
+    notifyBookingReminder?: boolean;
+    notifyWashCompleted: boolean;
+    notifyBookingCancelled: boolean;
+    notifyDailyOwnerDigest: boolean;
+    activeProvider: 'RESEND' | 'GMAIL_SMTP' | 'SANDBOX_CONSOLE';
+    dailyQuotaLimit: number;
+    reservedAuthQuota: number;
+    gmailUser?: string;
+    gmailAppPassword?: string;
+    resendApiKey?: string;
+    emailFromAddress?: string;
+    replyToAddress?: string;
+  }
+
+  interface QuotaStatus {
+    date: string;
+    totalSentToday: number;
+    authSentToday: number;
+    notificationsSentToday: number;
+    notificationsHeldToday: number;
+    dailyQuotaLimit: number;
+    reservedAuthQuota: number;
+    remainingTotal: number;
+    remainingForNotifications: number;
+    activeProvider: 'RESEND' | 'GMAIL_SMTP' | 'SANDBOX_CONSOLE';
+    hasResendKey: boolean;
+    hasGmailConfig: boolean;
+    masterEnabled: boolean;
   }
 
   const [emailLogs, setEmailLogs] = useState<EmailLogEntry[]>([]);
   const [emailLogsLoading, setEmailLogsLoading] = useState(false);
   const [selectedEmailPreview, setSelectedEmailPreview] = useState<EmailLogEntry | null>(null);
-  const [testEmailRecipient, setTestEmailRecipient] = useState('');
+  const [testEmailRecipient, setTestEmailRecipient] = useState(user?.email || 'suds.carwash.app@gmail.com');
   const [testEmailSubject, setTestEmailSubject] = useState('Autoshine BN Test Email');
   const [testEmailBody, setTestEmailBody] = useState('This is a test transactional email sent from your Autoshine BN administration console.');
   const [sendingTestEmail, setSendingTestEmail] = useState(false);
   const [testEmailStatus, setTestEmailStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Email Notification Preferences & Provider States
+  const [emailSettings, setEmailSettings] = useState<EmailNotificationSettings | null>(null);
+  const [quotaStatus, setQuotaStatus] = useState<QuotaStatus | null>(null);
+  const [savingEmailSettings, setSavingEmailSettings] = useState(false);
+  const [emailSettingsMsg, setEmailSettingsMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [gmailUserInput, setGmailUserInput] = useState('');
+  const [gmailAppPassInput, setGmailAppPassInput] = useState('');
+  const [showGmailConfigForm, setShowGmailConfigForm] = useState(false);
+  const [fromAddressInput, setFromAddressInput] = useState('');
+  const [replyToInput, setReplyToInput] = useState('');
+  const [showSenderConfig, setShowSenderConfig] = useState(false);
 
   // 🔄 Navigation & Back button synchronization:
   useTabBack(activeSubTab, setActiveSubTab, 'users', 'adminTab');
@@ -221,6 +277,63 @@ export const AdminDashboard: React.FC = () => {
   useModalBack(showOnboardModal, () => setShowOnboardModal(false), 'admin-onboard-business-modal');
   useModalBack(Boolean(editingLocation), () => setEditingLocation(null), 'admin-edit-location-modal');
   useModalBack(Boolean(selectedEmailPreview), () => setSelectedEmailPreview(null), 'admin-email-preview-modal');
+
+  const fetchEmailSettings = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch('/api/admin/email-settings', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setEmailSettings(data.settings);
+        setQuotaStatus(data.quota);
+        if (data.settings?.gmailUser) {
+          setGmailUserInput(data.settings.gmailUser);
+        }
+        if (data.settings?.gmailAppPassword) {
+          setGmailAppPassInput(data.settings.gmailAppPassword);
+        }
+        if (data.settings?.emailFromAddress) {
+          setFromAddressInput(data.settings.emailFromAddress);
+        }
+        if (data.settings?.replyToAddress) {
+          setReplyToInput(data.settings.replyToAddress);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch email settings:', err);
+    }
+  };
+
+  const handleUpdateEmailSetting = async (updates: Partial<EmailNotificationSettings>) => {
+    if (!token) return;
+    setSavingEmailSettings(true);
+    setEmailSettingsMsg(null);
+    try {
+      const res = await fetch('/api/admin/email-settings', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(updates)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setEmailSettings(data.settings);
+        setQuotaStatus(data.quota);
+        setEmailSettingsMsg({ type: 'success', text: 'Email notification preferences updated successfully!' });
+        setTimeout(() => setEmailSettingsMsg(null), 4000);
+      } else {
+        setEmailSettingsMsg({ type: 'error', text: 'Failed to save email settings.' });
+      }
+    } catch (err: any) {
+      setEmailSettingsMsg({ type: 'error', text: err?.message || 'Error saving settings' });
+    } finally {
+      setSavingEmailSettings(false);
+    }
+  };
 
   const fetchEmailLogs = async () => {
     if (!token) return;
@@ -241,8 +354,13 @@ export const AdminDashboard: React.FC = () => {
   };
 
   useEffect(() => {
+    fetchEmailSettings();
+  }, [token]);
+
+  useEffect(() => {
     if (activeSubTab === 'emails') {
       fetchEmailLogs();
+      fetchEmailSettings();
     }
   }, [activeSubTab, token]);
 
@@ -271,12 +389,14 @@ export const AdminDashboard: React.FC = () => {
       const data = await res.json();
       if (res.ok && data.success) {
         setTestEmailStatus({ type: 'success', message: data.message || 'Email dispatched successfully!' });
-        fetchEmailLogs();
       } else {
         setTestEmailStatus({ type: 'error', message: data.error || data.message || 'Failed to dispatch email.' });
       }
+      await fetchEmailLogs();
+      await fetchEmailSettings();
     } catch (err: any) {
       setTestEmailStatus({ type: 'error', message: err.message || 'Network error occurred while sending email.' });
+      await fetchEmailLogs();
     } finally {
       setSendingTestEmail(false);
     }
@@ -671,6 +791,22 @@ export const AdminDashboard: React.FC = () => {
             <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider">Bookings</span>
             <strong className="text-lg font-black text-white font-mono">{bookings.length}</strong>
           </div>
+          <button
+            onClick={() => setActiveSubTab('emails')}
+            className={`px-4 py-2 rounded-xl text-center min-w-28 transition-all cursor-pointer border flex flex-col items-center justify-center ${
+              activeSubTab === 'emails'
+                ? 'bg-sky-500/20 border-sky-400 text-sky-300 ring-2 ring-sky-500/30'
+                : 'bg-slate-800 hover:bg-slate-700 border-slate-700/70 text-slate-300'
+            }`}
+            title="Open Email Notification Toggles & Delivery Engine"
+          >
+            <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider flex items-center gap-1">
+              <Mail className="h-3 w-3 text-sky-400" /> Email Engine
+            </span>
+            <strong className="text-xs font-bold text-sky-300 font-mono">
+              {emailSettings?.masterEnabled ? 'ACTIVE (ON)' : 'MUTED (OFF)'}
+            </strong>
+          </button>
         </div>
       </div>
 
@@ -704,13 +840,16 @@ export const AdminDashboard: React.FC = () => {
           onClick={() => setActiveSubTab('emails')}
           className={`pb-3 pt-1.5 px-2.5 sm:px-1 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap ${
             activeSubTab === 'emails'
-              ? 'border-red-600 text-red-600 font-bold'
+              ? 'border-sky-600 text-sky-600 font-bold'
               : 'border-transparent text-slate-500 hover:text-slate-700'
           }`}
           id="admin-subtab-emails"
         >
-          <Mail className="h-4 w-4 shrink-0" />
+          <Mail className="h-4 w-4 shrink-0 text-sky-500" />
           <span>Email Sandbox &amp; Logs</span>
+          <span className="bg-sky-100 text-sky-700 text-[10px] font-extrabold px-1.5 py-0.2 rounded-full uppercase tracking-wider ml-0.5">
+            Engine
+          </span>
         </button>
         <button
           onClick={() => setActiveSubTab('businesses')}
@@ -997,18 +1136,478 @@ export const AdminDashboard: React.FC = () => {
       {/* Sub Tab: Email Sandbox & Logs */}
       {activeSubTab === 'emails' && (
         <div className="space-y-6">
-          {/* Top Row: Info Banner & Test Email Form */}
+          {/* Email Settings Toast Message */}
+          {emailSettingsMsg && (
+            <div className={`p-4 rounded-2xl text-xs font-bold flex items-center justify-between shadow-sm animate-fade-in ${
+              emailSettingsMsg.type === 'success'
+                ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                : 'bg-rose-50 text-rose-800 border border-rose-200'
+            }`}>
+              <div className="flex items-center gap-2">
+                {emailSettingsMsg.type === 'success' ? <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" /> : <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" />}
+                <span>{emailSettingsMsg.text}</span>
+              </div>
+              <button onClick={() => setEmailSettingsMsg(null)} className="text-slate-400 hover:text-slate-600 text-xs font-bold ml-4">Dismiss</button>
+            </div>
+          )}
+
+          {/* Top Row: Notification Controls & Provider Switcher */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Notification ON/OFF Preferences (7 Cols) */}
+            <div className="lg:col-span-7 bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-5">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2.5 rounded-2xl ${emailSettings?.masterEnabled ? 'bg-sky-50 text-sky-600' : 'bg-slate-100 text-slate-400'}`}>
+                    {emailSettings?.masterEnabled ? <Bell className="h-5 w-5" /> : <BellOff className="h-5 w-5" />}
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-slate-800">Email Notification Toggles</h2>
+                    <p className="text-xs text-slate-400">Control outgoing transactional messages to preserve daily email quota</p>
+                  </div>
+                </div>
+
+                {/* Master Switch */}
+                <button
+                  onClick={() => handleUpdateEmailSetting({ masterEnabled: !emailSettings?.masterEnabled })}
+                  disabled={savingEmailSettings}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm ${
+                    emailSettings?.masterEnabled
+                      ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
+                      : 'bg-slate-200 hover:bg-slate-300 text-slate-700'
+                  }`}
+                  title="Toggle Master Notifications"
+                >
+                  {emailSettings?.masterEnabled ? (
+                    <>
+                      <Check className="h-3.5 w-3.5" /> Notifications ON
+                    </>
+                  ) : (
+                    <>
+                      <X className="h-3.5 w-3.5" /> Notifications OFF
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Critical Security Protection Notice */}
+              <div className="bg-sky-50/70 border border-sky-100 rounded-2xl p-3.5 flex items-start gap-2.5 text-xs text-sky-900">
+                <Shield className="h-4 w-4 text-sky-600 shrink-0 mt-0.5" />
+                <p className="leading-relaxed text-[11px]">
+                  <strong>Always-Protected Auth Emails:</strong> Email Verification OTPs, Password Resets, and Initial Staff Credentials bypass these toggles and are <strong>always active</strong> so your users and staff can never get locked out.
+                </p>
+              </div>
+
+              {/* Granular Toggles List */}
+              <div className="space-y-3 pt-1">
+                {/* 1. Car Wash Completed (Car Ready) */}
+                <div className="p-3.5 bg-slate-50 hover:bg-slate-50/80 border border-slate-200/80 rounded-2xl flex items-center justify-between gap-3 transition-colors">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-800">Car Wash Completed & Ready for Pick-Up</span>
+                      <span className="bg-emerald-100 text-emerald-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider">High Value</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500">Emails customer when detailer marks booking as Completed so they can pick up their vehicle.</p>
+                  </div>
+                  <button
+                    onClick={() => handleUpdateEmailSetting({ notifyWashCompleted: !emailSettings?.notifyWashCompleted })}
+                    disabled={savingEmailSettings || !emailSettings?.masterEnabled}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 ${
+                      emailSettings?.notifyWashCompleted && emailSettings?.masterEnabled ? 'bg-sky-600' : 'bg-slate-300'
+                    }`}
+                  >
+                    <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      emailSettings?.notifyWashCompleted && emailSettings?.masterEnabled ? 'translate-x-5' : 'translate-x-0'
+                    }`} />
+                  </button>
+                </div>
+
+                {/* 2. Booking Confirmation */}
+                <div className="p-3.5 bg-slate-50 hover:bg-slate-50/80 border border-slate-200/80 rounded-2xl flex items-center justify-between gap-3 transition-colors">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-800">Booking Confirmation Email</span>
+                      <span className="bg-amber-100 text-amber-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider">Quota Saver</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500">Sends instant booking details. Can be turned OFF on high-volume days since customers see instant screen confirmation.</p>
+                  </div>
+                  <button
+                    onClick={() => handleUpdateEmailSetting({ notifyBookingConfirmed: !emailSettings?.notifyBookingConfirmed })}
+                    disabled={savingEmailSettings || !emailSettings?.masterEnabled}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 ${
+                      emailSettings?.notifyBookingConfirmed && emailSettings?.masterEnabled ? 'bg-sky-600' : 'bg-slate-300'
+                    }`}
+                  >
+                    <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      emailSettings?.notifyBookingConfirmed && emailSettings?.masterEnabled ? 'translate-x-5' : 'translate-x-0'
+                    }`} />
+                  </button>
+                </div>
+
+                {/* 3. Appointment Reminder Alert */}
+                <div className="p-3.5 bg-slate-50 hover:bg-slate-50/80 border border-slate-200/80 rounded-2xl flex items-center justify-between gap-3 transition-colors">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-800">⏰ Upcoming Appointment Reminder Alert</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500">Sends appointment reminder email to customer with date, bay arrival details, and slot time.</p>
+                  </div>
+                  <button
+                    onClick={() => handleUpdateEmailSetting({ notifyBookingReminder: emailSettings?.notifyBookingReminder === false ? true : false })}
+                    disabled={savingEmailSettings || !emailSettings?.masterEnabled}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 ${
+                      emailSettings?.notifyBookingReminder !== false && emailSettings?.masterEnabled ? 'bg-sky-600' : 'bg-slate-300'
+                    }`}
+                  >
+                    <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      emailSettings?.notifyBookingReminder !== false && emailSettings?.masterEnabled ? 'translate-x-5' : 'translate-x-0'
+                    }`} />
+                  </button>
+                </div>
+
+                {/* 4. Booking Cancellation */}
+                <div className="p-3.5 bg-slate-50 hover:bg-slate-50/80 border border-slate-200/80 rounded-2xl flex items-center justify-between gap-3 transition-colors">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-800">Booking Cancellation / Rejection Alert</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500">Alerts customer if weather, power, or slot issues force a cancellation.</p>
+                  </div>
+                  <button
+                    onClick={() => handleUpdateEmailSetting({ notifyBookingCancelled: !emailSettings?.notifyBookingCancelled })}
+                    disabled={savingEmailSettings || !emailSettings?.masterEnabled}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 ${
+                      emailSettings?.notifyBookingCancelled && emailSettings?.masterEnabled ? 'bg-sky-600' : 'bg-slate-300'
+                    }`}
+                  >
+                    <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      emailSettings?.notifyBookingCancelled && emailSettings?.masterEnabled ? 'translate-x-5' : 'translate-x-0'
+                    }`} />
+                  </button>
+                </div>
+
+                {/* 4. Owner Daily Summary */}
+                <div className="p-3.5 bg-slate-50 hover:bg-slate-50/80 border border-slate-200/80 rounded-2xl flex items-center justify-between gap-3 transition-colors">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-800">Owner Daily Schedule Digest</span>
+                      <span className="bg-slate-200 text-slate-700 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider">1 / day</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500">Sends 1 single morning summary email to owners instead of spamming 1 email per customer booking.</p>
+                  </div>
+                  <button
+                    onClick={() => handleUpdateEmailSetting({ notifyDailyOwnerDigest: !emailSettings?.notifyDailyOwnerDigest })}
+                    disabled={savingEmailSettings || !emailSettings?.masterEnabled}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 ${
+                      emailSettings?.notifyDailyOwnerDigest && emailSettings?.masterEnabled ? 'bg-sky-600' : 'bg-slate-300'
+                    }`}
+                  >
+                    <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      emailSettings?.notifyDailyOwnerDigest && emailSettings?.masterEnabled ? 'translate-x-5' : 'translate-x-0'
+                    }`} />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Provider Switcher & Quota Gauge (5 Cols) */}
+            <div className="lg:col-span-5 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-3xl p-6 text-white shadow-md flex flex-col justify-between space-y-5">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sky-400 text-xs font-extrabold uppercase tracking-wider">
+                    <Server className="h-4 w-4" /> Email Delivery Engine
+                  </div>
+                  <span className="text-[10px] font-mono bg-slate-800 px-2 py-0.5 rounded-full text-slate-400">
+                    {quotaStatus?.date || new Date().toISOString().slice(0, 10)}
+                  </span>
+                </div>
+
+                {/* Quota Gauge */}
+                {(() => {
+                  const sent = quotaStatus?.totalSentToday || 0;
+                  const limit = quotaStatus?.dailyQuotaLimit || 100;
+                  const usagePct = Math.min(100, Math.round((sent / limit) * 100));
+                  const notifsLeft = quotaStatus?.remainingForNotifications || 0;
+                  const isNearLimit = usagePct >= 80;
+                  const isCapped = notifsLeft <= 0;
+
+                  return (
+                    <div className="bg-slate-800/90 border border-slate-700/80 rounded-2xl p-4 space-y-2.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-300 font-semibold flex items-center gap-1.5">
+                          Daily Quota Usage:
+                          {isCapped ? (
+                            <span className="text-[10px] bg-rose-950 text-rose-300 border border-rose-800 px-2 py-0.5 rounded-full font-bold">
+                              Threshold Reached
+                            </span>
+                          ) : isNearLimit ? (
+                            <span className="text-[10px] bg-amber-950 text-amber-300 border border-amber-800 px-2 py-0.5 rounded-full font-bold animate-pulse">
+                              Near Limit ({usagePct}%)
+                            </span>
+                          ) : (
+                            <span className="text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-800 px-2 py-0.5 rounded-full font-bold">
+                              Healthy ({usagePct}%)
+                            </span>
+                          )}
+                        </span>
+                        <span className="font-mono font-bold text-white">
+                          {sent} / {limit} sent
+                        </span>
+                      </div>
+
+                      {/* Progress Bar with Color Coding */}
+                      <div className="w-full bg-slate-700 h-2.5 rounded-full overflow-hidden flex">
+                        <div
+                          className={`h-full transition-all duration-300 ${
+                            isCapped ? 'bg-rose-500' : isNearLimit ? 'bg-amber-400' : 'bg-emerald-400'
+                          }`}
+                          style={{ width: `${usagePct}%` }}
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between text-[11px] text-slate-400 pt-0.5">
+                        <span className="flex items-center gap-1 text-emerald-400 font-medium">
+                          <ShieldCheck className="h-3.5 w-3.5" /> 25 OTPs Reserved
+                        </span>
+                        <span className={isCapped ? 'text-rose-400 font-bold' : isNearLimit ? 'text-amber-400 font-bold' : ''}>
+                          {notifsLeft} notifications left
+                        </span>
+                      </div>
+
+                      {/* Alert when near limit or capped */}
+                      {isCapped ? (
+                        <div className="p-2.5 rounded-xl bg-rose-950/70 border border-rose-800/80 text-[11px] text-rose-200 flex items-start gap-2">
+                          <AlertTriangle className="h-4 w-4 shrink-0 text-rose-400 mt-0.5" />
+                          <div>
+                            <span className="font-bold">Circuit Breaker Active:</span> Routine alerts paused to guarantee reserved capacity for user OTPs & password resets.
+                          </div>
+                        </div>
+                      ) : isNearLimit ? (
+                        <div className="p-2.5 rounded-xl bg-amber-950/70 border border-amber-800/80 text-[11px] text-amber-200 flex items-start gap-2">
+                          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400 mt-0.5" />
+                          <div>
+                            <span className="font-bold">Approaching Quota:</span> {sent} of {limit} daily emails dispatched ({notifsLeft} alerts remaining before auto-pause).
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })()}
+
+                {/* Active Provider Selector */}
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wide">Select Active Provider</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      onClick={() => handleUpdateEmailSetting({ activeProvider: 'RESEND', dailyQuotaLimit: 100 })}
+                      disabled={savingEmailSettings}
+                      className={`p-2.5 rounded-xl text-center text-xs font-bold border transition-all cursor-pointer ${
+                        emailSettings?.activeProvider === 'RESEND'
+                          ? 'bg-sky-600 text-white border-sky-400 shadow-md'
+                          : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                      }`}
+                    >
+                      <div className="text-[11px]">Resend API</div>
+                      <div className="text-[9px] text-slate-300 mt-0.5 font-normal">100 / day (Free)</div>
+                    </button>
+
+                    <button
+                      onClick={() => handleUpdateEmailSetting({ activeProvider: 'GMAIL_SMTP', dailyQuotaLimit: 500 })}
+                      disabled={savingEmailSettings}
+                      className={`p-2.5 rounded-xl text-center text-xs font-bold border transition-all cursor-pointer ${
+                        emailSettings?.activeProvider === 'GMAIL_SMTP'
+                          ? 'bg-emerald-600 text-white border-emerald-400 shadow-md'
+                          : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                      }`}
+                    >
+                      <div className="text-[11px]">Gmail SMTP</div>
+                      <div className="text-[9px] text-slate-300 mt-0.5 font-normal">500 / day ($0 Free)</div>
+                    </button>
+
+                    <button
+                      onClick={() => handleUpdateEmailSetting({ activeProvider: 'SANDBOX_CONSOLE' })}
+                      disabled={savingEmailSettings}
+                      className={`p-2.5 rounded-xl text-center text-xs font-bold border transition-all cursor-pointer ${
+                        emailSettings?.activeProvider === 'SANDBOX_CONSOLE'
+                          ? 'bg-amber-600 text-white border-amber-400 shadow-md'
+                          : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                      }`}
+                    >
+                      <div className="text-[11px]">Sandbox</div>
+                      <div className="text-[9px] text-slate-300 mt-0.5 font-normal">Logs only</div>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Free Gmail SMTP Config Section */}
+                {emailSettings?.activeProvider === 'GMAIL_SMTP' && (
+                  <div className="bg-slate-800/80 border border-slate-700 rounded-2xl p-3.5 space-y-2.5 text-xs text-slate-300">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-emerald-400 text-[11px] flex items-center gap-1">
+                        <Zap className="h-3.5 w-3.5" /> Gmail 16-Char App Password
+                      </span>
+                      <button
+                        onClick={() => setShowGmailConfigForm(!showGmailConfigForm)}
+                        className="text-[10px] text-sky-400 hover:underline cursor-pointer"
+                      >
+                        {showGmailConfigForm ? 'Close instructions' : 'How to set up (2 mins)'}
+                      </button>
+                    </div>
+
+                    {showGmailConfigForm && (
+                      <div className="text-[10px] text-slate-300 space-y-1 bg-slate-900/60 p-2.5 rounded-xl border border-slate-700">
+                        <p className="font-bold text-white">How to get a Free Google App Password:</p>
+                        <ol className="list-decimal pl-4 space-y-0.5">
+                          <li>Open Google Account (e.g. suds.carwash.app@gmail.com).</li>
+                          <li>Go to <strong>Security</strong> &rarr; Turn ON 2-Step Verification.</li>
+                          <li>Search <strong>"App Passwords"</strong> (myaccount.google.com/apppasswords).</li>
+                          <li>Name it "Autoshine BN" &rarr; Copy the 16-letter secret code.</li>
+                          <li>Paste it below and click Save! (Sends 500 emails/day free).</li>
+                        </ol>
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-bold text-slate-300 uppercase">
+                          Google Workspace / Gmail Account
+                        </label>
+                        <input
+                          type="email"
+                          placeholder="e.g. suds.carwash.app@gmail.com or admin@yourdomain.com"
+                          value={gmailUserInput}
+                          onChange={(e) => setGmailUserInput(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700 px-3 py-1.5 rounded-xl text-xs font-mono text-white outline-none focus:border-emerald-500"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-bold text-slate-300 uppercase">
+                          16-Character App Password
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="password"
+                            placeholder="Paste 16-character App Password (e.g. abcd efgh ijkl mnop)"
+                            value={gmailAppPassInput}
+                            onChange={(e) => setGmailAppPassInput(e.target.value)}
+                            className="flex-1 bg-slate-900 border border-slate-700 px-3 py-1.5 rounded-xl text-xs font-mono text-white outline-none focus:border-emerald-500"
+                          />
+                          <button
+                            onClick={() => handleUpdateEmailSetting({
+                              gmailUser: gmailUserInput.trim(),
+                              gmailAppPassword: gmailAppPassInput.trim(),
+                            })}
+                            disabled={savingEmailSettings || !gmailAppPassInput.trim()}
+                            className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs font-bold px-3 py-1.5 rounded-xl transition-colors cursor-pointer"
+                          >
+                            Save
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Sender Address (From) & Reply-To Configuration */}
+                <div className="bg-slate-800/80 border border-slate-700 rounded-2xl p-3.5 space-y-2.5 text-xs text-slate-300">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-sky-400 text-[11px] flex items-center gap-1">
+                      <Mail className="h-3.5 w-3.5" /> Sender Address & Reply-To
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowSenderConfig(!showSenderConfig)}
+                      className="text-[10px] text-sky-400 hover:underline cursor-pointer"
+                    >
+                      {showSenderConfig ? 'Hide' : 'Customize From / Reply-To'}
+                    </button>
+                  </div>
+
+                  {showSenderConfig ? (
+                    <div className="space-y-3 pt-1 border-t border-slate-700/60 mt-1">
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-bold text-slate-300 uppercase">
+                          Sender "From" Address
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. AutoShine BN <info@domain.com>"
+                          value={fromAddressInput}
+                          onChange={(e) => setFromAddressInput(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700 px-3 py-1.5 rounded-xl text-xs font-mono text-white outline-none focus:border-sky-500"
+                        />
+                        <p className="text-[10px] text-slate-400 leading-tight">
+                          Resend supports any address on your registered domain (e.g. <span className="text-sky-300 font-mono">info@domain.com</span>).
+                        </p>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-bold text-slate-300 uppercase">
+                          Reply-To Address (Optional)
+                        </label>
+                        <input
+                          type="email"
+                          placeholder="e.g. info@domain.com or admin@domain.com"
+                          value={replyToInput}
+                          onChange={(e) => setReplyToInput(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700 px-3 py-1.5 rounded-xl text-xs font-mono text-white outline-none focus:border-sky-500"
+                        />
+                        <p className="text-[10px] text-slate-400 leading-tight">
+                          When customers click "Reply", responses go to this mailbox.
+                        </p>
+                      </div>
+
+                      <div className="flex justify-end pt-1">
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateEmailSetting({
+                            emailFromAddress: fromAddressInput.trim(),
+                            replyToAddress: replyToInput.trim(),
+                          })}
+                          disabled={savingEmailSettings}
+                          className="bg-sky-600 hover:bg-sky-500 disabled:opacity-40 text-white text-xs font-bold px-3 py-1.5 rounded-xl transition-colors cursor-pointer"
+                        >
+                          Save Sender Settings
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-[10px] text-slate-400 flex items-center justify-between">
+                      <span className="truncate">From: <strong className="text-slate-200 font-mono">{emailSettings?.emailFromAddress || 'AutoShine BN <onboarding@resend.dev>'}</strong></span>
+                      {emailSettings?.replyToAddress && (
+                        <span className="truncate ml-2 text-slate-400">Reply: <strong className="text-sky-300 font-mono">{emailSettings.replyToAddress}</strong></span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Status footer banner */}
+              <div className="text-[11px] text-slate-400 pt-1 border-t border-slate-800 flex items-center justify-between">
+                <span>Active: <strong className="text-white">{emailSettings?.activeProvider}</strong></span>
+                <span>Circuit Breaker: <strong className="text-emerald-400">Armed</strong></span>
+              </div>
+            </div>
+          </div>
+
+          {/* Middle Row: Test Email Dispatch Form */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* Live Email Testing Form */}
-            <div className="lg:col-span-7 bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
-              <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
-                <div className="p-2.5 bg-blue-50 text-blue-600 rounded-2xl">
-                  <Send className="h-5 w-5" />
+            <div className="lg:col-span-12 bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-blue-50 text-blue-600 rounded-2xl">
+                    <Send className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-slate-800">Dispatch Test Email</h2>
+                    <p className="text-xs text-slate-400">Send transactional test messages to verify your active provider ({emailSettings?.activeProvider || 'Sandbox'})</p>
+                  </div>
                 </div>
-                <div>
-                  <h2 className="text-base font-bold text-slate-800">Dispatch Test Email</h2>
-                  <p className="text-xs text-slate-400">Send transactional test messages to verify Resend or inspect in sandbox log</p>
-                </div>
+
+                <span className="text-xs font-mono px-2.5 py-1 bg-slate-100 text-slate-700 rounded-xl font-bold">
+                  Target Engine: {emailSettings?.activeProvider}
+                </span>
               </div>
 
               {testEmailStatus && (
@@ -1022,7 +1621,7 @@ export const AdminDashboard: React.FC = () => {
                 </div>
               )}
 
-              <form onSubmit={handleSendTestEmail} className="space-y-3">
+              <form onSubmit={handleSendTestEmail} className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1">Recipient Email Address</label>
                   <input
@@ -1049,8 +1648,8 @@ export const AdminDashboard: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1">Email Body Message</label>
-                  <textarea
-                    rows={3}
+                  <input
+                    type="text"
                     placeholder="Enter test message..."
                     value={testEmailBody}
                     onChange={(e) => setTestEmailBody(e.target.value)}
@@ -1058,7 +1657,7 @@ export const AdminDashboard: React.FC = () => {
                   />
                 </div>
 
-                <div className="flex justify-end pt-1">
+                <div className="md:col-span-3 flex justify-end pt-1">
                   <button
                     type="submit"
                     disabled={sendingTestEmail}
@@ -1066,42 +1665,16 @@ export const AdminDashboard: React.FC = () => {
                   >
                     {sendingTestEmail ? (
                       <>
-                        <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Dispatching Email...
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Dispatching via {emailSettings?.activeProvider}...
                       </>
                     ) : (
                       <>
-                        <Send className="h-3.5 w-3.5" /> Dispatch Test Email
+                        <Send className="h-3.5 w-3.5" /> Dispatch Test Email ({emailSettings?.activeProvider})
                       </>
                     )}
                   </button>
                 </div>
               </form>
-            </div>
-
-            {/* Sandbox & Resend Guide Banner */}
-            <div className="lg:col-span-5 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-3xl p-6 text-white shadow-md flex flex-col justify-between space-y-4">
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 text-sky-400 text-xs font-extrabold uppercase tracking-wider">
-                  <Terminal className="h-4 w-4" /> Live Sandbox Mode Active
-                </div>
-                <h3 className="text-lg font-bold">Email Service Status</h3>
-                <p className="text-xs text-slate-300 leading-relaxed">
-                  Autoshine BN is configured with a <strong>Dual-Mode Email Engine</strong>:
-                </p>
-                <ul className="text-xs text-slate-300 space-y-2 list-disc pl-4">
-                  <li>
-                    <strong className="text-amber-300">Sandbox Fallback:</strong> If <code className="bg-slate-800 text-amber-200 px-1 py-0.5 rounded">RESEND_API_KEY</code> is not yet configured, all emails (Welcome, Password OTP, Verification OTP) are logged in real-time in the table below and printed to the server terminal.
-                  </li>
-                  <li>
-                    <strong className="text-emerald-300">Live Delivery:</strong> Add your real key in <code className="bg-slate-800 text-emerald-200 px-1 py-0.5 rounded">RESEND_API_KEY</code> in your environment variables to send live emails to inbox.
-                  </li>
-                </ul>
-              </div>
-
-              <div className="bg-slate-800/80 border border-slate-700/60 rounded-2xl p-3.5 text-[11px] text-slate-300">
-                <p className="font-bold text-white mb-1">💡 Sandbox Testing Tip:</p>
-                You can create new customer, owner, or employee profiles right now in the app. The account welcome emails and generated initial passwords will immediately appear in the Email Sandbox Log below!
-              </div>
             </div>
           </div>
 
@@ -1165,19 +1738,36 @@ export const AdminDashboard: React.FC = () => {
                     emailLogs.map((log) => (
                       <tr key={log.id} className="hover:bg-slate-50/80 transition-colors">
                         <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
-                              log.status === 'DELIVERED'
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : log.status === 'SIMULATED'
-                                ? 'bg-amber-100 text-amber-800'
-                                : 'bg-rose-100 text-rose-800'
-                            }`}>
-                              {log.status}
-                            </span>
-                            <span className="text-[10px] text-slate-400 font-mono">
-                              ({log.provider === 'RESEND' ? 'Resend API' : 'Sandbox'})
-                            </span>
+                          <div className="flex flex-col gap-0.5">
+                            <div className="flex items-center gap-2">
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
+                                log.status === 'DELIVERED'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : log.status === 'SIMULATED'
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : log.status === 'HELD_QUOTA'
+                                  ? 'bg-orange-100 text-orange-800'
+                                  : log.status === 'SKIPPED'
+                                  ? 'bg-slate-200 text-slate-700'
+                                  : 'bg-rose-100 text-rose-800'
+                              }`}>
+                                {log.status}
+                              </span>
+                              <span className={`text-[10px] font-mono font-bold ${
+                                log.provider === 'GMAIL_SMTP'
+                                  ? 'text-emerald-600'
+                                  : log.provider === 'RESEND'
+                                  ? 'text-sky-600'
+                                  : 'text-amber-600'
+                              }`}>
+                                {log.provider === 'GMAIL_SMTP' ? 'Gmail SMTP' : log.provider === 'RESEND' ? 'Resend API' : 'Sandbox'}
+                              </span>
+                            </div>
+                            {log.errorDetails && (
+                              <span className="text-[10px] text-rose-600 font-medium truncate max-w-xs block" title={log.errorDetails}>
+                                ⚠️ {log.errorDetails}
+                              </span>
+                            )}
                           </div>
                         </td>
                         <td className="px-4 py-3 font-semibold text-slate-800">
@@ -1215,7 +1805,9 @@ export const AdminDashboard: React.FC = () => {
                       Email Content Preview
                     </span>
                     <h3 className="text-base font-bold text-slate-800 mt-1">{selectedEmailPreview.subject}</h3>
-                    <p className="text-xs text-slate-400">To: {selectedEmailPreview.to} | Sent: {new Date(selectedEmailPreview.timestamp).toLocaleString()}</p>
+                    <p className="text-xs text-slate-400">
+                      To: {selectedEmailPreview.to} | Sent: {new Date(selectedEmailPreview.timestamp).toLocaleString()} | Provider: {selectedEmailPreview.provider}
+                    </p>
                   </div>
                   <button
                     onClick={() => setSelectedEmailPreview(null)}
@@ -1224,6 +1816,16 @@ export const AdminDashboard: React.FC = () => {
                     <X className="h-5 w-5" />
                   </button>
                 </div>
+
+                {selectedEmailPreview.errorDetails && (
+                  <div className="bg-rose-50 border border-rose-200 text-rose-800 p-3 rounded-2xl text-xs flex items-start gap-2.5">
+                    <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600 mt-0.5" />
+                    <div>
+                      <strong className="block font-bold">Failure / Diagnostic Reason:</strong>
+                      <p className="font-mono text-[11px] text-rose-700 mt-0.5 break-all">{selectedEmailPreview.errorDetails}</p>
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex-1 overflow-y-auto bg-slate-50 border border-slate-200 rounded-2xl p-4">
                   <div
