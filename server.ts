@@ -2985,7 +2985,10 @@ async function startServer() {
         }
       } else if (status === BookingStatus.COMPLETED) {
         const cw = carWashes.find((c) => c.id === booking.carWashId);
-        if (targetCustomerEmail && !targetCustomerEmail.endsWith('@walkin.guest')) {
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const isPastBooking = Boolean(booking.date && booking.date < todayStr);
+
+        if (!isPastBooking && targetCustomerEmail && !targetCustomerEmail.endsWith('@walkin.guest')) {
           sendWashCompletedEmail({
             customerEmail: targetCustomerEmail,
             customerName: targetCustomerName,
@@ -2997,6 +3000,8 @@ async function startServer() {
           }).catch((err) => {
             console.error('[EmailService] Failed to send wash completion email:', err);
           });
+        } else if (isPastBooking) {
+          console.log(`[EmailService] Skipped wash completion email for historical booking ${booking.id} (${booking.date})`);
         } else {
           recordEmailLog({
             to: targetCustomerName || 'Walk-in Customer',

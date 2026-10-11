@@ -715,6 +715,15 @@ export async function sendBookingConfirmationEmail(options: {
   paymentBank?: string;
   txnReference?: string;
 }): Promise<boolean> {
+  // Explicit safeguard: Never dispatch confirmation emails for old or historical bookings
+  if (options.date) {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    if (options.date < todayStr) {
+      console.log(`[EmailService] Automatically skipped email for past booking date: ${options.date}`);
+      return false;
+    }
+  }
+
   const settings = getEmailSettings();
   if (!settings.notifyBookingConfirmed) {
     console.log('[EmailService] Skipped booking confirmation email (toggle is OFF).');
@@ -818,6 +827,15 @@ export async function sendBookingReminderEmail(options: {
   serviceName?: string;
   price?: number;
 }): Promise<boolean> {
+  // Explicit safeguard: Never dispatch reminder emails for old or historical bookings
+  if (options.date) {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    if (options.date < todayStr) {
+      console.log(`[EmailService] Automatically skipped reminder email for past booking date: ${options.date}`);
+      return false;
+    }
+  }
+
   const settings = getEmailSettings();
   if (settings.notifyBookingReminder === false) {
     console.log('[EmailService] Skipped booking reminder email (toggle is OFF).');
