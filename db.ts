@@ -276,6 +276,14 @@ function convertQueryToPg(sql: string): string {
     result = result.replace(regex, replacements[key]);
   });
 
+  // Convert integer boolean comparisons to PostgreSQL boolean literals
+  result = result.replace(/\bis_active\s*=\s*1\b/gi, 'is_active = true');
+  result = result.replace(/\bis_active\s*=\s*0\b/gi, 'is_active = false');
+  result = result.replace(/\bis_email_verified\s*=\s*1\b/gi, 'is_email_verified = true');
+  result = result.replace(/\bis_email_verified\s*=\s*0\b/gi, 'is_email_verified = false');
+  result = result.replace(/\bmembership_enabled\s*=\s*1\b/gi, 'membership_enabled = true');
+  result = result.replace(/\bmembership_enabled\s*=\s*0\b/gi, 'membership_enabled = false');
+
   // Map SQLite-specific "INSERT OR IGNORE" to PostgreSQL's "INSERT INTO ... ON CONFLICT (id) DO NOTHING"
   if (/INSERT\s+OR\s+IGNORE\s+INTO\s+(\w+)/i.test(result)) {
     const tableName = RegExp.$1.toLowerCase();
@@ -1508,12 +1516,10 @@ async function executeSeedFirestore() {
     for (const u of users) {
       await runQueryRun(`
         INSERT OR IGNORE INTO users (id, email, name, role, isActive, businessId, passwordHash, createdAt, isEmailVerified)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
-      `, [u.id, u.email, u.name, u.role, u.isActive ? 1 : 0, u.businessId || null, u.passwordHash, u.createdAt]);
-      await runQueryRun(`UPDATE users SET passwordHash = ?, isActive = 1, isEmailVerified = 1 WHERE LOWER(email) = ?`, [u.passwordHash, u.email.toLowerCase()]);
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, true)
+      `, [u.id, u.email, u.name, u.role, u.isActive ? true : false, u.businessId || null, u.passwordHash, u.createdAt]);
+      await runQueryRun(`UPDATE users SET passwordHash = ?, isActive = true, isEmailVerified = true WHERE LOWER(email) = ?`, [u.passwordHash, u.email.toLowerCase()]);
     }
-    // Automatically promote owner email if it exists
-    await runQueryRun("UPDATE users SET role = ? WHERE LOWER(email) = 'qawi459@gmail.com'", [Role.ADMIN]);
   } catch (err) {
     console.error('Error ensuring testing credentials exist or promoting owner email:', err);
   }
