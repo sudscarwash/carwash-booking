@@ -58,9 +58,23 @@ try {
   sqliteDb = new Database(dbPath);
   try {
     sqliteDb.pragma('journal_mode = WAL');
+    sqliteDb.pragma('synchronous = NORMAL');
+    sqliteDb.pragma('auto_vacuum = INCREMENTAL');
+    // Checkpoint WAL immediately on boot to truncate stale WAL logs
+    sqliteDb.pragma('wal_checkpoint(TRUNCATE)');
   } catch (pErr) {
     console.warn('[SQLite Pragma Warning]:', pErr);
   }
+
+  // Periodic WAL truncation & vacuuming every 30 minutes to minimize storage footprint
+  setInterval(() => {
+    try {
+      if (sqliteDb && sqliteDb.open) {
+        sqliteDb.pragma('wal_checkpoint(TRUNCATE)');
+        sqliteDb.pragma('incremental_vacuum(100)');
+      }
+    } catch {}
+  }, 30 * 60 * 1000).unref();
 } catch (sqliteInitErr) {
   console.warn('[SQLite Init Fallback Notice]:', sqliteInitErr);
 }

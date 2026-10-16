@@ -6,12 +6,14 @@
 import React, { useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext.js';
 import { Navbar } from './components/Navbar.js';
-import { CustomerDashboard } from './pages/CustomerDashboard.js';
-import { OwnerDashboard } from './pages/OwnerDashboard.js';
-import { EmployeeDashboard } from './pages/EmployeeDashboard.js';
-import { AdminDashboard } from './pages/AdminDashboard.js';
-import { SpecialUserDashboard } from './pages/SpecialUserDashboard.js';
 import { ErrorBoundary } from './components/ErrorBoundary.js';
+
+// Route-level code splitting: dashboards are loaded on demand to minimize initial JS bundle size
+const CustomerDashboard = React.lazy(() => import('./pages/CustomerDashboard.js').then(m => ({ default: m.CustomerDashboard })));
+const OwnerDashboard = React.lazy(() => import('./pages/OwnerDashboard.js').then(m => ({ default: m.OwnerDashboard })));
+const EmployeeDashboard = React.lazy(() => import('./pages/EmployeeDashboard.js').then(m => ({ default: m.EmployeeDashboard })));
+const AdminDashboard = React.lazy(() => import('./pages/AdminDashboard.js').then(m => ({ default: m.AdminDashboard })));
+const SpecialUserDashboard = React.lazy(() => import('./pages/SpecialUserDashboard.js').then(m => ({ default: m.SpecialUserDashboard })));
 import { TermsAndConditionsContent } from './components/TermsAndConditionsContent.js';
 import { PublicOperatorView } from './components/PublicOperatorView.js';
 import { BookingFlowModal } from './components/BookingFlowModal.js';
@@ -559,18 +561,37 @@ const MainAppContent: React.FC = () => {
   };
 
   const renderDashboardByRole = (role: Role) => {
+    let DashboardComponent: React.ReactNode;
     switch (role) {
       case Role.ADMIN:
-        return <AdminDashboard />;
+        DashboardComponent = <AdminDashboard />;
+        break;
       case Role.OWNER:
-        return <OwnerDashboard />;
+        DashboardComponent = <OwnerDashboard />;
+        break;
       case Role.EMPLOYEE:
-        return <EmployeeDashboard />;
+        DashboardComponent = <EmployeeDashboard />;
+        break;
       case Role.SPECIAL:
-        return <SpecialUserDashboard />;
+        DashboardComponent = <SpecialUserDashboard />;
+        break;
       default:
-        return <CustomerDashboard />;
+        DashboardComponent = <CustomerDashboard />;
+        break;
     }
+
+    return (
+      <React.Suspense
+        fallback={
+          <div className="flex flex-col items-center justify-center py-24 text-slate-500">
+            <div className="animate-spin rounded-full h-10 w-10 border-3 border-slate-200 border-t-sky-600 mb-3"></div>
+            <p className="text-xs font-semibold tracking-wider uppercase font-mono text-slate-400">Loading Dashboard...</p>
+          </div>
+        }
+      >
+        {DashboardComponent}
+      </React.Suspense>
+    );
   };
 
   if (loading) {
