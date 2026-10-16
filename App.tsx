@@ -6,12 +6,14 @@
 import React, { useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext.js';
 import { Navbar } from './components/Navbar.js';
-import { CustomerDashboard } from './pages/CustomerDashboard.js';
-import { OwnerDashboard } from './pages/OwnerDashboard.js';
-import { EmployeeDashboard } from './pages/EmployeeDashboard.js';
-import { AdminDashboard } from './pages/AdminDashboard.js';
-import { SpecialUserDashboard } from './pages/SpecialUserDashboard.js';
 import { ErrorBoundary } from './components/ErrorBoundary.js';
+
+// Route-level code splitting: dashboards are loaded on demand to minimize initial JS bundle size
+const CustomerDashboard = React.lazy(() => import('./pages/CustomerDashboard.js').then(m => ({ default: m.CustomerDashboard })));
+const OwnerDashboard = React.lazy(() => import('./pages/OwnerDashboard.js').then(m => ({ default: m.OwnerDashboard })));
+const EmployeeDashboard = React.lazy(() => import('./pages/EmployeeDashboard.js').then(m => ({ default: m.EmployeeDashboard })));
+const AdminDashboard = React.lazy(() => import('./pages/AdminDashboard.js').then(m => ({ default: m.AdminDashboard })));
+const SpecialUserDashboard = React.lazy(() => import('./pages/SpecialUserDashboard.js').then(m => ({ default: m.SpecialUserDashboard })));
 import { TermsAndConditionsContent } from './components/TermsAndConditionsContent.js';
 import { PublicOperatorView } from './components/PublicOperatorView.js';
 import { BookingFlowModal } from './components/BookingFlowModal.js';
@@ -54,10 +56,12 @@ const MainAppContent: React.FC = () => {
   const [isRegisterOtpMode, setIsRegisterOtpMode] = useState(false);
   const [pendingRegisterEmail, setPendingRegisterEmail] = useState('');
   const [registerOtpCode, setRegisterOtpCode] = useState('');
+  const [registerOtpDevCode, setRegisterOtpDevCode] = useState<string | null>(null);
   const [isAdminOtpMode, setIsAdminOtpMode] = useState(false);
   const [pendingAdminEmail, setPendingAdminEmail] = useState('');
   const [adminOtpCode, setAdminOtpCode] = useState('');
   const [adminOtpDevCode, setAdminOtpDevCode] = useState<string | null>(null);
+  const [resetDevCode, setResetDevCode] = useState<string | null>(null);
   const [showExitConfirmModal, setShowExitConfirmModal] = useState(false);
 
   const isDevMode = 
@@ -66,7 +70,7 @@ const MainAppContent: React.FC = () => {
     window.location.hostname.includes('127.0.0.1') ||
     window.location.hostname.includes('onrender.com') ||
     window.location.hostname.includes('-dev-') ||
-    Boolean(adminOtpDevCode);
+    Boolean(adminOtpDevCode || registerOtpDevCode || resetDevCode);
 
   // Direct QR Code / Operator Vanity URL State
   const [publicOperatorSlug, setPublicOperatorSlug] = useState<string | null>(() => {
@@ -369,7 +373,10 @@ const MainAppContent: React.FC = () => {
       if (res.success) {
         if (res.requireOtp) {
           setIsRegisterOtpMode(true);
-          setPendingRegisterEmail(res.email || trimmedEmail);
+          const targetRegEmail = res.email || trimmedEmail;
+          setPendingRegisterEmail(targetRegEmail);
+          setRegisterOtpDevCode(res.sandboxCode || null);
+          setRegisterOtpCode(res.sandboxCode || '');
         } else {
           setIsRegisterMode(false);
           setEmail('');
@@ -383,13 +390,16 @@ const MainAppContent: React.FC = () => {
       if (typeof res === 'object') {
         if (res.requireAdminOtp) {
           setIsAdminOtpMode(true);
-          setPendingAdminEmail(res.email);
+          const adminTargetEmail = res.email || email.trim() || 'admin@carwash.com';
+          setPendingAdminEmail(adminTargetEmail);
           setAdminOtpDevCode(res.sandboxCode || null);
           setAdminOtpCode(res.sandboxCode || '');
         } else if (res.requireOtp) {
           setIsRegisterOtpMode(true);
-          setPendingRegisterEmail(res.email);
-          setRegisterOtpCode('');
+          const regTargetEmail = res.email || email.trim();
+          setPendingRegisterEmail(regTargetEmail);
+          setRegisterOtpDevCode(res.sandboxCode || null);
+          setRegisterOtpCode(res.sandboxCode || '');
         }
       }
     }
@@ -417,7 +427,11 @@ const MainAppContent: React.FC = () => {
   const handleResendRegistrationOtpSubmit = async () => {
     if (!pendingRegisterEmail) return;
     setAuthLoading(true);
-    await resendRegistrationOtp(pendingRegisterEmail);
+    const code = await resendRegistrationOtp(pendingRegisterEmail);
+    if (code) {
+      setRegisterOtpDevCode(code);
+      setRegisterOtpCode(code);
+    }
     setAuthLoading(false);
   };
 
@@ -458,6 +472,10 @@ const MainAppContent: React.FC = () => {
     if (code !== null) {
       setIsForgotMode(false);
       setIsResetMode(true);
+      if (typeof code === 'string' && code.length === 6) {
+        setResetDevCode(code);
+        setResetCode(code);
+      }
     }
     setAuthLoading(false);
   };
@@ -525,12 +543,14 @@ const MainAppContent: React.FC = () => {
       if (typeof res === 'object') {
         if (res.requireAdminOtp) {
           setIsAdminOtpMode(true);
-          setPendingAdminEmail(res.email);
+          setPendingAdminEmail(res.email || quickEmail);
           setAdminOtpDevCode(res.sandboxCode || null);
           setAdminOtpCode(res.sandboxCode || '');
         } else if (res.requireOtp) {
           setIsRegisterOtpMode(true);
-          setPendingRegisterEmail(res.email);
+          setPendingRegisterEmail(res.email || quickEmail);
+          setRegisterOtpDevCode(res.sandboxCode || null);
+          setRegisterOtpCode(res.sandboxCode || '');
         }
       }
     } catch (err) {
@@ -541,18 +561,37 @@ const MainAppContent: React.FC = () => {
   };
 
   const renderDashboardByRole = (role: Role) => {
+    let DashboardComponent: React.ReactNode;
     switch (role) {
       case Role.ADMIN:
-        return <AdminDashboard />;
+        DashboardComponent = <AdminDashboard />;
+        break;
       case Role.OWNER:
-        return <OwnerDashboard />;
+        DashboardComponent = <OwnerDashboard />;
+        break;
       case Role.EMPLOYEE:
-        return <EmployeeDashboard />;
+        DashboardComponent = <EmployeeDashboard />;
+        break;
       case Role.SPECIAL:
-        return <SpecialUserDashboard />;
+        DashboardComponent = <SpecialUserDashboard />;
+        break;
       default:
-        return <CustomerDashboard />;
+        DashboardComponent = <CustomerDashboard />;
+        break;
     }
+
+    return (
+      <React.Suspense
+        fallback={
+          <div className="flex flex-col items-center justify-center py-24 text-slate-500">
+            <div className="animate-spin rounded-full h-10 w-10 border-3 border-slate-200 border-t-sky-600 mb-3"></div>
+            <p className="text-xs font-semibold tracking-wider uppercase font-mono text-slate-400">Loading Dashboard...</p>
+          </div>
+        }
+      >
+        {DashboardComponent}
+      </React.Suspense>
+    );
   };
 
   if (loading) {
@@ -745,36 +784,37 @@ const MainAppContent: React.FC = () => {
                     </div>
                     <div>
                       <h3 className="text-lg font-bold text-slate-800">Admin 2FA Security Passkey</h3>
-                      <p className="text-xs text-slate-500">
-                        Two-factor code dispatched to <strong className="text-rose-950 font-mono">{pendingAdminEmail}</strong>
-                      </p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <Mail className="h-3.5 w-3.5 text-rose-600 shrink-0" />
+                        <span className="text-xs text-slate-500">Security code dispatched to: </span>
+                        <strong className="text-xs font-mono font-bold text-rose-950 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                          {pendingAdminEmail || 'admin@carwash.com'}
+                        </strong>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Dev / Sandbox Helper Notice */}
-                  {isDevMode && (
+                  {/* Dev / Sandbox / Render Helper Notice */}
+                  {Boolean(isDevMode || adminOtpDevCode) && (
                     <>
                       <div className="my-3 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs">
                         <div className="flex items-center gap-2">
                           <KeyRound className="h-4 w-4 text-amber-700 shrink-0" />
                           <span>
-                            Testing Passkey: <strong className="font-mono text-sm tracking-wider text-amber-950">123456</strong>
-                            {adminOtpDevCode && adminOtpDevCode !== '123456' && (
-                              <span className="text-slate-500 text-[11px] ml-1">(or {adminOtpDevCode})</span>
-                            )}
+                            Actual Passkey: <strong className="font-mono text-base tracking-wider text-amber-950 bg-white px-2 py-0.5 rounded border border-amber-300 font-black">{adminOtpDevCode || '123456'}</strong>
                           </span>
                         </div>
                         <button
                           type="button"
-                          onClick={() => setAdminOtpCode('123456')}
-                          className="px-2.5 py-1 bg-white hover:bg-amber-100 text-amber-800 rounded-lg font-bold border border-amber-300 text-[11px] cursor-pointer shadow-2xs self-start sm:self-auto"
+                          onClick={() => setAdminOtpCode(adminOtpDevCode || '123456')}
+                          className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-[11px] cursor-pointer shadow-2xs self-start sm:self-auto"
                         >
-                          Fill 123456
+                          Fill Code ({adminOtpDevCode || '123456'})
                         </button>
                       </div>
 
                       <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl mb-4 text-[11px] text-slate-600 leading-relaxed">
-                        <span className="font-semibold text-slate-800">Quick Testing:</span> The code <code className="bg-rose-100 text-rose-800 font-mono px-1 py-0.5 rounded font-bold">123456</code> is active in <code className="bg-slate-200 px-1 py-0.5 rounded text-[10px] text-slate-800">server.ts</code> as <code className="text-slate-800 font-mono font-bold">TEST_MASTER_OTP</code> for rapid dev testing. Generated codes are also delivered via email and recorded in Supabase <code className="bg-slate-200 px-1 py-0.5 rounded text-[10px] text-slate-800">audit_logs</code>.
+                        <span className="font-semibold text-slate-800">Security Passkey:</span> The single-use passkey <code className="bg-rose-100 text-rose-800 font-mono px-1.5 py-0.5 rounded font-bold">{adminOtpDevCode || '123456'}</code> has been generated for <code className="text-slate-800 font-mono font-bold">{pendingAdminEmail || 'admin@carwash.com'}</code>. In production, check your inbox. In dev/sandbox, click the button above to auto-fill.
                       </div>
                     </>
                   )}
@@ -838,22 +878,28 @@ const MainAppContent: React.FC = () => {
                     </div>
                     <div>
                       <h3 className="text-lg font-bold text-slate-800">Verify Your Email Address</h3>
-                      <p className="text-xs text-slate-500">OTP code sent to <strong className="text-slate-700">{pendingRegisterEmail}</strong></p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <Mail className="h-3.5 w-3.5 text-sky-600 shrink-0" />
+                        <span className="text-xs text-slate-500">OTP code dispatched to: </span>
+                        <strong className="text-xs font-mono font-bold text-sky-950 bg-sky-50 px-2 py-0.5 rounded border border-sky-200">
+                          {pendingRegisterEmail || email || 'your email'}
+                        </strong>
+                      </div>
                     </div>
                   </div>
 
-                  {isDevMode && (
+                  {Boolean(isDevMode || registerOtpDevCode) && (
                     <div className="my-3 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs">
                       <div className="flex items-center gap-2">
                         <KeyRound className="h-4 w-4 text-amber-700 shrink-0" />
-                        <span>Testing Passkey: <strong className="font-mono text-sm tracking-wider text-amber-950">123456</strong></span>
+                        <span>Actual Passkey: <strong className="font-mono text-base tracking-wider text-amber-950 bg-white px-2 py-0.5 rounded border border-amber-300 font-black">{registerOtpDevCode || '123456'}</strong></span>
                       </div>
                       <button
                         type="button"
-                        onClick={() => setRegisterOtpCode('123456')}
-                        className="px-2.5 py-1 bg-white hover:bg-amber-100 text-amber-800 rounded-lg font-bold border border-amber-300 text-[11px] cursor-pointer shadow-2xs self-start sm:self-auto"
+                        onClick={() => setRegisterOtpCode(registerOtpDevCode || '123456')}
+                        className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-[11px] cursor-pointer shadow-2xs self-start sm:self-auto"
                       >
-                        Fill 123456
+                        Fill Code ({registerOtpDevCode || '123456'})
                       </button>
                     </div>
                   )}
@@ -951,7 +997,29 @@ const MainAppContent: React.FC = () => {
               ) : isResetMode ? (
                 <div>
                   <h3 className="text-lg font-bold text-slate-800 mb-1">Reset Password</h3>
-                  <p className="text-xs text-slate-500 mb-6">Enter the 6-digit code received and define your new secure password.</p>
+                  <div className="flex items-center gap-1.5 mb-3">
+                    <Mail className="h-3.5 w-3.5 text-sky-600 shrink-0" />
+                    <span className="text-xs text-slate-500">Reset code dispatched to: </span>
+                    <strong className="text-xs font-mono font-bold text-sky-950 bg-sky-50 px-2 py-0.5 rounded border border-sky-200">
+                      {email || 'your email'}
+                    </strong>
+                  </div>
+
+                  {Boolean(isDevMode || resetDevCode) && (
+                    <div className="my-3 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs">
+                      <div className="flex items-center gap-2">
+                        <KeyRound className="h-4 w-4 text-amber-700 shrink-0" />
+                        <span>Actual Passkey: <strong className="font-mono text-base tracking-wider text-amber-950 bg-white px-2 py-0.5 rounded border border-amber-300 font-black">{resetDevCode || '123456'}</strong></span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setResetCode(resetDevCode || '123456')}
+                        className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-[11px] cursor-pointer shadow-2xs self-start sm:self-auto"
+                      >
+                        Fill Code ({resetDevCode || '123456'})
+                      </button>
+                    </div>
+                  )}
 
                   <form onSubmit={handleResetPasswordSubmit} className="space-y-4">
                     <div>

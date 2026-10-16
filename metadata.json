@@ -1,6 +1,6 @@
 {
-  "name": "Development (membership system) Production Car Wash Booking system (for supabase) - September",
-  "description": "Multi-tenant car wash booking and loyalty membership SaaS with custom points, rewards, QR verification, and automated customer rewards tracking.",
+  "name": "Remix (membership system) Production Car Wash Booking system (for supabase) - September",
+  "description": "",
   "requestFramePermissions": [
     "geolocation"
   ],

@@ -21,7 +21,8 @@ import {
   UserCheck, 
   FileText,
   Copy,
-  Check
+  Check,
+  LogOut
 } from 'lucide-react';
 import { 
   CarWash, 
@@ -31,6 +32,7 @@ import {
   MembershipPointsLedger,
   CarWashMembershipConfig 
 } from '../types.js';
+import { useApp } from '../context/AppContext.js';
 
 interface LoyaltyMembershipCustomerViewProps {
   locations: CarWash[];
@@ -75,7 +77,8 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
   currentUser,
   onNavigateToBook,
 }) => {
-  const [memberships, setMemberships] = useState<CustomerMembership[]>([]);
+  const { myMemberships, fetchMyMemberships, leaveCarWashMembership, showNotification } = useApp();
+  const [memberships, setMemberships] = useState<CustomerMembership[]>(() => myMemberships || []);
   const [selectedMembership, setSelectedMembership] = useState<CustomerMembership | null>(null);
   const [config, setConfig] = useState<CarWashMembershipConfig | null>(null);
   const [rewards, setRewards] = useState<MembershipReward[]>([]);
@@ -91,6 +94,10 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
   const [isRedeeming, setIsRedeeming] = useState(false);
   const [redemptionSuccessVoucher, setRedemptionSuccessVoucher] = useState<MembershipRedemption | null>(null);
   
+  // Leave Club Modal
+  const [showLeaveModal, setShowLeaveModal] = useState(false);
+  const [isLeaving, setIsLeaving] = useState(false);
+
   // Join Flow
   const [selectedJoinCarWash, setSelectedJoinCarWash] = useState<CarWash | null>(null);
   const [joinConsent, setJoinConsent] = useState(false);
@@ -99,18 +106,22 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
   const [joinError, setJoinError] = useState<string | null>(null);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
-  // Active valid memberships: Car wash must exist in locations AND have membershipEnabled === true and isActive !== false
+  // Keep memberships state in sync with context myMemberships
+  useEffect(() => {
+    if (myMemberships) {
+      setMemberships(myMemberships);
+    }
+  }, [myMemberships]);
+
+  // Active valid memberships for this customer
   const activeValidMemberships = useMemo(() => {
-    return memberships.filter((m) => {
-      const loc = locations.find((l) => l.id === m.carWashId);
-      return Boolean(loc && loc.membershipEnabled === true && loc.isActive !== false);
-    });
-  }, [memberships, locations]);
+    return memberships.filter((m) => m.status === 'ACTIVE');
+  }, [memberships]);
 
   // Available car washes that customer hasn't joined yet
   const availableToJoin = useMemo(() => {
     return locations.filter(
-      (loc) => loc.membershipEnabled === true && loc.isActive !== false && !activeValidMemberships.some((m) => m.carWashId === loc.id)
+      (loc) => loc.isActive !== false && !activeValidMemberships.some((m) => m.carWashId === loc.id)
     );
   }, [locations, activeValidMemberships]);
 
@@ -119,6 +130,12 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
     if (activeValidMemberships.length > 0) {
       if (!selectedMembership || !activeValidMemberships.some((m) => m.id === selectedMembership.id)) {
         setSelectedMembership(activeValidMemberships[0]);
+      } else {
+        // ALWAYS keep selectedMembership up to date with fresh pointsBalance, name, and status
+        const fresh = activeValidMemberships.find((m) => m.id === selectedMembership.id);
+        if (fresh && (fresh.pointsBalance !== selectedMembership.pointsBalance || fresh.updatedAt !== selectedMembership.updatedAt)) {
+          setSelectedMembership(fresh);
+        }
       }
     } else {
       if (selectedMembership !== null) {
@@ -150,6 +167,22 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
     }
   };
 
+  const handleConfirmLeaveClub = async () => {
+    if (!selectedMembership) return;
+    setIsLeaving(true);
+    try {
+      const ok = await leaveCarWashMembership(selectedMembership.carWashId);
+      if (ok) {
+        setShowLeaveModal(false);
+        if (fetchMyMemberships) await fetchMyMemberships();
+        await fetchMemberships();
+        setSelectedMembership(null);
+      }
+    } finally {
+      setIsLeaving(false);
+    }
+  };
+
   // Fetch details for the selected membership
   const loadMembershipDetails = useCallback(async () => {
     if (!selectedMembership || !token) {
@@ -160,9 +193,9 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
       return;
     }
 
-    // Verify operator exists and has membershipEnabled
+    // Verify operator exists
     const matchedLoc = locations.find((l) => l.id === selectedMembership.carWashId);
-    if (!matchedLoc || !matchedLoc.membershipEnabled || matchedLoc.isActive === false) {
+    if (matchedLoc && matchedLoc.isActive === false) {
       setSelectedMembership(null);
       setConfig(null);
       setRewards([]);
@@ -214,15 +247,21 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
     } catch (err) {
       console.error('Failed to load membership details:', err);
     }
-  }, [selectedMembership?.id, selectedMembership?.carWashId, token, locations]);
+  }, [selectedMembership?.id, selectedMembership?.carWashId, selectedMembership?.pointsBalance, token, locations]);
 
   // Fetch details when selectedMembership changes
   useEffect(() => {
     loadMembershipDetails();
   }, [loadMembershipDetails]);
 
+  // Fetch memberships on mount and poll every 5s to catch live wash points awards
   useEffect(() => {
     fetchMemberships();
+    const interval = setInterval(() => {
+      fetchMemberships();
+      if (fetchMyMemberships) fetchMyMemberships();
+    }, 5000);
+    return () => clearInterval(interval);
   }, [token]);
 
   // Open QR modal for member card
@@ -299,6 +338,7 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
 
       // 4. Background re-sync
       fetchMemberships();
+      fetchMyMemberships();
       loadMembershipDetails();
 
       // 5. Switch to vouchers tab
@@ -333,9 +373,11 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
 
       setSelectedJoinCarWash(null);
       setJoinConsent(false);
-      await fetchMemberships();
+      setMemberships((prev) => [data, ...prev.filter((m) => m.id !== data.id)]);
       setSelectedMembership(data);
       setActiveSubTab('card');
+      await fetchMemberships();
+      fetchMyMemberships();
     } catch (err: any) {
       setJoinError(err.message || 'Failed to join loyalty club');
     } finally {
@@ -364,9 +406,11 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
       });
 
       const data = await safeJsonOrError(res, 'Failed to join membership');
-      await fetchMemberships();
+      setMemberships((prev) => [data, ...prev.filter((m) => m.id !== data.id)]);
       setSelectedMembership(data);
       setActiveSubTab('card');
+      await fetchMemberships();
+      fetchMyMemberships();
     } catch (err: any) {
       setJoinError(err.message || 'Failed to join loyalty club');
     } finally {
@@ -498,7 +542,22 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
 
                   <div className="relative z-10 py-4 border-y border-white/10 flex items-center justify-between">
                     <div>
-                      <span className="text-[11px] uppercase font-bold text-indigo-200 block">Available Points</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] uppercase font-bold text-indigo-200 block">Available Points</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            fetchMemberships();
+                            if (fetchMyMemberships) fetchMyMemberships();
+                            loadMembershipDetails();
+                          }}
+                          className="text-[10px] bg-white/10 hover:bg-white/20 text-indigo-200 px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors cursor-pointer"
+                          title="Refresh points live"
+                        >
+                          <RefreshCw className="w-2.5 h-2.5" />
+                          <span>Sync</span>
+                        </button>
+                      </div>
                       <div className="flex items-baseline gap-2 mt-0.5">
                         <span className="text-3xl sm:text-4xl font-black text-amber-300">
                           {selectedMembership.pointsBalance.toLocaleString()}
@@ -544,6 +603,22 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
                       <QrCode className="h-4 w-4" /> Show Member QR
                     </button>
                   </div>
+                </div>
+
+                {/* Card Options / Leave Programme Footer */}
+                <div className="mt-3 flex items-center justify-between px-2 text-xs">
+                  <span className="text-slate-400 text-[11px]">
+                    Membership ID: <strong className="font-mono text-slate-600">{selectedMembership.membershipNumber}</strong>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowLeaveModal(true)}
+                    className="text-slate-400 hover:text-rose-600 font-semibold text-xs flex items-center gap-1.5 transition-colors cursor-pointer py-1 px-2.5 rounded-lg hover:bg-rose-50"
+                    title="Accidentally joined or want to opt out? Leave this club anytime"
+                  >
+                    <LogOut className="h-3.5 w-3.5 text-rose-500" />
+                    <span>Leave / Cancel Membership</span>
+                  </button>
                 </div>
               </div>
 
@@ -1308,6 +1383,52 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
                   </>
                 ) : (
                   'Activate Membership Card'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Leave Club Confirmation Modal */}
+      {showLeaveModal && selectedMembership && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-xs p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-200 overflow-hidden p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                <LogOut className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-slate-900 text-base">Leave Loyalty Programme?</h3>
+                <p className="text-xs text-slate-500">{selectedMembership.carWashName || 'Car Wash Rewards'}</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+              Did you accidentally join or do you no longer want to be on this membership? You can leave at any time. Your points history and transactions remain safely saved in our system if you ever choose to re-join later.
+            </p>
+
+            <div className="flex gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowLeaveModal(false)}
+                disabled={isLeaving}
+                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl cursor-pointer"
+              >
+                Keep Membership
+              </button>
+              <button
+                type="button"
+                disabled={isLeaving}
+                onClick={handleConfirmLeaveClub}
+                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                {isLeaving ? (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Leaving...
+                  </>
+                ) : (
+                  'Yes, Leave Programme'
                 )}
               </button>
             </div>

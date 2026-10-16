@@ -17,6 +17,7 @@ if (typeof dns.setDefaultResultOrder === 'function') {
 }
 
 import express from 'express';
+import compression from 'compression';
 import path from 'path';
 import fs from 'fs';
 import bcrypt from 'bcryptjs';
@@ -467,6 +468,18 @@ async function startServer() {
   const app = express();
   // PORT MUST be 3000 for the platform's nginx reverse proxy
   const PORT = 3000;
+
+  // Response compression (Gzip / Deflate) to minimize payload footprints across JSON and static files
+  app.use(
+    compression({
+      filter: (req, res) => {
+        if (req.headers.accept === 'text/event-stream' || req.path.includes('/realtime/stream')) {
+          return false;
+        }
+        return compression.filter(req, res);
+      },
+    })
+  );
 
   // Cloud Run & Container Health Probes MUST be mounted first
   app.get(['/api/health', '/_healthz', '/healthz', '/health'], async (req, res) => {
@@ -5031,8 +5044,14 @@ async function startServer() {
   // SERVE SECURE UPLOADS AND VITE SERVICES
   // ==========================================
 
-  // Serve uploaded payment receipt screenshots securely
-  app.use('/uploads', express.static(path.resolve(process.cwd(), 'uploads')));
+  // Serve uploaded payment receipt screenshots securely with browser caching
+  app.use(
+    '/uploads',
+    express.static(path.resolve(process.cwd(), 'uploads'), {
+      maxAge: '7d',
+      immutable: true,
+    })
+  );
 
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
@@ -5044,9 +5063,21 @@ async function startServer() {
     console.log('Vite middleware mounted in development mode.');
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
+    // Set 1-year immutable cache for hashed Vite assets (/assets/*), and strict no-cache for index.html
+    app.use(
+      express.static(distPath, {
+        maxAge: '1y',
+        immutable: true,
+        setHeaders: (res, filePath) => {
+          if (filePath.endsWith('.html')) {
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+          }
+        },
+      })
+    );
     app.get('*', (req, res) => {
       const indexPath = path.join(distPath, 'index.html');
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);
       } else {

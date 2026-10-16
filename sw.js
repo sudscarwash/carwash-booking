@@ -1,12 +1,74 @@
 // Autoshine Service Worker for Offline Assets & Native Push / Notifications
-const CACHE_NAME = 'autoshine-v1';
+const CACHE_NAME = 'autoshine-v2';
+const PRECACHE_ASSETS = [
+  '/',
+  '/manifest.json',
+  '/autoshine_logo.jpg',
+  '/robots.txt'
+];
 
 self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.addAll(PRECACHE_ASSETS).catch((err) => {
+        console.warn('[SW] Precache notice:', err);
+      });
+    })
+  );
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  // Purge any stale caches from previous versions to conserve client storage footprint
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames
+          .filter((name) => name !== CACHE_NAME)
+          .map((name) => caches.delete(name))
+      );
+    }).then(() => self.clients.claim())
+  );
+});
+
+// Cache strategy: Stale-While-Revalidate for static assets, network-only for APIs & SSE
+self.addEventListener('fetch', (event) => {
+  const { request } = event;
+  const url = new URL(request.url);
+
+  // Never intercept or cache non-GET requests, API queries, live realtime SSE streams, or uploads
+  if (
+    request.method !== 'GET' ||
+    url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/uploads/') ||
+    url.pathname.includes('/realtime/')
+  ) {
+    return;
+  }
+
+  // Optimize static assets (JS chunks, CSS stylesheets, images, web fonts)
+  if (
+    url.pathname.startsWith('/assets/') ||
+    request.destination === 'script' ||
+    request.destination === 'style' ||
+    request.destination === 'image' ||
+    request.destination === 'font'
+  ) {
+    event.respondWith(
+      caches.match(request).then((cachedResponse) => {
+        const fetchPromise = fetch(request).then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+            const clone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          }
+          return networkResponse;
+        }).catch(() => cachedResponse);
+
+        return cachedResponse || fetchPromise;
+      })
+    );
+    return;
+  }
 });
 
 // Listen for push events from server push or client trigger

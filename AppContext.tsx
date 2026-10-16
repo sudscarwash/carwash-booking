@@ -75,7 +75,7 @@ interface AppContextType {
   forgotPassword: (email: string) => Promise<string | null>;
   resetPassword: (token: string, password: string) => Promise<boolean>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
-  deleteAccount: () => Promise<boolean>;
+  deleteAccount: (password: string) => Promise<boolean>;
   fetchLocations: (search?: string, lat?: number, lng?: number, radius?: number) => Promise<void>;
   fetchLocationsConfig: (search?: string, lat?: number, lng?: number, radius?: number) => Promise<void>;
   fetchBookings: (silent?: boolean) => Promise<void>;
@@ -367,7 +367,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     if (!res.ok) {
-      if (res.status === 401) {
+      if (res.status === 401 && !endpoint.includes('/api/auth/delete-account')) {
         localStorage.removeItem('cw_user');
         localStorage.removeItem('cw_token');
         setUser(null);
@@ -757,6 +757,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (payload.type === 'BOOKING_CREATED') {
               fetchBookings(true);
               fetchAppNotifications();
+              fetchMyMemberships();
 
               // Trigger native device notification for owners/employees of this car wash
               const isOwnerOrStaff = user?.role === Role.OWNER || user?.role === Role.EMPLOYEE || user?.role === Role.ADMIN;
@@ -782,6 +783,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             } else if (payload.type === 'BOOKING_UPDATED') {
               fetchBookings(true);
               fetchAppNotifications();
+              fetchMyMemberships();
 
               const bData = payload.data || {};
               if (bData.status) {
@@ -849,17 +851,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const interval = setInterval(() => {
       fetchBookings(true);
+      fetchMyMemberships();
     }, 4000);
 
     const handleFocus = () => {
       fetchBookings(true);
       fetchAppNotifications();
+      fetchMyMemberships();
     };
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         fetchBookings(true);
         fetchAppNotifications();
+        fetchMyMemberships();
       }
     };
 
@@ -991,6 +996,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       showNotification(`Booking status updated to ${status}`, 'success');
       fetchBookings();
+      fetchMyMemberships();
       return true;
     } catch (err: any) {
       showNotification(err.message, 'error');
@@ -1279,18 +1285,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const deleteAccount = async (): Promise<boolean> => {
+  const deleteAccount = async (password: string): Promise<boolean> => {
     try {
       setLoading(true);
       await apiFetch('/api/auth/delete-account', {
         method: 'DELETE',
+        body: JSON.stringify({ password }),
       });
       logout();
       showNotification('Your account has been deleted successfully.', 'success');
       return true;
     } catch (err: any) {
-      showNotification(err.message, 'error');
-      return false;
+      showNotification(err.message || 'Incorrect password. Account deletion aborted.', 'error');
+      throw err;
     } finally {
       setLoading(false);
     }
@@ -1367,6 +1374,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       if (res.ok) {
         const data = await res.json();
+        setMyMemberships((prev) => [data, ...prev.filter((m) => m.id !== data.id)]);
         showNotification(`🎉 Congratulations! You are now a member of ${data.carWashName || 'this car wash'}!`, 'success');
         await fetchMyMemberships();
         return data;
@@ -1453,6 +1461,71 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const reportIssue = async (data: {
+    title: string;
+    description: string;
+    category?: IssueCategory;
+    priority?: IssuePriority;
+    userName?: string;
+    userEmail?: string;
+    bookingId?: string;
+    carWashId?: string;
+  }): Promise<{ success: boolean; message?: string; error?: string }> => {
+    try {
+      setLoading(true);
+      const res = await apiFetch('/api/issues', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+      showNotification(res.message || 'Issue reported successfully. Our team will review it.', 'success');
+      return { success: true, message: res.message };
+    } catch (err: any) {
+      showNotification(err.message || 'Failed to submit issue report.', 'error');
+      return { success: false, error: err.message };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchIssues = async (filters?: { status?: string; category?: string; search?: string }): Promise<ReportedIssue[]> => {
+    try {
+      const params = new URLSearchParams();
+      if (filters?.status) params.set('status', filters.status);
+      if (filters?.category) params.set('category', filters.category);
+      if (filters?.search) params.set('search', filters.search);
+      const res = await apiFetch(`/api/issues?${params.toString()}`);
+      return Array.isArray(res) ? res : [];
+    } catch (err) {
+      console.warn('Failed to fetch reported issues:', err);
+      return [];
+    }
+  };
+
+  const updateIssue = async (id: string, updates: Partial<ReportedIssue>): Promise<boolean> => {
+    try {
+      await apiFetch(`/api/issues/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(updates),
+      });
+      showNotification('Issue updated successfully.', 'success');
+      return true;
+    } catch (err: any) {
+      showNotification(err.message || 'Failed to update issue.', 'error');
+      return false;
+    }
+  };
+
+  const deleteIssue = async (id: string): Promise<boolean> => {
+    try {
+      await apiFetch(`/api/issues/${id}`, { method: 'DELETE' });
+      showNotification('Issue removed.', 'info');
+      return true;
+    } catch (err: any) {
+      showNotification(err.message || 'Failed to delete issue.', 'error');
+      return false;
+    }
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -1525,6 +1598,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         leaveCarWashMembership,
         redeemMembershipReward,
         fetchCustomerRedemptions,
+        reportIssue,
+        fetchIssues,
+        updateIssue,
+        deleteIssue,
+        isReportModalOpen,
+        setIsReportModalOpen,
+        reportPrefill,
+        openReportModal,
+        closeReportModal,
       }}
     >
       {children}

@@ -71,7 +71,7 @@ export const AdminDashboard: React.FC = () => {
   const [onboardBusinessDesc, setOnboardBusinessDesc] = useState('');
   const [onboardBusinessLat, setOnboardBusinessLat] = useState(4.8917);
   const [onboardBusinessLng, setOnboardBusinessLng] = useState(114.9401);
-  const [onboardMembership, setOnboardMembership] = useState(false);
+  const [onboardMembership, setOnboardMembership] = useState(true);
   const [onboardSubmitting, setOnboardSubmitting] = useState(false);
 
   // Edit Location State
@@ -1323,12 +1323,16 @@ export const AdminDashboard: React.FC = () => {
 
                 {/* Quota Gauge */}
                 {(() => {
-                  const sent = quotaStatus?.totalSentToday || 0;
-                  const limit = quotaStatus?.dailyQuotaLimit || 100;
-                  const usagePct = Math.min(100, Math.round((sent / limit) * 100));
-                  const notifsLeft = quotaStatus?.remainingForNotifications || 0;
+                  const sent = quotaStatus?.totalSentToday ?? 0;
+                  const limit = quotaStatus?.dailyQuotaLimit ?? emailSettings?.dailyQuotaLimit ?? 100;
+                  const reserved = quotaStatus?.reservedAuthQuota ?? emailSettings?.reservedAuthQuota ?? 25;
+                  const maxNotifsAllowed = Math.max(0, limit - reserved);
+                  const notifsLeft = (quotaStatus?.remainingForNotifications !== undefined && quotaStatus.remainingForNotifications !== null)
+                    ? quotaStatus.remainingForNotifications
+                    : Math.max(0, maxNotifsAllowed - sent);
+                  const usagePct = limit > 0 ? Math.min(100, Math.round((sent / limit) * 100)) : 0;
                   const isNearLimit = usagePct >= 80;
-                  const isCapped = notifsLeft <= 0;
+                  const isCapped = sent >= maxNotifsAllowed && sent > 0;
 
                   return (
                     <div className="bg-slate-800/90 border border-slate-700/80 rounded-2xl p-4 space-y-2.5">
@@ -1681,10 +1685,8 @@ export const AdminDashboard: React.FC = () => {
           {/* Email Logs Table */}
           <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
-              <div>
-                <h2 className="text-base font-bold text-slate-800">Email Dispatch History & Sandbox Logs</h2>
-                <p className="text-xs text-slate-400">Captured transactional emails sent across the system ({emailLogs.length} total recorded)</p>
-              </div>
+                <h2 className="text-base font-bold text-slate-800">Email Dispatch History & Delivery Logs</h2>
+                <p className="text-xs text-slate-400">Captured transactional emails dispatched across the system ({emailLogs.length} recent records • Automatically capped at max 50 to prevent buildup)</p>
 
               <div className="flex items-center gap-2">
                 <button

@@ -60,6 +60,7 @@ export interface WashService {
   vehicleType?: string;
   isAvailable?: boolean;
   slotsRequired?: number; // 0 = no slot capacity needed, 1 = 1 slot (30 min), 2 = 2 slots (1 hr)
+  points?: number; // Loyalty points awarded to VIP customers for this service
 }
 
 export interface ScheduleOverride {
