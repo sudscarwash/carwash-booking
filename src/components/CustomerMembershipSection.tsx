@@ -20,11 +20,12 @@ export const CustomerMembershipSection: React.FC<CustomerMembershipSectionProps>
   onNavigateToWash,
   onRequestAuth,
 }) => {
-  const { user, myMemberships, joinCarWashMembership, fetchMyMemberships, locations } = useApp();
+  const { user, myMemberships, joinCarWashMembership, leaveCarWashMembership, fetchMyMemberships, locations, showNotification } = useApp();
 
   const [activeMembershipModal, setActiveMembershipModal] = useState<CustomerMembership | null>(null);
   const [consentChecked, setConsentChecked] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
+  const [isLeaving, setIsLeaving] = useState(false);
   const [programmeConfig, setProgrammeConfig] = useState<CarWashMembershipConfig | null>(null);
   const [previewRewards, setPreviewRewards] = useState<MembershipReward[]>([]);
   const [loadingConfig, setLoadingConfig] = useState(false);
@@ -77,9 +78,27 @@ export const CustomerMembershipSection: React.FC<CustomerMembershipSectionProps>
     }
   };
 
+  // Direct Leave / Accidental Join Opt-Out
+  const handleDirectLeave = async () => {
+    if (!carWash) return;
+    if (!confirm(`Are you sure you want to leave ${programmeConfig?.programmeName || carWash.name} Rewards?`)) return;
+    setIsLeaving(true);
+    try {
+      const ok = await leaveCarWashMembership(carWash.id);
+      if (ok) {
+        showNotification(`You have left ${programmeConfig?.programmeName || carWash.name} Rewards.`, 'info');
+        if (fetchMyMemberships) await fetchMyMemberships();
+      }
+    } catch (err: any) {
+      showNotification(err.message || 'Failed to leave programme', 'error');
+    } finally {
+      setIsLeaving(false);
+    }
+  };
+
   // 1. SPECIFIC CAR WASH EMBEDDED VIEW
   if (carWash) {
-    const isFeatureEnabled = carWash.membershipEnabled === true;
+    const isFeatureEnabled = carWash.membershipEnabled !== false;
     if (!isFeatureEnabled) {
       return null; // Not enabled by Admin/Special user for this business
     }
@@ -112,10 +131,22 @@ export const CustomerMembershipSection: React.FC<CustomerMembershipSectionProps>
               </div>
             </div>
 
-            <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between">
-              <span className="text-xs text-indigo-200 font-mono">
-                ID: {matchedMembership.membershipNumber}
-              </span>
+            <div className="mt-4 pt-3 border-t border-white/10 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-indigo-200 font-mono">
+                  ID: {matchedMembership.membershipNumber}
+                </span>
+                <span className="text-indigo-400/40 text-xs">•</span>
+                <button
+                  type="button"
+                  disabled={isLeaving}
+                  onClick={handleDirectLeave}
+                  className="text-[11px] text-rose-300 hover:text-rose-200 underline font-semibold cursor-pointer disabled:opacity-50"
+                  title="Accidentally joined? Click to opt out and leave club"
+                >
+                  {isLeaving ? 'Leaving...' : 'Leave / Opt Out'}
+                </button>
+              </div>
               <button
                 onClick={() => setActiveMembershipModal(matchedMembership)}
                 className="px-3.5 py-1.5 bg-white hover:bg-slate-100 text-slate-900 text-xs font-bold rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
@@ -210,7 +241,7 @@ export const CustomerMembershipSection: React.FC<CustomerMembershipSectionProps>
   }
 
   // 2. GLOBAL "MY MEMBERSHIPS" SECTION (for Customer Dashboard)
-  const participatingLocations = locations.filter((l) => l.membershipEnabled === true);
+  const participatingLocations = locations.filter((l) => l.membershipEnabled !== false && l.isActive !== false);
 
   return (
     <div className="space-y-6">

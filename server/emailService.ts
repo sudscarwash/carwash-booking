@@ -7,6 +7,7 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
 import nodemailer from 'nodemailer';
+import { getDbEmailSettings, saveDbEmailSettings } from './db.js';
 
 dotenv.config();
 
@@ -57,7 +58,20 @@ interface DailyQuotaTracker {
 
 const SETTINGS_FILE_PATH = path.resolve(process.cwd(), 'data', 'email_settings.json');
 const LOGS_FILE_PATH = path.resolve(process.cwd(), 'data', 'email_logs.json');
-const MAX_LOGS = 100;
+const MAX_LOGS = 50;
+
+const isProduction =
+  process.env.NODE_ENV === 'production' ||
+  (Boolean(
+    process.env.PORT ||
+    process.env.K_SERVICE ||
+    process.env.RENDER ||
+    process.env.GOOGLE_CLOUD_PROJECT ||
+    process.env.CLOUD_RUN ||
+    process.env.RAILWAY_ENVIRONMENT ||
+    process.env.FLY_APP_NAME ||
+    process.env.VERCEL
+  ) && process.env.APP_ENV !== 'development' && process.env.NODE_ENV !== 'development');
 
 function loadPersistedLogs(): EmailLogEntry[] {
   try {
@@ -65,7 +79,13 @@ function loadPersistedLogs(): EmailLogEntry[] {
       const raw = fs.readFileSync(LOGS_FILE_PATH, 'utf-8');
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        return parsed;
+        const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+        return parsed
+          .filter((item: any) => {
+            const t = new Date(item.timestamp).getTime();
+            return !isNaN(t) && t >= sevenDaysAgo;
+          })
+          .slice(0, MAX_LOGS);
       }
     }
   } catch (err) {
@@ -99,6 +119,21 @@ function ensureTodayTracker(): DailyQuotaTracker {
   return dailyTracker;
 }
 
+// Compute initial default provider: in production or default, always use GMAIL_SMTP or RESEND, never SANDBOX
+const defaultProductionProvider: EmailProvider = (() => {
+  if (process.env.EMAIL_PROVIDER && ['GMAIL_SMTP', 'RESEND', 'SANDBOX_CONSOLE'].includes(process.env.EMAIL_PROVIDER)) {
+    return process.env.EMAIL_PROVIDER as EmailProvider;
+  }
+  if (process.env.RESEND_API_KEY && !process.env.RESEND_API_KEY.startsWith('your_') && !process.env.RESEND_API_KEY.startsWith('re_12345')) {
+    return 'RESEND';
+  }
+  if (process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASS) {
+    return 'GMAIL_SMTP';
+  }
+  // Default to live Gmail SMTP delivery in production and general deployment
+  return 'GMAIL_SMTP';
+})();
+
 // Default settings
 const DEFAULT_SETTINGS: EmailNotificationSettings = {
   masterEnabled: true,
@@ -107,32 +142,100 @@ const DEFAULT_SETTINGS: EmailNotificationSettings = {
   notifyWashCompleted: true,     // Default on: "Car Ready for Pick Up" has highest customer value
   notifyBookingCancelled: true,  // Default on: Urgent cancellation alerts
   notifyDailyOwnerDigest: false,
-  activeProvider: (process.env.EMAIL_PROVIDER as EmailProvider) || (process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASS
-    ? 'GMAIL_SMTP'
-    : (process.env.RESEND_API_KEY && !process.env.RESEND_API_KEY.startsWith('your_') && !process.env.RESEND_API_KEY.startsWith('re_12345') ? 'RESEND' : 'SANDBOX_CONSOLE')),
-  dailyQuotaLimit: (process.env.EMAIL_PROVIDER === 'GMAIL_SMTP' || process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASS) ? 500 : 100,
+  activeProvider: defaultProductionProvider,
+  dailyQuotaLimit: (defaultProductionProvider === 'GMAIL_SMTP' || process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASS) ? 500 : 100,
   reservedAuthQuota: 25,
   emailFromAddress: process.env.EMAIL_FROM_ADDRESS || 'AutoShine BN <onboarding@resend.dev>',
   replyToAddress: process.env.EMAIL_REPLY_TO || '',
 };
 
 let cachedSettings: EmailNotificationSettings = { ...DEFAULT_SETTINGS };
+let hasAttemptedDbSync = false;
 
-// Load settings from persistent storage
+// Load settings from persistent storage and environment
 export function getEmailSettings(): EmailNotificationSettings {
+  let loadedFromDisk = false;
   try {
     if (fs.existsSync(SETTINGS_FILE_PATH)) {
       const raw = fs.readFileSync(SETTINGS_FILE_PATH, 'utf-8');
       const parsed = JSON.parse(raw);
       cachedSettings = { ...DEFAULT_SETTINGS, ...parsed };
+      loadedFromDisk = true;
     }
   } catch (err) {
     console.error('[EmailService] Error loading email settings from disk:', err);
   }
+
+  // Priority override from environment variables or active configurations
+  if (process.env.EMAIL_PROVIDER && ['GMAIL_SMTP', 'RESEND', 'SANDBOX_CONSOLE'].includes(process.env.EMAIL_PROVIDER)) {
+    cachedSettings.activeProvider = process.env.EMAIL_PROVIDER as EmailProvider;
+  } else if (!loadedFromDisk || !cachedSettings.activeProvider || cachedSettings.activeProvider === 'SANDBOX_CONSOLE') {
+    // In production or when waking from sleep, NEVER silently revert to SANDBOX_CONSOLE unless explicitly set in env
+    if (process.env.EMAIL_PROVIDER !== 'SANDBOX_CONSOLE') {
+      if (process.env.RESEND_API_KEY && !process.env.RESEND_API_KEY.startsWith('your_') && !process.env.RESEND_API_KEY.startsWith('re_12345')) {
+        cachedSettings.activeProvider = 'RESEND';
+      } else if (process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASS || cachedSettings.gmailAppPassword) {
+        cachedSettings.activeProvider = 'GMAIL_SMTP';
+      } else if (cachedSettings.resendApiKey) {
+        cachedSettings.activeProvider = 'RESEND';
+      } else {
+        cachedSettings.activeProvider = 'GMAIL_SMTP';
+      }
+    }
+  }
+
+  // Auto-trigger background DB hydration on first call if not yet attempted
+  if (!hasAttemptedDbSync) {
+    hasAttemptedDbSync = true;
+    syncEmailSettingsFromDb().catch(() => {});
+  }
+
   return cachedSettings;
 }
 
-// Save settings to persistent storage
+// 🔄 Asynchronously hydrate email settings from persistent database (survives cold starts and sleep mode)
+export async function syncEmailSettingsFromDb(): Promise<EmailNotificationSettings> {
+  try {
+    const raw = await getDbEmailSettings();
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        cachedSettings = {
+          ...DEFAULT_SETTINGS,
+          ...cachedSettings,
+          ...parsed,
+        };
+        // In production, ensure activeProvider does NOT revert to sandbox unless explicitly configured
+        if (process.env.EMAIL_PROVIDER !== 'SANDBOX_CONSOLE' && cachedSettings.activeProvider === 'SANDBOX_CONSOLE') {
+          cachedSettings.activeProvider = cachedSettings.resendApiKey ? 'RESEND' : 'GMAIL_SMTP';
+        }
+        // Write to local disk cache so synchronous getEmailSettings() sees it immediately
+        try {
+          const dir = path.dirname(SETTINGS_FILE_PATH);
+          if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+          fs.writeFileSync(SETTINGS_FILE_PATH, JSON.stringify(cachedSettings, null, 2), 'utf-8');
+        } catch {}
+        console.log(`[EmailService] Hydrated email settings from persistent database table (Provider: ${cachedSettings.activeProvider}).`);
+      }
+    }
+  } catch (err) {
+    console.warn('[EmailService] Failed to sync email settings from DB:', err);
+  }
+  return cachedSettings;
+}
+
+
+export function isEmailDeliveryActive(): boolean {
+  if (isProduction) {
+    return true; // Production always attempts live delivery via GMAIL_SMTP or RESEND
+  }
+  const settings = getEmailSettings();
+  const hasGmail = Boolean((settings.gmailUser || process.env.GMAIL_USER || process.env.SMTP_USER) && (settings.gmailAppPassword || process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASS));
+  const hasResend = Boolean(settings.resendApiKey || (process.env.RESEND_API_KEY && !process.env.RESEND_API_KEY.startsWith('your_') && !process.env.RESEND_API_KEY.startsWith('re_12345')));
+  return hasGmail || hasResend;
+}
+
+// Save settings to persistent storage (both local disk and database table platform_info)
 export function updateEmailSettings(updates: Partial<EmailNotificationSettings>): EmailNotificationSettings {
   const current = getEmailSettings();
   cachedSettings = {
@@ -143,16 +246,26 @@ export function updateEmailSettings(updates: Partial<EmailNotificationSettings>)
     reservedAuthQuota: updates.reservedAuthQuota !== undefined ? Math.max(5, updates.reservedAuthQuota) : current.reservedAuthQuota,
   };
 
+  // In production, ensure activeProvider does not inadvertently get set to sandbox
+  if (isProduction && cachedSettings.activeProvider === 'SANDBOX_CONSOLE') {
+    cachedSettings.activeProvider = cachedSettings.resendApiKey ? 'RESEND' : 'GMAIL_SMTP';
+  }
+
   try {
     const dir = path.dirname(SETTINGS_FILE_PATH);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
     fs.writeFileSync(SETTINGS_FILE_PATH, JSON.stringify(cachedSettings, null, 2), 'utf-8');
-    console.log('[EmailService] Updated and persisted email settings.');
+    console.log('[EmailService] Updated and persisted email settings to disk.');
   } catch (err) {
     console.error('[EmailService] Failed to save email settings to disk:', err);
   }
+
+  // Persist to database to survive Google Cloud Run & Render restarts/sleep
+  saveDbEmailSettings(JSON.stringify(cachedSettings)).catch((err) => {
+    console.warn('[EmailService] Failed to persist email settings to database:', err);
+  });
 
   return cachedSettings;
 }
@@ -205,8 +318,14 @@ export function recordEmailLog(entry: Omit<EmailLogEntry, 'id' | 'timestamp'>) {
     timestamp: new Date().toISOString()
   };
   emailLogsMemory.unshift(log);
-  if (emailLogsMemory.length > MAX_LOGS) {
-    emailLogsMemory.pop();
+
+  // Prune any entries older than 7 days and cap strictly to MAX_LOGS
+  const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  for (let i = emailLogsMemory.length - 1; i >= 0; i--) {
+    const t = new Date(emailLogsMemory[i].timestamp).getTime();
+    if (isNaN(t) || t < sevenDaysAgo || i >= MAX_LOGS) {
+      emailLogsMemory.splice(i, 1);
+    }
   }
 
   try {
@@ -266,18 +385,42 @@ async function dispatchGmailDirect(
     return true;
   }
 
-  const senderFrom = (settings.emailFromAddress && settings.emailFromAddress.trim())
+  // Gmail SMTP strictly enforces that the from address must match the authenticated account or a verified alias.
+  // Never pass onboarding@resend.dev to Gmail SMTP!
+  const senderFrom = (settings.emailFromAddress && settings.emailFromAddress.trim() && !settings.emailFromAddress.includes('resend.dev'))
     ? formatResendFromAddress(settings.emailFromAddress)
     : `AutoShine BN <${gmailUser}>`;
 
   try {
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: gmailUser,
-        pass: gmailPass.replace(/\s+/g, ''),
-      },
-    });
+    const host = process.env.SMTP_HOST || (settings.gmailUser || process.env.GMAIL_USER ? 'smtp.gmail.com' : undefined);
+    const port = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 465;
+    const isSecure = process.env.SMTP_SECURE !== undefined ? process.env.SMTP_SECURE === 'true' : port === 465;
+
+    const transporter = nodemailer.createTransport(
+      host
+        ? {
+            host,
+            port,
+            secure: isSecure,
+            auth: {
+              user: gmailUser,
+              pass: gmailPass.replace(/\s+/g, ''),
+            },
+            connectionTimeout: 15000,
+            greetingTimeout: 15000,
+            socketTimeout: 20000,
+          }
+        : {
+            service: 'gmail',
+            auth: {
+              user: gmailUser,
+              pass: gmailPass.replace(/\s+/g, ''),
+            },
+            connectionTimeout: 15000,
+            greetingTimeout: 15000,
+            socketTimeout: 20000,
+          }
+    );
 
     const mailOptions: Record<string, any> = {
       from: senderFrom,

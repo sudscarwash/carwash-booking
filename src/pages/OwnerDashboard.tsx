@@ -11,7 +11,7 @@ import {
   Clock, MapPin, BarChart3, ChevronRight, Edit2, Plus, Info, Briefcase, Trash2, Edit, Lock, Key,
   Phone, Car, User as UserIcon, Search, ChevronLeft, Filter, ShieldCheck, CheckCircle2, AlertCircle, CalendarDays, ChevronDown,
   FileText, Printer, Download, TrendingUp, PieChart, CreditCard, Package, FileSpreadsheet, Tag, Layers, RefreshCw, Bell, CheckCheck, MessageCircle, Mail, Save, Sparkles, Pencil, Upload,
-  Star, CornerDownRight, MessageSquare, QrCode, Eye, Award, Coins, Server
+  Star, CornerDownRight, MessageSquare, QrCode, Eye, EyeOff, AlertTriangle, Award, Coins, Server
 } from 'lucide-react';
 import { BookingStatus, CarWash, Booking, WeeklySchedule, CustomPaymentMethod, WashService, Role, Review, ReviewSummary } from '../types.js';
 import { EditBookingModal } from '../components/EditBookingModal.js';
@@ -166,6 +166,7 @@ export const OwnerDashboard: React.FC = () => {
     updateEmployee,
     deleteEmployee,
     changePassword,
+    deleteAccount,
     createManualBooking,
     appNotifications,
     unreadNotificationCount,
@@ -204,8 +205,8 @@ export const OwnerDashboard: React.FC = () => {
   const [requestingEtaBookingId, setRequestingEtaBookingId] = useState<string | null>(null);
   // QR Code access is controlled by Admin / Special User (hidden by default, all other navigation is always available)
   const isOwnerQrCodeAllowed = selectedBusiness ? (selectedBusiness.ownerQrCodeEnabled === true) : false;
-  // Loyalty & Rewards membership feature enabled by Admin
-  const isMembershipEnabled = selectedBusiness ? (selectedBusiness.membershipEnabled === true) : false;
+  // Loyalty & Rewards membership feature enabled by default
+  const isMembershipEnabled = selectedBusiness ? (selectedBusiness.membershipEnabled !== false) : true;
 
   useEffect(() => {
     if (!isOwnerQrCodeAllowed && activeTab === 'qrcode') {
@@ -677,6 +678,7 @@ export const OwnerDashboard: React.FC = () => {
   const [newServiceVehicleType, setNewServiceVehicleType] = useState<string>('All');
   const [newServiceIsAvailable, setNewServiceIsAvailable] = useState<boolean>(true);
   const [newServiceSlotsRequired, setNewServiceSlotsRequired] = useState<number>(1);
+  const [newServicePoints, setNewServicePoints] = useState<string>('15');
 
   // Add custom payment method quick-add states
   const [newProviderName, setNewProviderName] = useState('');
@@ -706,6 +708,14 @@ export const OwnerDashboard: React.FC = () => {
   useModalBack(Boolean(editingEmployee), () => setEditingEmployee(null), 'owner-edit-employee-modal');
   useModalBack(showManualBookingModal, () => setShowManualBookingModal(false), 'owner-manual-booking-modal');
   useModalBack(showHolidayModal, () => setShowHolidayModal(false), 'owner-holiday-modal');
+  // Owner Account Deletion States
+  const [showOwnerDeleteModal, setShowOwnerDeleteModal] = useState(false);
+  const [ownerAgreeToDelete, setOwnerAgreeToDelete] = useState(false);
+  const [ownerDeletePassword, setOwnerDeletePassword] = useState('');
+  const [showOwnerDeletePassword, setShowOwnerDeletePassword] = useState(false);
+  const [ownerDeleteAccountError, setOwnerDeleteAccountError] = useState('');
+  const [isDeletingOwnerAccount, setIsDeletingOwnerAccount] = useState(false);
+  useModalBack(showOwnerDeleteModal, () => setShowOwnerDeleteModal(false), 'owner-delete-account-modal');
 
   // Focus Booking and Owner Audit Log States
   const [ownerLogs, setOwnerLogs] = useState<any[]>([]);
@@ -4206,7 +4216,11 @@ export const OwnerDashboard: React.FC = () => {
                                     <span className="text-[10px] text-emerald-600 font-medium mt-0.5 block">Physical Product (0 Bay Slots)</span>
                                   )}
                                 </div>
-                                <div className="flex items-center gap-3 shrink-0">
+                                <div className="flex items-center gap-2.5 shrink-0">
+                                  <span className="inline-flex items-center gap-1 font-bold text-[10px] text-amber-800 bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded-md shadow-2xs">
+                                    <Sparkles className="w-3 h-3 text-amber-500 fill-amber-400" />
+                                    +{svc.points !== undefined ? svc.points : Math.max(10, Math.round(svc.price))} VIP pts
+                                  </span>
                                   <span className="font-extrabold text-xs text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg">BND ${svc.price.toFixed(2)}</span>
                                   <button
                                     type="button"
@@ -4404,6 +4418,26 @@ export const OwnerDashboard: React.FC = () => {
                           </label>
                         </div>
 
+                        {/* VIP Points Awarded Input */}
+                        <div className="sm:col-span-6">
+                          <label className="text-[10px] font-bold text-amber-700 uppercase tracking-wider flex items-center gap-1 mb-0.5">
+                            <Sparkles className="w-3 h-3 text-amber-500 fill-amber-400" />
+                            VIP Reward Points
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            placeholder="e.g. 15"
+                            value={newServicePoints}
+                            onChange={(e) => setNewServicePoints(e.target.value)}
+                            className="w-full px-2.5 py-1.5 border border-amber-300 bg-amber-50/40 rounded-lg text-xs font-mono font-bold text-amber-900"
+                          />
+                          <p className="text-[9px] text-amber-700/80 mt-1">
+                            Points credited to VIP customers on completion of this service.
+                          </p>
+                        </div>
+
                         {/* Description */}
                         <div className="sm:col-span-12">
                           <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5">Description</label>
@@ -4424,6 +4458,7 @@ export const OwnerDashboard: React.FC = () => {
                           const priceNum = parseFloat(newServicePrice);
                           const durNum = newServiceType === 'product' ? 0 : parseInt(newServiceDuration, 10);
                           if (isNaN(priceNum) || isNaN(durNum)) return;
+                          const ptsNum = parseInt(newServicePoints, 10);
 
                           const newSvc: WashService = {
                             id: `svc_${Math.random().toString(36).substr(2, 9)}`,
@@ -4435,6 +4470,7 @@ export const OwnerDashboard: React.FC = () => {
                             vehicleType: newServiceVehicleType,
                             isAvailable: newServiceIsAvailable,
                             slotsRequired: newServiceType === 'product' || durNum === 0 ? 0 : Math.max(1, Math.round(durNum / 30)),
+                            points: !isNaN(ptsNum) && ptsNum >= 0 ? ptsNum : Math.max(10, Math.round(priceNum)),
                           };
 
                           const updatedList = [...editServices, newSvc];
@@ -4446,11 +4482,29 @@ export const OwnerDashboard: React.FC = () => {
                               ...selectedBusiness,
                               services: updatedList,
                             });
+
+                            // Also immediately upsert the points rule for this car wash
+                            if (token && selectedBusiness.id) {
+                              fetch(`/api/membership/points-rules/${selectedBusiness.id}`, {
+                                method: 'POST',
+                                headers: {
+                                  'Content-Type': 'application/json',
+                                  'Authorization': `Bearer ${token}`
+                                },
+                                body: JSON.stringify({
+                                  serviceId: newSvc.id,
+                                  serviceName: newSvc.name,
+                                  pointsAwarded: newSvc.points,
+                                  isActive: true
+                                })
+                              }).catch(() => {});
+                            }
                           }
 
                           setNewServiceName('');
                           setNewServicePrice('15.00');
                           setNewServiceDuration('30');
+                          setNewServicePoints('15');
                           setNewServiceSlotsRequired(1);
                           setNewServiceDesc('');
                           setNewServiceIsAvailable(true);
@@ -4586,6 +4640,36 @@ export const OwnerDashboard: React.FC = () => {
                 Ensure your owner credentials remain highly secure. We recommend using a unique password of at least 6 characters, mixing numbers and symbols.
               </p>
             )}
+          </div>
+
+          {/* Danger Zone: Owner Account Deletion */}
+          <div className="bg-rose-50/40 border border-rose-200/80 rounded-3xl p-6 shadow-xs relative overflow-hidden" id="owner-danger-zone-card">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-rose-100 text-rose-700 rounded-2xl">
+                  <AlertTriangle className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800 text-base">Danger Zone</h3>
+                  <p className="text-xs text-rose-600/80 mt-0.5">Permanently delete your business owner account and associated operational credentials.</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setOwnerDeletePassword('');
+                  setShowOwnerDeletePassword(false);
+                  setOwnerDeleteAccountError('');
+                  setOwnerAgreeToDelete(false);
+                  setShowOwnerDeleteModal(true);
+                }}
+                className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 hover:text-rose-800 border border-rose-200 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+                id="owner-show-delete-modal-btn"
+              >
+                <AlertTriangle className="h-3.5 w-3.5 text-rose-500" />
+                <span>Delete Account</span>
+              </button>
+            </div>
           </div>
 
           {/* Transactional Email & Notification Alerts Card */}
@@ -6911,6 +6995,133 @@ export const OwnerDashboard: React.FC = () => {
                 </div>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Owner Account Deletion Confirmation Modal */}
+      {showOwnerDeleteModal && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in" id="owner-delete-account-overlay">
+          <div className="bg-white rounded-3xl max-w-md w-full border border-slate-100 shadow-2xl overflow-hidden p-6 space-y-6" id="owner-delete-account-modal">
+            <div className="flex items-center gap-3 text-rose-600">
+              <div className="p-2 bg-rose-50 rounded-xl">
+                <AlertTriangle className="h-5 w-5 animate-bounce" />
+              </div>
+              <h3 className="text-base sm:text-lg font-black tracking-tight text-slate-800">Confirm Owner Account Deletion</h3>
+            </div>
+            
+            <p className="text-xs text-slate-500 leading-relaxed font-medium">
+              Are you sure you want to permanently delete your owner account? This will erase your personal login credentials and administrative profile. <strong className="text-rose-600">This action cannot be undone.</strong>
+            </p>
+
+            <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 text-xs space-y-2">
+              <p className="text-slate-600 font-extrabold uppercase tracking-wide text-[10px]">Security notice:</p>
+              <ul className="list-disc pl-4 text-slate-500 space-y-1 font-medium font-sans">
+                <li>Your profile and security tokens will be removed</li>
+                <li>Audit logs will record this explicit authorization</li>
+              </ul>
+            </div>
+
+            {/* Password Re-Authentication Field */}
+            <div className="space-y-1.5 pt-1">
+              <label htmlFor="owner-delete-password-input" className="block text-xs font-bold text-slate-700">
+                Confirm your password for proper authentication <span className="text-rose-500">*</span>
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                  <Lock className="h-4 w-4" />
+                </div>
+                <input
+                  type={showOwnerDeletePassword ? 'text' : 'password'}
+                  id="owner-delete-password-input"
+                  value={ownerDeletePassword}
+                  onChange={(e) => {
+                    setOwnerDeletePassword(e.target.value);
+                    if (ownerDeleteAccountError) setOwnerDeleteAccountError('');
+                  }}
+                  placeholder="Enter current owner password"
+                  className="w-full pl-9 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition-all font-sans"
+                  disabled={isDeletingOwnerAccount}
+                  autoComplete="current-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowOwnerDeletePassword(!showOwnerDeletePassword)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                  tabIndex={-1}
+                >
+                  {showOwnerDeletePassword ? <EyeOff className="h-4 w-4 text-slate-500" /> : <Eye className="h-4 w-4 text-slate-500" />}
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-500 font-medium">
+                Mandatory verification: Your account password is required before authorization.
+              </p>
+            </div>
+
+            {/* Error Message Feedback */}
+            {ownerDeleteAccountError && (
+              <div className="p-3 bg-rose-50 border border-rose-200/80 rounded-xl text-xs text-rose-700 font-medium flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" />
+                <span>{ownerDeleteAccountError}</span>
+              </div>
+            )}
+
+            {/* Agreement Checkbox */}
+            <div className="flex items-start gap-2.5 p-1">
+              <input
+                type="checkbox"
+                id="owner-agree-delete-checkbox"
+                checked={ownerAgreeToDelete}
+                onChange={(e) => {
+                  setOwnerAgreeToDelete(e.target.checked);
+                  if (ownerDeleteAccountError) setOwnerDeleteAccountError('');
+                }}
+                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500 accent-rose-600 cursor-pointer"
+              />
+              <label htmlFor="owner-agree-delete-checkbox" className="text-xs text-slate-600 font-medium leading-tight cursor-pointer select-none">
+                I understand that this action is irreversible and I agree to permanently delete my account.
+              </label>
+            </div>
+
+            <div className="flex items-center gap-3 justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setShowOwnerDeleteModal(false)}
+                className="py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                disabled={isDeletingOwnerAccount}
+              >
+                Cancel, Keep Account
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!ownerAgreeToDelete) {
+                    setOwnerDeleteAccountError('Please check the confirmation box to proceed.');
+                    return;
+                  }
+                  if (!ownerDeletePassword.trim()) {
+                    setOwnerDeleteAccountError('Password confirmation is required to delete your account.');
+                    return;
+                  }
+                  setIsDeletingOwnerAccount(true);
+                  setOwnerDeleteAccountError('');
+                  try {
+                    const ok = await deleteAccount(ownerDeletePassword);
+                    if (ok) {
+                      setShowOwnerDeleteModal(false);
+                    }
+                  } catch (err: any) {
+                    setOwnerDeleteAccountError(err.message || 'Incorrect password. Account deletion requires valid password verification.');
+                  } finally {
+                    setIsDeletingOwnerAccount(false);
+                  }
+                }}
+                className="py-2.5 px-5 bg-rose-600 hover:bg-rose-700 disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none border border-transparent disabled:border-slate-200 text-white rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shadow-md shadow-rose-600/10"
+                disabled={isDeletingOwnerAccount || !ownerAgreeToDelete || !ownerDeletePassword.trim()}
+              >
+                {isDeletingOwnerAccount ? 'Authenticating & Deleting...' : 'Yes, Delete Account'}
+              </button>
+            </div>
           </div>
         </div>
       )}

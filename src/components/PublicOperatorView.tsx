@@ -58,6 +58,8 @@ export const PublicOperatorView: React.FC<PublicOperatorViewProps> = ({
   const [isJoiningLoyalty, setIsJoiningLoyalty] = useState(false);
   const [joinSuccessMsg, setJoinSuccessMsg] = useState<string | null>(null);
 
+  const [pointsRules, setPointsRules] = useState<any[]>([]);
+
   useEffect(() => {
     if (carWash?.membershipEnabled && currentUser) {
       const token = localStorage.getItem('cw_token');
@@ -71,6 +73,35 @@ export const PublicOperatorView: React.FC<PublicOperatorViewProps> = ({
       }
     }
   }, [carWash?.id, carWash?.membershipEnabled, currentUser]);
+
+  useEffect(() => {
+    if (carWash?.id) {
+      fetch(`/api/membership/points-rules/${carWash.id}`)
+        .then(res => res.ok ? res.json() : [])
+        .then(data => {
+          if (Array.isArray(data)) setPointsRules(data);
+        })
+        .catch(() => {});
+    }
+  }, [carWash?.id]);
+
+  const isVipCustomer = Boolean(memberPass && memberPass.status === 'ACTIVE');
+
+  const getServicePoints = (svc: any): number => {
+    if (!svc) return 10;
+    const match = pointsRules.find((r) => r.serviceId === svc.id && r.isActive !== false);
+    if (match && typeof match.pointsAwarded === 'number') {
+      return match.pointsAwarded;
+    }
+    if (svc.points !== undefined && typeof svc.points === 'number') {
+      return svc.points;
+    }
+    const nameMatch = pointsRules.find((r) => r.serviceName?.toLowerCase() === svc.name?.toLowerCase() && r.isActive !== false);
+    if (nameMatch && typeof nameMatch.pointsAwarded === 'number') {
+      return nameMatch.pointsAwarded;
+    }
+    return Math.max(10, Math.round(svc.price || 10));
+  };
 
   const handleJoinClub = async () => {
     if (!currentUser) {
@@ -721,7 +752,7 @@ export const PublicOperatorView: React.FC<PublicOperatorViewProps> = ({
                       </h3>
                     </div>
 
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <span className={`text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider ${
                         isProduct
                           ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
@@ -731,6 +762,12 @@ export const PublicOperatorView: React.FC<PublicOperatorViewProps> = ({
                       }`}>
                         {isProduct ? 'Care Product' : isAddon ? 'Add-on Treatment' : 'Wash Package'}
                       </span>
+                      {isVipCustomer && (
+                        <span className="bg-amber-50 text-amber-900 border border-amber-300/80 font-black text-[9px] sm:text-[10px] px-2 py-0.5 rounded-md inline-flex items-center gap-1 shadow-2xs">
+                          <Sparkles className="w-3 h-3 text-amber-500 fill-amber-400" />
+                          VIP: Receive +{getServicePoints(svc)} pts
+                        </span>
+                      )}
                     </div>
 
                     <div className="flex items-baseline gap-1 text-slate-900">

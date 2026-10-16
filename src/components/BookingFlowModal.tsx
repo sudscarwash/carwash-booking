@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   X, 
   ChevronRight, 
@@ -72,7 +72,7 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
   createBooking,
   onBookingSuccess
 }) => {
-  const { token, showNotification } = useApp();
+  const { token, showNotification, fetchMyMemberships, leaveCarWashMembership } = useApp();
 
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
   const [itemTabFilter, setItemTabFilter] = useState<'all' | 'service' | 'addon' | 'product'>('all');
@@ -80,9 +80,10 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
   const [expandedServiceId, setExpandedServiceId] = useState<string | null>(null);
 
   // Loyalty Membership status for this car wash (only active if enabled globally and by car wash)
-  const isLoyaltyEnabled = FEATURES.ENABLE_LOYALTY_PROGRAM && location.membershipEnabled;
+  const isLoyaltyEnabled = FEATURES.ENABLE_LOYALTY_PROGRAM && location.membershipEnabled !== false;
   const [customerMembership, setCustomerMembership] = useState<any | null>(null);
   const [isJoiningLoyalty, setIsJoiningLoyalty] = useState(false);
+  const [pointsRules, setPointsRules] = useState<any[]>([]);
 
   useEffect(() => {
     if (isLoyaltyEnabled && user && token) {
@@ -90,10 +91,50 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
         headers: { Authorization: `Bearer ${token}` }
       })
         .then(res => res.ok ? res.json() : null)
-        .then(data => setCustomerMembership(data))
+        .then(data => {
+          if (data && data.status === 'ACTIVE') {
+            setCustomerMembership(data);
+          } else {
+            setCustomerMembership(null);
+          }
+        })
         .catch(() => {});
     }
   }, [location.id, isLoyaltyEnabled, user, token]);
+
+  useEffect(() => {
+    if (location?.id) {
+      fetch(`/api/membership/points-rules/${location.id}`)
+        .then(res => res.ok ? res.json() : [])
+        .then(data => {
+          if (Array.isArray(data)) setPointsRules(data);
+        })
+        .catch(() => {});
+    }
+  }, [location?.id]);
+
+  const isVipCustomer = Boolean(customerMembership && customerMembership.status === 'ACTIVE');
+
+  const getServicePoints = (svc: any): number => {
+    if (!svc) return 10;
+    const match = pointsRules.find((r) => r.serviceId === svc.id && r.isActive !== false);
+    if (match && typeof match.pointsAwarded === 'number') {
+      return match.pointsAwarded;
+    }
+    if (svc.points !== undefined && typeof svc.points === 'number') {
+      return svc.points;
+    }
+    const nameMatch = pointsRules.find((r) => r.serviceName?.toLowerCase() === svc.name?.toLowerCase() && r.isActive !== false);
+    if (nameMatch && typeof nameMatch.pointsAwarded === 'number') {
+      return nameMatch.pointsAwarded;
+    }
+    return Math.max(10, Math.round(svc.price || 10));
+  };
+
+  const totalVipPointsEarned = useMemo(() => {
+    if (!isVipCustomer) return 0;
+    return selectedItems.reduce((sum, item) => sum + getServicePoints(item), 0);
+  }, [isVipCustomer, selectedItems, pointsRules]);
 
   const handleQuickJoinLoyalty = async () => {
     if (!token || !location.id) return;
@@ -115,9 +156,29 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
         const mem = await res.json();
         setCustomerMembership(mem);
         showNotification(`🎉 Welcome to ${location.name} Rewards Club! Member #${mem.membershipNumber}`, 'success');
+        if (fetchMyMemberships) fetchMyMemberships();
+      } else {
+        const err = await res.json().catch(() => null);
+        showNotification((err && err.error) || 'Failed to join loyalty club', 'error');
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      showNotification(e.message || 'Failed to join loyalty club', 'error');
+    } finally {
+      setIsJoiningLoyalty(false);
+    }
+  };
+
+  const handleLeaveOrUndoLoyalty = async () => {
+    if (!location.id) return;
+    setIsJoiningLoyalty(true);
+    try {
+      const ok = await leaveCarWashMembership(location.id);
+      if (ok) {
+        setCustomerMembership(null);
+        showNotification(`You have left the ${location.name} Rewards Club.`, 'info');
+        if (fetchMyMemberships) fetchMyMemberships();
+      }
     } finally {
       setIsJoiningLoyalty(false);
     }
@@ -759,9 +820,20 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="font-extrabold text-indigo-950 text-xs sm:text-sm">{location.name} Rewards Club</span>
                             {customerMembership ? (
-                              <span className="text-[9px] bg-emerald-100 text-emerald-800 font-extrabold px-1.5 py-0.5 rounded-full uppercase tracking-wider">
-                                ✓ Member #{customerMembership.membershipNumber} ({customerMembership.pointsBalance} pts)
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[9px] bg-emerald-100 text-emerald-800 font-extrabold px-1.5 py-0.5 rounded-full uppercase tracking-wider">
+                                  ✓ Member #{customerMembership.membershipNumber} ({customerMembership.pointsBalance} pts)
+                                </span>
+                                <button
+                                  type="button"
+                                  disabled={isJoiningLoyalty}
+                                  onClick={handleLeaveOrUndoLoyalty}
+                                  className="text-[10px] text-rose-600 hover:text-rose-800 underline font-bold cursor-pointer"
+                                  title="Accidentally joined? Click to opt out and leave club"
+                                >
+                                  (Opt out / Leave)
+                                </button>
+                              </div>
                             ) : (
                               <span className="text-[9px] bg-indigo-100 text-indigo-800 font-extrabold px-1.5 py-0.5 rounded-full uppercase tracking-wider">
                                 ⭐ VIP Available
@@ -928,6 +1000,14 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                                         {isProduct ? 'Out of Stock' : 'Unavailable'}
                                       </span>
                                     )}
+
+                                    {/* VIP Member Points Indicator: Only shown to VIP customers */}
+                                    {isVipCustomer && (
+                                      <span className="bg-amber-50 text-amber-900 border border-amber-300/80 font-black text-[9px] sm:text-[10px] px-2 py-0.5 rounded-md inline-flex items-center gap-1 shadow-2xs">
+                                        <Sparkles className="w-3 h-3 text-amber-500 fill-amber-400" />
+                                        VIP: Receive +{getServicePoints(svc)} pts
+                                      </span>
+                                    )}
                                   </div>
 
                                   <div className="flex items-center gap-3 mt-1 text-xs text-slate-500">
@@ -953,10 +1033,15 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                                 </div>
                               </div>
 
-                              <div className="flex flex-col items-end shrink-0 gap-2">
+                              <div className="flex flex-col items-end shrink-0 gap-1.5">
                                 <span className="font-black text-sky-600 text-base sm:text-lg">
                                   BND ${(svc.price || 0).toFixed(2)}
                                 </span>
+                                {isVipCustomer && (
+                                  <span className="text-[10px] font-extrabold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                                    +{getServicePoints(svc)} VIP pts
+                                  </span>
+                                )}
 
                                 <button
                                   type="button"
@@ -999,7 +1084,7 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                   {/* BOTTOM STICKY SELECTION SUMMARY & PROCEED BUTTON */}
                   <div className="bg-slate-900 text-white rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xl">
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs font-black uppercase text-sky-400 tracking-wider">
                           {selectedItems.length} {selectedItems.length === 1 ? 'Item' : 'Items'} Selected
                         </span>
@@ -1007,6 +1092,12 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                           <span className="text-[10px] bg-slate-800 text-slate-300 font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
                             <Clock className="w-3 h-3 text-sky-400" />
                             ~{totalSelectedDuration} min total
+                          </span>
+                        )}
+                        {isVipCustomer && totalVipPointsEarned > 0 && (
+                          <span className="text-[10px] bg-amber-400 text-amber-950 font-black px-2 py-0.5 rounded-full flex items-center gap-1 shadow-xs">
+                            <Sparkles className="w-3 h-3 text-amber-950 fill-amber-900" />
+                            VIP: Receive +{totalVipPointsEarned} pts
                           </span>
                         )}
                       </div>
@@ -1019,6 +1110,11 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                       <div className="text-right hidden sm:block">
                         <span className="text-[10px] text-slate-400 uppercase font-bold block">Total Amount</span>
                         <span className="font-black text-white text-base font-mono">BND ${totalSelectedPrice.toFixed(2)}</span>
+                        {isVipCustomer && totalVipPointsEarned > 0 && (
+                          <span className="text-[10px] text-amber-300 font-bold block">
+                            +{totalVipPointsEarned} VIP pts
+                          </span>
+                        )}
                       </div>
 
                       <button
@@ -1573,15 +1669,29 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                           </span>
                           <span className="text-slate-500 text-[11px] block">
                             {customerMembership
-                              ? 'Points will be credited automatically to your card balance upon wash completion.'
+                              ? totalVipPointsEarned > 0
+                                ? `You will receive +${totalVipPointsEarned} points credited automatically to your VIP card upon wash completion!`
+                                : 'Points will be credited automatically to your card balance upon wash completion.'
                               : 'Enroll now to collect points on this booking towards complimentary washes!'}
                           </span>
                         </div>
                       </div>
                       {customerMembership ? (
-                        <span className="bg-indigo-600 text-white font-extrabold text-[10px] px-2.5 py-1 rounded-full uppercase tracking-wider shrink-0 shadow-2xs self-start sm:self-auto">
-                          ⭐ Auto-Earn Points
-                        </span>
+                        <div className="flex items-center gap-2 self-start sm:self-auto">
+                          <span className="bg-amber-400 text-amber-950 font-black text-[10px] px-2.5 py-1 rounded-full uppercase tracking-wider shrink-0 shadow-2xs flex items-center gap-1">
+                            <Sparkles className="w-3 h-3 text-amber-950 fill-amber-900" />
+                            Receive +{totalVipPointsEarned} pts
+                          </span>
+                          <button
+                            type="button"
+                            disabled={isJoiningLoyalty}
+                            onClick={handleLeaveOrUndoLoyalty}
+                            className="text-[10px] text-rose-600 hover:text-rose-800 underline font-semibold cursor-pointer"
+                            title="Accidentally pressed join? Click to opt out and leave club"
+                          >
+                            Opt Out
+                          </button>
+                        </div>
                       ) : user ? (
                         <button
                           type="button"

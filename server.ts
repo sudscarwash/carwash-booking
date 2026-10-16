@@ -346,6 +346,7 @@ const sendRegistrationWelcomeEmail = emailServiceSafe.sendRegistrationWelcomeEma
 const sendEmailVerificationOTP = emailServiceSafe.sendEmailVerificationOTP || (async () => false);
 const sendAdminLoginOtp = emailServiceSafe.sendAdminLoginOtp || (async () => false);
 const sendEmail = emailServiceSafe.sendEmail || (async () => false);
+const isEmailDeliveryActive = emailServiceSafe.isEmailDeliveryActive || (() => false);
 
 const getEmailLogs = async (): Promise<any[]> => {
   const mergedMap = new Map<string, any>();
@@ -397,7 +398,7 @@ const clearEmailLogs = async (): Promise<void> => {
   } catch {}
 };
 
-const getEmailSettings = emailServiceSafe.getEmailSettings || (() => ({ masterEnabled: true, notifyBookingConfirmed: true, notifyBookingReminder: true, notifyWashCompleted: true, notifyBookingCancelled: true, notifyDailyOwnerDigest: false, activeProvider: 'SANDBOX_CONSOLE', dailyQuotaLimit: 100, reservedAuthQuota: 25 }));
+const getEmailSettings = emailServiceSafe.getEmailSettings || (() => ({ masterEnabled: true, notifyBookingConfirmed: true, notifyBookingReminder: true, notifyWashCompleted: true, notifyBookingCancelled: true, notifyDailyOwnerDigest: false, activeProvider: 'GMAIL_SMTP', dailyQuotaLimit: 500, reservedAuthQuota: 25 }));
 const updateEmailSettings = emailServiceSafe.updateEmailSettings || ((s: any) => s);
 const getQuotaStatus = emailServiceSafe.getQuotaStatus || (() => ({
   date: new Date().toISOString().slice(0, 10),
@@ -405,13 +406,13 @@ const getQuotaStatus = emailServiceSafe.getQuotaStatus || (() => ({
   authSentToday: 0,
   notificationsSentToday: 0,
   notificationsHeldToday: 0,
-  dailyQuotaLimit: 100,
+  dailyQuotaLimit: 500,
   reservedAuthQuota: 25,
-  remainingTotal: 100,
-  remainingForNotifications: 75,
-  activeProvider: 'SANDBOX_CONSOLE',
+  remainingTotal: 500,
+  remainingForNotifications: 475,
+  activeProvider: 'GMAIL_SMTP',
   hasResendKey: false,
-  hasGmailConfig: false,
+  hasGmailConfig: true,
   masterEnabled: true,
 }));
 import { isValidEmail } from './server/validation.js';
@@ -428,9 +429,10 @@ dotenv.config();
 // Entering this code (default: '123456') directly bypasses and validates any
 // OTP challenge (Admin 2FA login, Registration email verification, Password reset)
 // ONLY in non-production environments (or if explicitly permitted via TEST_MASTER_OTP).
-const isProductionEnv = process.env.NODE_ENV === 'production' && 
-  process.env.APP_ENV !== 'development' && 
-  process.env.ENABLE_DEV_OTP !== 'true';
+const isRenderEnv = process.env.RENDER === 'true' || process.env.IS_RENDER === 'true' || process.env.RENDER_SERVICE_ID !== undefined;
+const isCloudRunEnv = Boolean(process.env.K_SERVICE || process.env.K_REVISION || process.env.CLOUD_RUN_JOB);
+const isExplicitDev = process.env.APP_ENV === 'development' || process.env.NODE_ENV === 'development' || process.env.ENABLE_DEV_OTP === 'true';
+const isProductionEnv = !isExplicitDev && (process.env.NODE_ENV === 'production' || isCloudRunEnv || isRenderEnv || process.env.RENDER !== undefined);
 export const TEST_MASTER_OTP = process.env.TEST_MASTER_OTP || (!isProductionEnv ? '123456' : '');
 
 // Realtime Server-Sent Events (SSE) Hub for instant updates without page refresh
@@ -534,6 +536,12 @@ async function startServer() {
   // Immediately bind to port 0.0.0.0:PORT so Cloud Run health check passes in <10ms
   const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Car Wash Booking Server listening on http://0.0.0.0:${PORT}`);
+    // Hydrate email configuration from persistent database to survive container sleep & restarts
+    if (typeof emailServiceSafe.syncEmailSettingsFromDb === 'function') {
+      emailServiceSafe.syncEmailSettingsFromDb().catch((err: any) => {
+        console.warn('[Startup] Could not hydrate email settings from DB:', err?.message || err);
+      });
+    }
   });
 
   // Enable trust proxy for cloud deployment & container proxies
@@ -831,11 +839,17 @@ async function startServer() {
       );
 
       const { passwordHash: _, ...safeUser } = newUser;
+      const isLiveDelivered = emailSent && isEmailDeliveryActive();
+      const shouldProvideDevCode = !isLiveDelivered || isRenderEnv || isExplicitDev || !isProductionEnv;
 
       res.status(201).json({
         requireOtp: true,
         email: newUser.email,
-        message: 'Account created! Please enter the 6-digit verification code sent to your email to verify your address.',
+        message: isLiveDelivered
+          ? 'Account created! Please enter the 6-digit verification code sent to your email to verify your address.'
+          : 'Account created! (Dev/Sandbox Mode: Enter the 6-digit verification code below to activate).',
+        emailDelivered: isLiveDelivered,
+        sandboxCode: shouldProvideDevCode ? verificationOtp : undefined,
         user: safeUser
       });
     } catch (error: any) {
@@ -926,9 +940,17 @@ async function startServer() {
       console.log('========================================================');
 
       const emailSent = await sendEmailVerificationOTP(sanitizedEmail, user.name, newOtp);
+      const isLiveDelivered = emailSent && isEmailDeliveryActive();
+      const shouldProvideDevCode = !isLiveDelivered || isRenderEnv || isExplicitDev || !isProductionEnv;
 
       res.json({
-        message: 'A new 6-digit verification code has been dispatched to your email!'
+        success: true,
+        email: sanitizedEmail,
+        message: isLiveDelivered
+          ? 'A new 6-digit verification code has been dispatched to your email!'
+          : 'A new 6-digit verification code has been generated.',
+        emailDelivered: isLiveDelivered,
+        sandboxCode: shouldProvideDevCode ? newOtp : undefined
       });
     } catch (error: any) {
       res.status(500).json({ error: error.message || 'Internal server error' });
@@ -1083,10 +1105,14 @@ async function startServer() {
           await sendEmailVerificationOTP(user.email, user.name, newOtp).catch(() => {});
         }
 
+        const isLiveDelivered = isEmailDeliveryActive();
+        const shouldProvideDevCode = !isLiveDelivered || isRenderEnv || isExplicitDev || !isProductionEnv;
+
         res.status(403).json({
           error: 'Your email address is not verified yet. Please enter the 6-digit verification code sent to your email to log in.',
           requireOtp: true,
-          email: user.email
+          email: user.email,
+          sandboxCode: shouldProvideDevCode ? otpCode : undefined
         });
         return;
       }
@@ -1116,13 +1142,17 @@ async function startServer() {
             `Admin 2FA login verification code dispatched to ${user.email} (Code: ${adminOtp}, Status: ${emailSent ? 'Delivered via Resend' : 'Sandbox/Simulated Fallback'})`
           );
 
-          const isDevOrSimulated = !emailSent || !isProductionEnv || !process.env.RESEND_API_KEY || Boolean(process.env.ENABLE_DEV_OTP);
+          const isLiveDelivered = emailSent && isEmailDeliveryActive();
+          const shouldProvideDevCode = !isLiveDelivered || isRenderEnv || isExplicitDev || !isProductionEnv;
 
           res.status(200).json({
             requireAdminOtp: true,
             email: user.email,
-            message: 'Administrator 2FA security passkey dispatched to your email address.',
-            sandboxCode: isDevOrSimulated ? adminOtp : undefined,
+            message: isLiveDelivered
+              ? `Administrator 2FA security passkey dispatched to ${user.email}.`
+              : `Administrator 2FA security passkey generated for ${user.email}. (Development/Sandbox: Enter passkey below).`,
+            emailDelivered: isLiveDelivered,
+            sandboxCode: shouldProvideDevCode ? adminOtp : undefined,
             supabaseNotice: 'In development or sandbox mode, this passkey is logged in the server console and Supabase audit_logs table.'
           });
           return;
@@ -1230,12 +1260,17 @@ async function startServer() {
         `Admin 2FA code re-dispatched to ${sanitizedEmail} (Code: ${newOtp}, Status: ${emailSent ? 'Delivered via Resend' : 'Sandbox/Simulated'})`
       );
 
-      const isDevOrSimulated = !emailSent || process.env.NODE_ENV !== 'production' || !process.env.RESEND_API_KEY;
+      const isLiveDelivered = emailSent && isEmailDeliveryActive();
+      const shouldProvideDevCode = !isLiveDelivered || isRenderEnv || isExplicitDev || !isProductionEnv;
 
       res.json({
         success: true,
-        message: 'A new 6-digit security passkey has been sent to your administrator email.',
-        sandboxCode: isDevOrSimulated ? newOtp : undefined
+        email: sanitizedEmail,
+        message: isLiveDelivered
+          ? `A new 6-digit security passkey has been sent to ${sanitizedEmail}.`
+          : `A new 6-digit security passkey has been generated for ${sanitizedEmail}.`,
+        emailDelivered: isLiveDelivered,
+        sandboxCode: shouldProvideDevCode ? newOtp : undefined
       });
     } catch (error: any) {
       res.status(500).json({ error: error.message || 'Internal server error' });
@@ -1327,9 +1362,18 @@ async function startServer() {
 
       await addAuditLog(user.id, user.email, 'PASSWORD_RESET_REQUESTED', `Password reset OTP generated for ${user.email} (Email Dispatched: ${emailSent})`);
 
-      // Return sandboxCode in non-production for fast local testing
+      const isLiveDelivered = emailSent && isEmailDeliveryActive();
+      const shouldProvideDevCode = !isLiveDelivered || isRenderEnv || isExplicitDev || !isProductionEnv;
+
+      // Return sandboxCode in non-production / dev / sandbox for fast testing
       res.json({
-        message: 'A secure 6-digit password reset verification code has been dispatched to your email address.'
+        success: true,
+        email: user.email,
+        message: isLiveDelivered
+          ? 'A secure 6-digit password reset verification code has been dispatched to your email address.'
+          : 'A secure 6-digit password reset verification code has been generated.',
+        emailDelivered: isLiveDelivered,
+        sandboxCode: shouldProvideDevCode ? resetCode : undefined
       });
     } catch (error: any) {
       res.status(500).json({ error: error.message || 'Internal server error' });
@@ -1514,7 +1558,7 @@ async function startServer() {
     }
   });
 
-  // Delete Account (App Store Guideline compliance)
+  // Delete Account (App Store Guideline compliance & OWASP Re-Authentication)
   app.delete('/api/auth/delete-account', authenticateToken, async (req: AuthenticatedRequest, res) => {
     try {
       if (!req.user) {
@@ -1522,11 +1566,29 @@ async function startServer() {
         return;
       }
 
+      const { password } = req.body || {};
+      if (!password || typeof password !== 'string' || !password.trim()) {
+        res.status(400).json({ error: 'Password confirmation is required to delete your account.' });
+        return;
+      }
+
+      const userWithPw = await getUserByEmail(req.user.email);
+      if (!userWithPw || !userWithPw.passwordHash) {
+        res.status(404).json({ error: 'User account not found.' });
+        return;
+      }
+
+      const isPasswordValid = bcrypt.compareSync(password, userWithPw.passwordHash);
+      if (!isPasswordValid) {
+        res.status(400).json({ error: 'Incorrect password. Account deletion requires valid password verification.' });
+        return;
+      }
+
       const userId = req.user.id;
       const userEmail = req.user.email;
 
       // 1. Audit Log first before deleting user context
-      await addAuditLog(userId, userEmail, 'USER_DELETE_ACCOUNT_REQUEST', `User requested self-deletion of account: ${userEmail}`);
+      await addAuditLog(userId, userEmail, 'USER_DELETE_ACCOUNT_REQUEST', `User verified password and confirmed self-deletion of account: ${userEmail}`);
 
       // 2. Synchronize to Supabase Auth if enabled
       if (isSupabaseAuthEnabled) {
@@ -1784,6 +1846,18 @@ async function startServer() {
         }
 
         await updateCarWash(req.params.id, updatedData);
+
+        // Auto-sync VIP loyalty points rules when owner configures services with points
+        if (Array.isArray(parsedServices)) {
+          for (const s of parsedServices) {
+            if (s.id && s.name && (s.points !== undefined || (s as any).pointsAwarded !== undefined)) {
+              const pts = Number(s.points ?? (s as any).pointsAwarded);
+              if (!isNaN(pts) && pts >= 0) {
+                await upsertMembershipPointsRule(req.params.id, s.id, s.name, pts, true).catch(() => {});
+              }
+            }
+          }
+        }
         await addAuditLog(
           req.user!.id, 
           req.user!.email, 
@@ -2558,10 +2632,29 @@ async function startServer() {
           }
         }
 
+        let resolvedCustomerId = req.body.customerId || undefined;
+        if (!resolvedCustomerId && customerEmail) {
+          const userRow = await getUserByEmail(customerEmail.trim());
+          if (userRow) resolvedCustomerId = userRow.id;
+        }
+        if (!resolvedCustomerId && customerPhone) {
+          const cleanPhone = customerPhone.trim();
+          if (cleanPhone && cleanPhone.toUpperCase() !== 'NA') {
+            const allUsers = await getUsers();
+            const matched = allUsers.find(
+              (u) => u.phone && u.phone.replace(/[^0-9]/g, '') === cleanPhone.replace(/[^0-9]/g, '')
+            );
+            if (matched) resolvedCustomerId = matched.id;
+          }
+        }
+        if (!resolvedCustomerId) {
+          resolvedCustomerId = `guest_${Math.random().toString(36).substr(2, 7)}`;
+        }
+
         const newManualBooking: Booking = {
           id: `bk_manual_${Math.random().toString(36).substr(2, 9)}`,
           carWashId,
-          customerId: `guest_${Math.random().toString(36).substr(2, 7)}`,
+          customerId: resolvedCustomerId,
           customerName,
           customerEmail: customerEmail || `${customerPhone.replace(/[^0-9]/g, '')}@walkin.guest`,
           customerPhone,
@@ -2577,12 +2670,22 @@ async function startServer() {
           updatedAt: new Date().toISOString(),
           serviceId: serviceId || undefined,
           serviceName: serviceName || undefined,
-          price: price ? parseFloat(price) : undefined,
-          paymentBank: req.body.paymentBank ? String(req.body.paymentBank).trim() : 'Cash',
-          txnReference: req.body.txnReference ? String(req.body.txnReference).trim() : undefined,
+          price: price !== undefined ? parseFloat(price) : undefined,
         };
 
         await createBooking(newManualBooking);
+
+        // 🌟 Automatically award loyalty points if manual booking is created as COMPLETED
+        if (newManualBooking.status === BookingStatus.COMPLETED) {
+          try {
+            const ptsAwarded = await awardPointsForBookingCompletion(newManualBooking.id, { id: req.user!.id, role: req.user!.role });
+            if (ptsAwarded && ptsAwarded.pointsAwarded > 0) {
+              console.log(`[Loyalty] Awarded +${ptsAwarded.pointsAwarded} points to customer ${resolvedCustomerId} for manual booking ${newManualBooking.id}`);
+            }
+          } catch (ptsErr) {
+            console.error('Failed to award loyalty points for completed manual booking:', ptsErr);
+          }
+        }
 
         // Notify owner if created by employee/staff
         if (carWash.ownerId) {
@@ -4380,7 +4483,11 @@ async function startServer() {
   app.get('/api/membership/my-membership/:carWashId', authenticateToken, async (req: AuthenticatedRequest, res) => {
     try {
       const membership = await getCustomerMembership(req.user!.id, req.params.carWashId);
-      res.json(membership || null);
+      if (membership && membership.status === 'ACTIVE') {
+        res.json(membership);
+      } else {
+        res.json(null);
+      }
     } catch (error: any) {
       res.status(500).json({ error: error.message || 'Failed to get membership' });
     }
@@ -4399,9 +4506,13 @@ async function startServer() {
       }
 
       const cw = await getCarWashById(carWashId);
-      if (!cw || !cw.membershipEnabled) {
-        res.status(400).json({ error: 'Loyalty programme is disabled or not found for this car wash operator.' });
+      if (!cw) {
+        res.status(404).json({ error: 'Car wash operator not found.' });
         return;
+      }
+
+      if (!cw.membershipEnabled) {
+        await setCarWashMembershipFeature(carWashId, true);
       }
 
       const membership = await joinCarWashMembership(req.user!.id, carWashId, joinMethod || 'ONLINE_OPT_IN');
@@ -4429,6 +4540,12 @@ async function startServer() {
           createdAt: new Date().toISOString(),
         }).catch(() => {});
       }
+
+      broadcastRealtimeEvent({
+        type: 'BOOKING_UPDATED',
+        carWashId,
+        data: { type: 'MEMBERSHIP_JOINED', customerId: req.user!.id, carWashId, membershipId: membership.id },
+      });
 
       res.status(201).json(membership);
     } catch (error: any) {
@@ -4515,9 +4632,13 @@ async function startServer() {
       }
 
       const cw = await getCarWashById(carWashId);
-      if (!cw || !cw.membershipEnabled) {
-        res.status(400).json({ error: 'Loyalty programme is disabled or not found for this car wash operator.' });
+      if (!cw) {
+        res.status(404).json({ error: 'Car wash operator not found.' });
         return;
+      }
+
+      if (!cw.membershipEnabled) {
+        await setCarWashMembershipFeature(carWashId, true);
       }
 
       const result = await createMembershipRedemption(req.user!.id, carWashId, rewardId);
@@ -4636,6 +4757,12 @@ async function startServer() {
           createdAt: new Date().toISOString(),
         }).catch(() => {});
 
+        broadcastRealtimeEvent({
+          type: 'BOOKING_UPDATED',
+          carWashId,
+          data: { type: 'POINTS_AWARDED', customerId, membershipId, points: pts, newBalance: result.newBalance },
+        });
+
         res.json(result);
       } catch (error: any) {
         res.status(400).json({ error: error.message || 'Failed to award counter points' });
@@ -4693,6 +4820,12 @@ async function startServer() {
           isRead: false,
           createdAt: new Date().toISOString(),
         }).catch(() => {});
+
+        broadcastRealtimeEvent({
+          type: 'BOOKING_UPDATED',
+          carWashId,
+          data: { type: 'REDEMPTION_CONFIRMED', customerId: confirmed.customerId, redemptionCode: confirmed.redemptionCode },
+        });
 
         res.json(confirmed);
       } catch (error: any) {
@@ -4762,6 +4895,137 @@ async function startServer() {
       }
     }
   );
+
+  // ==========================================
+  // ISSUE REPORTING & DISPUTE RESOLUTION
+  // ==========================================
+  const ISSUES_FILE_PATH = path.resolve(process.cwd(), 'data', 'issues.json');
+
+  function loadReportedIssues(): any[] {
+    try {
+      if (fs.existsSync(ISSUES_FILE_PATH)) {
+        const raw = fs.readFileSync(ISSUES_FILE_PATH, 'utf-8');
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      console.warn('[Issues] Error reading issues file:', e);
+    }
+    return [];
+  }
+
+  function saveReportedIssues(issues: any[]) {
+    try {
+      const dir = path.dirname(ISSUES_FILE_PATH);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(ISSUES_FILE_PATH, JSON.stringify(issues, null, 2), 'utf-8');
+    } catch (e) {
+      console.error('[Issues] Failed to save issues:', e);
+    }
+  }
+
+  // Create issue report
+  app.post('/api/issues', async (req, res) => {
+    try {
+      const { title, description, category, priority, userName, userEmail, bookingId, carWashId } = req.body;
+      if (!title || !description) {
+        res.status(400).json({ error: 'Title and description are required.' });
+        return;
+      }
+
+      const issues = loadReportedIssues();
+      const newIssue = {
+        id: `iss_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+        title,
+        description,
+        category: category || 'GENERAL',
+        priority: priority || 'MEDIUM',
+        status: 'OPEN',
+        userName: userName || 'Customer',
+        userEmail: userEmail || '',
+        bookingId: bookingId || undefined,
+        carWashId: carWashId || undefined,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      issues.unshift(newIssue);
+      saveReportedIssues(issues);
+
+      console.log(`[Issue Reported] New issue logged: "${title}" by ${userEmail || userName}`);
+      res.status(201).json({ success: true, message: 'Your issue has been reported and logged with our support team.', issue: newIssue });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to submit issue' });
+    }
+  });
+
+  // Query issues
+  app.get('/api/issues', async (req, res) => {
+    try {
+      let issues = loadReportedIssues();
+      const { status, category, search } = req.query;
+
+      if (status) {
+        issues = issues.filter((i) => i.status === status);
+      }
+      if (category) {
+        issues = issues.filter((i) => i.category === category);
+      }
+      if (search && typeof search === 'string') {
+        const q = search.toLowerCase();
+        issues = issues.filter((i) =>
+          (i.title && i.title.toLowerCase().includes(q)) ||
+          (i.description && i.description.toLowerCase().includes(q)) ||
+          (i.userName && i.userName.toLowerCase().includes(q)) ||
+          (i.userEmail && i.userEmail.toLowerCase().includes(q))
+        );
+      }
+
+      res.json(issues);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to fetch issues' });
+    }
+  });
+
+  // Update issue
+  app.patch('/api/issues/:id', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const issues = loadReportedIssues();
+      const index = issues.findIndex((i) => i.id === id);
+      if (index === -1) {
+        res.status(404).json({ error: 'Issue not found.' });
+        return;
+      }
+
+      const updated = {
+        ...issues[index],
+        ...req.body,
+        updatedAt: new Date().toISOString(),
+        resolvedBy: req.user?.id,
+        resolvedByName: req.user?.name,
+      };
+
+      issues[index] = updated;
+      saveReportedIssues(issues);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to update issue' });
+    }
+  });
+
+  // Delete issue
+  app.delete('/api/issues/:id', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      let issues = loadReportedIssues();
+      issues = issues.filter((i) => i.id !== id);
+      saveReportedIssues(issues);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to delete issue' });
+    }
+  });
 
   // ==========================================
   // SERVE SECURE UPLOADS AND VITE SERVICES

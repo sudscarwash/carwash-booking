@@ -10,7 +10,7 @@ import {
   Briefcase as BriefcaseIcon, Calendar as CalendarIcon, Clock as ClockIcon, Check as CheckIcon, ChevronRight as ChevronRightIcon,
   CheckCircle as CheckCircleIcon, Info as InfoIcon, MapPin as MapPinIcon, CalendarDays, ChevronLeft, ChevronRight, Plus,
   Sparkles, Phone, Car, User as UserIcon, X, CheckCheck, Pencil, MessageCircle, CreditCard,
-  Search, Filter, Coins, Award, QrCode
+  Search, Filter, Coins, Award, QrCode, Mail
 } from 'lucide-react';
 import { EditBookingModal } from '../components/EditBookingModal.js';
 import { ServicePickerModal } from '../components/ServicePickerModal.js';

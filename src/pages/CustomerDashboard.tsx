@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext.js';
 import { MapSimulation } from '../components/MapSimulation.js';
 import { LocalPaymentForm } from '../components/LocalPaymentForm.js';
@@ -13,7 +13,7 @@ import { TermsAndConditionsContent } from '../components/TermsAndConditionsConte
 import { LoyaltyMembershipCustomerView } from '../components/LoyaltyMembershipCustomerView.js';
 import { FEATURES } from '../config/features.js';
 import { useModalBack, useTabBack } from '../utils/useBackHandler.js';
-import { Search, Calendar, Clock, MapPin, History, CheckCircle, AlertTriangle, X, ChevronRight, ChevronLeft, ChevronDown, Sliders, Info, Sparkles, Navigation, User, Edit3, Check, Instagram, Landmark, Lock, Key, FileText, Maximize2, Filter, Star, DoorClosed, Car, Award, Gift } from 'lucide-react';
+import { Search, Calendar, Clock, MapPin, History, CheckCircle, AlertTriangle, X, ChevronRight, ChevronLeft, ChevronDown, Sliders, Info, Sparkles, Navigation, User, Edit3, Check, Instagram, Landmark, Lock, Key, FileText, Maximize2, Filter, Star, DoorClosed, Car, Award, Gift, Eye, EyeOff } from 'lucide-react';
 import { CarWash, Booking, BookingStatus, TimeSlotItem } from '../types.js';
 import { evaluateProximity, calculateHaversineDistanceMeters } from '../utils/haversine.js';
 import { geolocationWatchService } from '../utils/geolocationWatchService.js';
@@ -42,8 +42,19 @@ export const CustomerDashboard: React.FC = () => {
     updateProfile,
     changePassword,
     deleteAccount,
-    loading
+    loading,
+    myMemberships,
+    fetchMyMemberships
   } = useApp();
+
+  // Active customer memberships & total points across all joined clubs
+  const activeMemberships = useMemo(() => {
+    return (myMemberships || []).filter((m) => m.status === 'ACTIVE');
+  }, [myMemberships]);
+  const totalRewardPoints = useMemo(() => {
+    return activeMemberships.reduce((sum, m) => sum + (m.pointsBalance || 0), 0);
+  }, [activeMemberships]);
+  const primaryMembership = activeMemberships[0] || null;
 
   const [reportingProximityBookingId, setReportingProximityBookingId] = useState<string | null>(null);
   const [watchingBookingId, setWatchingBookingId] = useState<string | null>(null);
@@ -133,6 +144,9 @@ export const CustomerDashboard: React.FC = () => {
   // Account deletion states
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [agreeToDelete, setAgreeToDelete] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [showDeletePassword, setShowDeletePassword] = useState(false);
+  const [deleteAccountError, setDeleteAccountError] = useState('');
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
 
@@ -198,10 +212,28 @@ export const CustomerDashboard: React.FC = () => {
   };
 
   const handleDeleteAccountConfirm = async () => {
+    if (!agreeToDelete) {
+      setDeleteAccountError('Please check the confirmation box to proceed.');
+      return;
+    }
+    if (!deletePassword.trim()) {
+      setDeleteAccountError('Password is required to confirm account deletion.');
+      return;
+    }
+
+    setDeleteAccountError('');
     setIsDeletingAccount(true);
-    await deleteAccount();
-    setIsDeletingAccount(false);
-    setShowDeleteModal(false);
+
+    try {
+      const ok = await deleteAccount(deletePassword);
+      if (ok) {
+        setShowDeleteModal(false);
+      }
+    } catch (err: any) {
+      setDeleteAccountError(err.message || 'Incorrect password. Account deletion requires valid password verification.');
+    } finally {
+      setIsDeletingAccount(false);
+    }
   };
 
   useEffect(() => {
@@ -856,7 +888,7 @@ export const CustomerDashboard: React.FC = () => {
               setActiveTab('rewards');
               window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
-            className={`flex flex-col items-center gap-1 py-1 px-4 rounded-xl transition-all cursor-pointer ${
+            className={`flex flex-col items-center gap-1 py-1 px-4 rounded-xl transition-all cursor-pointer relative ${
               activeTab === 'rewards'
                 ? 'text-indigo-600 font-extrabold scale-110'
                 : 'text-slate-400 font-medium hover:text-slate-600'
@@ -864,6 +896,11 @@ export const CustomerDashboard: React.FC = () => {
             id="btn-nav-rewards"
           >
             <Award className="w-5.5 h-5.5" />
+            {totalRewardPoints > 0 && (
+              <span className="absolute -top-1 -right-1 bg-amber-400 text-slate-950 font-black text-[9px] px-1.5 py-0.2 rounded-full border border-white shadow-xs">
+                {totalRewardPoints}
+              </span>
+            )}
             <span className="text-[10px]">Rewards Club</span>
           </button>
         )}
@@ -900,6 +937,66 @@ export const CustomerDashboard: React.FC = () => {
               Optimized for fast mobile booking with interactive GPS maps and dynamic schedules.
             </p>
           </div>
+
+          {/* 🌟 VIP LOYALTY CLUB STATUS & ONBOARDING BANNER */}
+          {isLoyaltyVisibleToCustomer && (
+            activeMemberships.length > 0 ? (
+              <div className="bg-gradient-to-r from-indigo-950 via-slate-900 to-indigo-900 border border-indigo-500/30 rounded-2xl p-4 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-400/20 border border-amber-400/40 flex items-center justify-center text-amber-400 shrink-0">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-black uppercase tracking-wider text-amber-300">VIP Club Active</span>
+                      <span className="text-[10px] bg-indigo-500/30 text-indigo-200 px-2 py-0.5 rounded-full border border-indigo-400/30 font-bold">
+                        {primaryMembership?.carWashName || 'Rewards'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-200 mt-0.5">
+                      You have <strong className="text-amber-300 font-black text-sm">{totalRewardPoints} loyalty points</strong>. Every completed wash adds points!
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('rewards');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className="px-4 py-2 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black text-xs rounded-xl shadow-md transition-all shrink-0 cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <Award className="w-4 h-4" />
+                  <span>View Card &amp; Rewards ({totalRewardPoints} pts) →</span>
+                </button>
+              </div>
+            ) : (
+              <div className="bg-gradient-to-r from-indigo-950 via-slate-900 to-indigo-900 border border-indigo-500/30 rounded-2xl p-4 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-400/40 flex items-center justify-center text-indigo-300 shrink-0">
+                    <Award className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-black uppercase tracking-wider text-indigo-300">Autoshine VIP Club</span>
+                    <p className="text-xs text-slate-200 mt-0.5">
+                      Join free to earn 10 points on every wash, redeemable for complimentary detailing &amp; vouchers!
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('rewards');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs rounded-xl shadow-md transition-all shrink-0 cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  <span>Join Rewards Club in 1-Click →</span>
+                </button>
+              </div>
+            )
+          )}
 
           {/* 🚗 STEP 1: Select Car Wash Place */}
           <div className="space-y-4">
@@ -1158,21 +1255,28 @@ export const CustomerDashboard: React.FC = () => {
                                   {loc.services.length} wash options
                                 </span>
                               )}
-                              {loc.membershipEnabled && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setActiveTab('rewards');
-                                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                                  }}
-                                  className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] font-extrabold px-2 py-0.5 rounded-md border border-indigo-200 flex items-center gap-1 cursor-pointer transition-colors"
-                                  title="View VIP Rewards Club & Points"
-                                >
-                                  <Award className="w-3 h-3 text-indigo-600" />
-                                  <span>VIP Rewards Club</span>
-                                </button>
-                              )}
+                              {loc.membershipEnabled && (() => {
+                                const userMembership = myMemberships.find((m) => m.carWashId === loc.id && m.status === 'ACTIVE');
+                                return (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setActiveTab('rewards');
+                                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                                    }}
+                                    className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md border flex items-center gap-1 cursor-pointer transition-colors ${
+                                      userMembership
+                                        ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300 shadow-2xs'
+                                        : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200'
+                                    }`}
+                                    title="View VIP Rewards Club & Points"
+                                  >
+                                    <Award className={`w-3 h-3 ${userMembership ? 'text-amber-600' : 'text-indigo-600'}`} />
+                                    <span>{userMembership ? `VIP Member (${userMembership.pointsBalance} pts)` : 'VIP Rewards Club'}</span>
+                                  </button>
+                                );
+                              })()}
                             </div>
                           </div>
                         </div>
@@ -1704,8 +1808,12 @@ export const CustomerDashboard: React.FC = () => {
                                     )
                                   ) : (
                                     bk.status === BookingStatus.COMPLETED ? (
-                                      FEATURES.ENABLE_REVIEWS ? (
-                                        <div className="flex items-center gap-1.5">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-lg text-xs font-black shadow-2xs">
+                                          <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                                          <span>+{bk.price ? Math.max(10, Math.round(bk.price)) : 10} Loyalty Points Earned</span>
+                                        </span>
+                                        {FEATURES.ENABLE_REVIEWS && (
                                           <button
                                             type="button"
                                             id={`btn-review-completed-${bk.id}`}
@@ -1721,17 +1829,10 @@ export const CustomerDashboard: React.FC = () => {
                                             className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-bold rounded-xl text-xs transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
                                           >
                                             <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                                            <span>Rate & Review</span>
+                                            <span>Rate &amp; Review</span>
                                           </button>
-                                          <span className="text-[11px] text-emerald-600 font-semibold italic px-1">
-                                            Order Completed
-                                          </span>
-                                        </div>
-                                      ) : (
-                                        <span className="text-[11px] text-emerald-600 font-semibold italic px-1">
-                                          Order Completed
-                                        </span>
-                                      )
+                                        )}
+                                      </div>
                                     ) : (
                                       <span className="text-[11px] text-slate-400 font-semibold italic px-1">
                                         Record Locked
@@ -2047,6 +2148,9 @@ export const CustomerDashboard: React.FC = () => {
                 </div>
                 <button
                   onClick={() => {
+                    setDeletePassword('');
+                    setShowDeletePassword(false);
+                    setDeleteAccountError('');
                     setAgreeToDelete(false);
                     setShowDeleteModal(true);
                   }}
@@ -2666,13 +2770,65 @@ export const CustomerDashboard: React.FC = () => {
               </ul>
             </div>
 
+            {/* Password Re-Authentication Field */}
+            <div className="space-y-1.5 pt-1">
+              <label htmlFor="delete-account-password" className="block text-xs font-bold text-slate-700">
+                Enter your password to confirm identity <span className="text-rose-500">*</span>
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                  <Lock className="h-4 w-4" />
+                </div>
+                <input
+                  type={showDeletePassword ? 'text' : 'password'}
+                  id="delete-account-password"
+                  value={deletePassword}
+                  onChange={(e) => {
+                    setDeletePassword(e.target.value);
+                    if (deleteAccountError) setDeleteAccountError('');
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && agreeToDelete && deletePassword.trim() && !isDeletingAccount) {
+                      handleDeleteAccountConfirm();
+                    }
+                  }}
+                  placeholder="Enter current account password"
+                  className="w-full pl-9 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition-all font-sans"
+                  disabled={isDeletingAccount}
+                  autoComplete="current-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowDeletePassword(!showDeletePassword)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                  tabIndex={-1}
+                >
+                  {showDeletePassword ? <EyeOff className="h-4 w-4 text-slate-500" /> : <Eye className="h-4 w-4 text-slate-500" />}
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-500 font-medium">
+                Proper authentication required: your password confirms authorization before irreversible deletion.
+              </p>
+            </div>
+
+            {/* Error Message Feedback */}
+            {deleteAccountError && (
+              <div className="p-3 bg-rose-50 border border-rose-200/80 rounded-xl text-xs text-rose-700 font-medium flex items-center gap-2" id="delete-account-error-msg">
+                <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" />
+                <span>{deleteAccountError}</span>
+              </div>
+            )}
+
             {/* Agreement Checkbox */}
             <div className="flex items-start gap-2.5 p-1">
               <input
                 type="checkbox"
                 id="agree-to-delete-checkbox"
                 checked={agreeToDelete}
-                onChange={(e) => setAgreeToDelete(e.target.checked)}
+                onChange={(e) => {
+                  setAgreeToDelete(e.target.checked);
+                  if (deleteAccountError) setDeleteAccountError('');
+                }}
                 className="mt-0.5 h-4 w-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500 accent-rose-600 cursor-pointer"
               />
               <label htmlFor="agree-to-delete-checkbox" className="text-xs text-slate-600 font-medium leading-tight cursor-pointer select-none">
@@ -2693,9 +2849,9 @@ export const CustomerDashboard: React.FC = () => {
                 onClick={handleDeleteAccountConfirm}
                 className="py-2.5 px-5 bg-rose-600 hover:bg-rose-700 disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none border border-transparent disabled:border-slate-200 text-white rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shadow-md shadow-rose-600/10"
                 id="confirm-delete-account-btn"
-                disabled={isDeletingAccount || !agreeToDelete}
+                disabled={isDeletingAccount || !agreeToDelete || !deletePassword.trim()}
               >
-                {isDeletingAccount ? 'Deleting...' : 'Yes, Delete Account'}
+                {isDeletingAccount ? 'Authenticating & Deleting...' : 'Yes, Delete Account'}
               </button>
             </div>
           </div>

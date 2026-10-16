@@ -204,6 +204,8 @@ function convertQueryToPg(sql: string): string {
     membershipenabled: 'membership_enabled',
     adminOtpRequired: 'admin_otp_required',
     adminotprequired: 'admin_otp_required',
+    emailSettingsJson: 'email_settings_json',
+    emailsettingsjson: 'email_settings_json',
     isFeatureEnabled: 'is_feature_enabled',
     isfeatureenabled: 'is_feature_enabled',
     isProgrammeActive: 'is_programme_active',
@@ -336,6 +338,41 @@ async function ensureDbInitialized(): Promise<void> {
   }
 }
 
+// Sanitize query parameters for SQLite (converts booleans to 1/0, undefined to null, objects to JSON, Dates to ISO)
+function sanitizeParamsForSqlite(params: any[] = []): any[] {
+  return params.map((p) => {
+    if (p === undefined || p === null) {
+      return null;
+    }
+    if (typeof p === 'boolean') {
+      return p ? 1 : 0;
+    }
+    if (typeof p === 'number') {
+      return Number.isNaN(p) ? null : p;
+    }
+    if (typeof p === 'string' || typeof p === 'bigint') {
+      return p;
+    }
+    if (Buffer.isBuffer(p)) {
+      return p;
+    }
+    if (p instanceof Date) {
+      return p.toISOString();
+    }
+    if (typeof p === 'object') {
+      try {
+        return JSON.stringify(p);
+      } catch {
+        return String(p);
+      }
+    }
+    if (typeof p === 'symbol' || typeof p === 'function') {
+      return null;
+    }
+    return String(p);
+  });
+}
+
 // Low-level query execution helpers with automatic retry for hosted PostgreSQL (Supabase/PgBouncer)
 async function runQueryAll(sql: string, params: any[] = []): Promise<any[]> {
   if (usePostgres) {
@@ -357,14 +394,14 @@ async function runQueryAll(sql: string, params: any[] = []): Promise<any[]> {
           console.error('[Postgres Query Final Error - runQueryAll]:', retryErr.message || retryErr);
           if (sqliteDb) {
             console.warn(`[Postgres Resilient Fallback]: PostgreSQL failed (${retryErr.code || retryErr.message}). Automatically serving from local SQLite engine to maintain 100% platform uptime.`);
-            return sqliteDb.prepare(sql).all(...params);
+            return sqliteDb.prepare(sql).all(...sanitizeParamsForSqlite(params));
           }
           throw retryErr;
         }
       }
     }
   }
-  return sqliteDb!.prepare(sql).all(...params);
+  return sqliteDb!.prepare(sql).all(...sanitizeParamsForSqlite(params));
 }
 
 async function runQueryOne(sql: string, params: any[] = []): Promise<any | null> {
@@ -386,14 +423,14 @@ async function runQueryOne(sql: string, params: any[] = []): Promise<any | null>
           console.error('[Postgres Query Final Error - runQueryOne]:', retryErr.message || retryErr);
           if (sqliteDb) {
             console.warn(`[Postgres Resilient Fallback]: PostgreSQL failed (${retryErr.code || retryErr.message}). Automatically serving from local SQLite engine to maintain 100% platform uptime.`);
-            return sqliteDb.prepare(sql).get(...params) || null;
+            return sqliteDb.prepare(sql).get(...sanitizeParamsForSqlite(params)) || null;
           }
           throw retryErr;
         }
       }
     }
   }
-  return sqliteDb!.prepare(sql).get(...params) || null;
+  return sqliteDb!.prepare(sql).get(...sanitizeParamsForSqlite(params)) || null;
 }
 
 async function runQueryRun(sql: string, params: any[] = []): Promise<void> {
@@ -415,7 +452,7 @@ async function runQueryRun(sql: string, params: any[] = []): Promise<void> {
           console.error('[Postgres Query Final Error - runQueryRun]:', retryErr.message || retryErr);
           if (sqliteDb) {
             console.warn(`[Postgres Resilient Fallback]: PostgreSQL failed (${retryErr.code || retryErr.message}). Executing against local SQLite engine to maintain 100% platform uptime.`);
-            sqliteDb.prepare(sql).run(...params);
+            sqliteDb.prepare(sql).run(...sanitizeParamsForSqlite(params));
             return;
           }
           throw retryErr;
@@ -423,7 +460,7 @@ async function runQueryRun(sql: string, params: any[] = []): Promise<void> {
       }
     }
   }
-  sqliteDb!.prepare(sql).run(...params);
+  sqliteDb!.prepare(sql).run(...sanitizeParamsForSqlite(params));
 }
 
 async function runExec(sql: string): Promise<void> {
@@ -568,7 +605,7 @@ const mapCarWash = (row: any): CarWash => {
     isActive: isActiveVal === 1 || isActiveVal === true || isActiveVal === '1',
     ownerNavigationEnabled: ownerNavVal !== undefined ? (ownerNavVal === 1 || ownerNavVal === true || ownerNavVal === '1') : true,
     ownerQrCodeEnabled: ownerQrVal !== undefined ? (ownerQrVal === 1 || ownerQrVal === true || ownerQrVal === '1') : false,
-    membershipEnabled: membershipVal !== undefined ? (membershipVal === 1 || membershipVal === true || membershipVal === '1') : false,
+    membershipEnabled: membershipVal !== undefined && membershipVal !== null ? (membershipVal === 1 || membershipVal === true || membershipVal === '1') : true,
     createdAt: row.createdAt ?? row.created_at ?? row.createdat,
     phone: row.phone ?? undefined,
     instagram: row.instagram ?? undefined,
@@ -700,6 +737,12 @@ async function executeSeedFirestore() {
       name TEXT NOT NULL,
       role TEXT NOT NULL,
       isActive INTEGER NOT NULL DEFAULT 1,
+      isEmailVerified INTEGER NOT NULL DEFAULT 1,
+      phone TEXT,
+      dateOfBirth TEXT,
+      gender TEXT,
+      profileImageUrl TEXT,
+      address TEXT,
       businessId TEXT,
       passwordHash TEXT NOT NULL,
       createdAt TEXT NOT NULL
@@ -782,7 +825,8 @@ async function executeSeedFirestore() {
       address TEXT NOT NULL,
       companyName TEXT,
       description TEXT,
-      updatedAt TEXT NOT NULL
+      updatedAt TEXT NOT NULL,
+      emailSettingsJson TEXT
     );
 
     CREATE TABLE IF NOT EXISTS email_logs (
@@ -943,6 +987,7 @@ async function executeSeedFirestore() {
     'ALTER TABLE users ADD COLUMN profileImageUrl TEXT',
     'ALTER TABLE users ADD COLUMN address TEXT',
     'ALTER TABLE users ADD COLUMN phone TEXT',
+    'ALTER TABLE users ADD COLUMN isEmailVerified INTEGER DEFAULT 1',
     'ALTER TABLE car_washes ADD COLUMN phone TEXT',
     'ALTER TABLE car_washes ADD COLUMN instagram TEXT',
     'ALTER TABLE car_washes ADD COLUMN logoUrl TEXT',
@@ -985,6 +1030,7 @@ async function executeSeedFirestore() {
     'ALTER TABLE platform_info ADD COLUMN companyName TEXT',
     'ALTER TABLE platform_info ADD COLUMN description TEXT',
     'ALTER TABLE platform_info ADD COLUMN adminOtpRequired INTEGER DEFAULT 1',
+    'ALTER TABLE platform_info ADD COLUMN emailSettingsJson TEXT',
     'ALTER TABLE audit_logs ADD COLUMN user_id TEXT',
     'ALTER TABLE audit_logs ADD COLUMN user_email TEXT',
   ];
@@ -1188,6 +1234,8 @@ async function executeSeedFirestore() {
     await runQueryRun("UPDATE car_washes SET paymentPolicy = 'PAY_ON_SITE'");
     await runQueryRun("UPDATE car_washes SET logoUrl = NULL WHERE logoUrl LIKE '/src/assets/%'");
     await runQueryRun("UPDATE car_washes SET slug = 'brunei-royal-auto-spa' WHERE id = 'cw_brunei' AND (slug IS NULL OR slug = '')");
+    // Ensure all car washes have membershipEnabled = 1 by default so VIP customer loyalty is active everywhere
+    await runQueryRun("UPDATE car_washes SET membershipEnabled = 1 WHERE membershipEnabled IS NULL OR membershipEnabled = 0");
 
     const defaultBruneiServices = [
       {
@@ -1517,10 +1565,12 @@ async function executeSeedFirestore() {
       try {
         await runQueryRun(`
           INSERT OR IGNORE INTO users (id, email, name, role, isActive, businessId, passwordHash, createdAt, isEmailVerified)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, true)
-        `, [u.id, u.email, u.name, u.role, u.isActive ? true : false, u.businessId || null, u.passwordHash, u.createdAt]);
-        await runQueryRun(`UPDATE users SET passwordHash = ?, isActive = true, isEmailVerified = true WHERE LOWER(email) = ?`, [u.passwordHash, u.email.toLowerCase()]);
-      } catch {}
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+        `, [u.id, u.email, u.name, u.role, u.isActive ? 1 : 0, u.businessId || null, u.passwordHash, u.createdAt]);
+        await runQueryRun(`UPDATE users SET passwordHash = ?, isActive = 1, isEmailVerified = 1 WHERE LOWER(email) = ?`, [u.passwordHash, u.email.toLowerCase()]);
+      } catch (uErr) {
+        console.warn(`[User Seed Notice for ${u.email}]:`, uErr);
+      }
     }
   } catch {}
 
@@ -1609,6 +1659,104 @@ async function executeSeedFirestore() {
       for (const r of sampleReviews) {
         await saveReview(r);
       }
+    }
+
+    // 🌟 Enable loyalty & membership feature by default for ALL car wash locations
+    await runQueryRun("UPDATE car_washes SET membershipEnabled = 1 WHERE membershipEnabled IS NULL OR membershipEnabled = 0");
+
+    // Ensure all car washes have active membership config, rules, and rewards
+    const allCws = await runQueryAll("SELECT id, name, servicesJson FROM car_washes");
+    const initTimestamp = new Date().toISOString();
+    for (const cwItem of allCws) {
+      const cwId = cwItem.id;
+      const cfgRow = await runQueryOne("SELECT id, isFeatureEnabled, isProgrammeActive FROM car_wash_memberships_config WHERE carWashId = ?", [cwId]);
+      if (!cfgRow) {
+        await runQueryRun(`
+          INSERT INTO car_wash_memberships_config (
+            id, carWashId, isFeatureEnabled, isProgrammeActive, programmeName, programmeDescription,
+            pointsExpiryMonths, allowQrJoin, allowCounterJoin, maxRedemptionsPerMemberPerDay, termsConditions, updatedAt
+          ) VALUES (?, ?, 1, 1, ?, ?, 12, 1, 1, 2, ?, ?)
+        `, [
+          `mcfg_${cwId}`,
+          cwId,
+          `${cwItem.name || 'AutoShine'} VIP Club`,
+          'Earn loyalty points on every completed wash or bay visit. Redeem points for free foam washes, wax treatments, and discounts.',
+          'Points are non-transferable and valid for 12 months. Redemptions are subject to bay slot availability.',
+          initTimestamp
+        ]);
+      } else if (cfgRow.isFeatureEnabled === 0 || cfgRow.is_feature_enabled === 0 || cfgRow.isFeatureEnabled === false) {
+        await runQueryRun("UPDATE car_wash_memberships_config SET isFeatureEnabled = 1, isProgrammeActive = 1, updatedAt = ? WHERE carWashId = ?", [initTimestamp, cwId]);
+      }
+
+      // Ensure points rules exist
+      const ruleCountRow = await runQueryOne("SELECT COUNT(*) AS count FROM membership_points_rules WHERE carWashId = ?", [cwId]) as { count: any };
+      const ruleCount = ruleCountRow ? parseInt(ruleCountRow.count, 10) : 0;
+      if (ruleCount === 0) {
+        let svcs: any[] = [];
+        try {
+          svcs = cwItem.servicesJson ? JSON.parse(cwItem.servicesJson) : [];
+        } catch {
+          svcs = [];
+        }
+        if (svcs.length > 0) {
+          for (const s of svcs) {
+            const pts = s.price ? Math.max(10, Math.round(s.price)) : 10;
+            await runQueryRun(`
+              INSERT INTO membership_points_rules (id, carWashId, serviceId, serviceName, pointsAwarded, isActive, createdAt, updatedAt)
+              VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+            `, [`mpr_${cwId}_${s.id}`, cwId, s.id, s.name, pts, initTimestamp, initTimestamp]);
+          }
+        } else {
+          await runQueryRun(`
+            INSERT INTO membership_points_rules (id, carWashId, serviceId, serviceName, pointsAwarded, isActive, createdAt, updatedAt)
+            VALUES (?, ?, 'srv_express_wash', 'Express Jet Wash & Towel Dry', 10, 1, ?, ?)
+          `, [`mpr_${cwId}_srv_express_wash`, cwId, initTimestamp, initTimestamp]);
+          await runQueryRun(`
+            INSERT INTO membership_points_rules (id, carWashId, serviceId, serviceName, pointsAwarded, isActive, createdAt, updatedAt)
+            VALUES (?, ?, 'srv_deluxe_wash', 'Deluxe Foam Wash, Wax & Tyre Shine', 25, 1, ?, ?)
+          `, [`mpr_${cwId}_srv_deluxe_wash`, cwId, initTimestamp, initTimestamp]);
+        }
+      }
+
+      // Ensure rewards exist
+      const rewardCountRow = await runQueryOne("SELECT COUNT(*) AS count FROM membership_rewards WHERE carWashId = ?", [cwId]) as { count: any };
+      const rewardCount = rewardCountRow ? parseInt(rewardCountRow.count, 10) : 0;
+      if (rewardCount === 0) {
+        const stdRewards = [
+          { id: `mrw_${cwId}_tyre_shine`, title: 'Free Tyre Shine & Rim Gloss', desc: 'Complimentary high-gloss tyre shine coat and rim cleaning.', pts: 50, type: 'FREE_ADDON', val: 5 },
+          { id: `mrw_${cwId}_voucher_5`, title: 'BND $5.00 Off Any Wash Service', desc: 'Instant BND $5 cash voucher off your next wash or detailing package.', pts: 100, type: 'DISCOUNT_FIXED', val: 5 },
+          { id: `mrw_${cwId}_free_express`, title: 'Free Express Jet Wash', desc: '100% complimentary Express Jet Wash & Microfiber Towel Hand Dry.', pts: 150, type: 'FREE_SERVICE', val: 10 },
+          { id: `mrw_${cwId}_free_deluxe`, title: 'Free Deluxe Foam Wash & Wax', desc: '100% complimentary Deluxe Foam Wash, deep interior vacuum, and wax coat.', pts: 250, type: 'FREE_SERVICE', val: 25 },
+        ];
+        for (const sr of stdRewards) {
+          await runQueryRun(`
+            INSERT INTO membership_rewards (
+              id, carWashId, title, description, pointsCost, rewardType, discountValue,
+              isActive, maxRedemptionsPerMember, maxTotalSupply, claimCount, createdAt, updatedAt
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 3, 100, 0, ?, ?)
+          `, [sr.id, cwId, sr.title, sr.desc, sr.pts, sr.type, sr.val, initTimestamp, initTimestamp]);
+        }
+      }
+    }
+
+    // 🌟 Backfill points for past completed bookings that haven't earned points yet
+    try {
+      const unrewardedBookings = await runQueryAll(`
+        SELECT b.id, b.customerId, b.carWashId, b.serviceId, b.serviceName, b.price, b.date
+        FROM bookings b
+        WHERE b.status = 'COMPLETED'
+          AND b.customerId IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM membership_points_ledger mpl
+            WHERE mpl.bookingId = b.id AND mpl.transactionType = 'EARN'
+          )
+        ORDER BY b.createdAt ASC
+      `);
+      for (const ub of unrewardedBookings) {
+        await awardPointsForBookingCompletion(ub.id, { id: 'SYSTEM', role: 'SYSTEM' });
+      }
+    } catch (backfillErr) {
+      console.warn('Retroactive points backfill skipped:', backfillErr);
     }
 
     if (dtVal > 0) {
@@ -1855,12 +2003,31 @@ export async function createUser(user: UserWithPassword): Promise<void> {
 
 export async function updateUser(id: string, data: Partial<UserWithPassword>): Promise<void> {
   try {
+    const validColumns = new Set([
+      'email', 'name', 'role', 'isActive', 'isEmailVerified',
+      'phone', 'dateOfBirth', 'gender', 'profileImageUrl',
+      'address', 'businessId', 'passwordHash', 'createdAt'
+    ]);
+
     const columnMap = new Map<string, any>();
 
     Object.entries(data).forEach(([key, val]) => {
-      if (val === undefined) return;
-      if (key === 'isActive' || key === 'isEmailVerified') {
-        columnMap.set(key, val ? true : false);
+      if (val === undefined || !validColumns.has(key)) return;
+      if (key === 'isActive' || key === 'isEmailVerified' || typeof val === 'boolean') {
+        // In SQLite and Postgres schemas for users, isActive and isEmailVerified are INTEGER (1 / 0)
+        columnMap.set(key, val ? 1 : 0);
+      } else if (typeof val === 'object' && val !== null) {
+        if (Buffer.isBuffer(val)) {
+          columnMap.set(key, val);
+        } else if ((val as any) instanceof Date) {
+          columnMap.set(key, (val as any).toISOString());
+        } else {
+          try {
+            columnMap.set(key, JSON.stringify(val));
+          } catch {
+            columnMap.set(key, String(val));
+          }
+        }
       } else {
         columnMap.set(key, val);
       }
@@ -2057,8 +2224,8 @@ export async function updateCarWash(id: string, data: Partial<CarWash>): Promise
         columnMap.set('scheduleOverridesJson', typeof val === 'string' ? val : JSON.stringify(val));
         return;
       }
-      if (key === 'isActive' || key === 'bibdEnabled' || key === 'baiduriEnabled' || key === 'ownerNavigationEnabled' || key === 'ownerQrCodeEnabled' || key === 'membershipEnabled') {
-        columnMap.set(key, val ? true : false);
+      if (key === 'isActive' || key === 'bibdEnabled' || key === 'baiduriEnabled' || key === 'ownerNavigationEnabled' || key === 'ownerQrCodeEnabled' || key === 'membershipEnabled' || typeof val === 'boolean') {
+        columnMap.set(key, val ? (usePostgres ? true : 1) : (usePostgres ? false : 0));
         return;
       }
       columnMap.set(key, val);
@@ -3083,6 +3250,36 @@ export async function updatePlatformInfo(data: Partial<PlatformInfo>): Promise<P
   }
 }
 
+// 📧 Database Persistence for Email Configuration (Guarantees settings survive container sleep / redeployments)
+export async function getDbEmailSettings(): Promise<string | null> {
+  try {
+    await ensureDbInitialized();
+    const row = await runQueryOne("SELECT emailSettingsJson FROM platform_info WHERE id = 'autoshine_info'");
+    if (row) {
+      const val = row.emailSettingsJson ?? row.email_settings_json ?? row.emailsettingsjson;
+      if (val && typeof val === 'string' && val.trim().length > 0) {
+        return val;
+      }
+    }
+  } catch (err: any) {
+    console.warn('[DB] Failed to load emailSettingsJson from platform_info:', err.message || err);
+  }
+  return null;
+}
+
+export async function saveDbEmailSettings(settingsJson: string): Promise<void> {
+  try {
+    await ensureDbInitialized();
+    const query = usePostgres
+      ? `UPDATE platform_info SET email_settings_json = ?, updated_at = ? WHERE id = 'autoshine_info'`
+      : `UPDATE platform_info SET emailSettingsJson = ?, updatedAt = ? WHERE id = 'autoshine_info'`;
+    await runQueryRun(query, [settingsJson, new Date().toISOString()]);
+    console.log('[DB] Successfully persisted email settings to database platform_info.');
+  } catch (err: any) {
+    console.warn('[DB] Failed to save emailSettingsJson to platform_info:', err.message || err);
+  }
+}
+
 export interface DatabaseDiagnostics {
   isPostgres: boolean;
   databaseType: 'supabase_postgresql' | 'sqlite';
@@ -3507,7 +3704,7 @@ export async function getCarWashMembershipConfig(carWashId: string): Promise<Car
   try {
     const cw = await runQueryOne('SELECT id, name, membershipEnabled, isActive FROM car_washes WHERE id = ?', [carWashId]);
     if (!cw) return null;
-    const isFeature = Boolean(cw.membershipEnabled === 1 || cw.membership_enabled === 1 || cw.membershipEnabled === true);
+    const isFeature = cw.membershipEnabled === undefined || cw.membershipEnabled === null || cw.membershipEnabled === 1 || cw.membership_enabled === 1 || cw.membershipEnabled === true;
     if (!isFeature) {
       return null;
     }
@@ -3614,10 +3811,8 @@ export async function getCustomerMemberships(customerId: string): Promise<Custom
     const rows = await runQueryAll(`
       SELECT cm.*, cw.name AS car_wash_name, cw.logoUrl AS car_wash_logo
       FROM customer_memberships cm
-      JOIN car_washes cw ON cm.carWashId = cw.id
+      LEFT JOIN car_washes cw ON cm.carWashId = cw.id
       WHERE cm.customerId = ?
-        AND cw.membershipEnabled = 1
-        AND (cw.isActive = 1 OR cw.isActive IS NULL)
       ORDER BY cm.joinedAt DESC
     `, [customerId]);
     return rows.map(mapCustomerMembership);
@@ -3632,10 +3827,8 @@ export async function getCustomerMembership(customerId: string, carWashId: strin
     const row = await runQueryOne(`
       SELECT cm.*, cw.name AS car_wash_name, cw.logoUrl AS car_wash_logo
       FROM customer_memberships cm
-      JOIN car_washes cw ON cm.carWashId = cw.id
+      LEFT JOIN car_washes cw ON cm.carWashId = cw.id
       WHERE cm.customerId = ? AND cm.carWashId = ?
-        AND cw.membershipEnabled = 1
-        AND (cw.isActive = 1 OR cw.isActive IS NULL)
     `, [customerId, carWashId]);
     if (!row) return null;
     return mapCustomerMembership(row);
@@ -3710,10 +3903,11 @@ export async function getCarWashMembers(carWashId: string, search?: string): Pro
 }
 
 export async function joinCarWashMembership(customerId: string, carWashId: string, joinMethod: string = 'ONLINE_OPT_IN'): Promise<CustomerMembership> {
-  // Check programme enablement
-  const config = await getCarWashMembershipConfig(carWashId);
+  // Check programme enablement - auto-enable for car wash if not yet configured
+  let config = await getCarWashMembershipConfig(carWashId);
   if (!config || !config.isFeatureEnabled) {
-    throw new Error('Membership programme is not enabled for this car wash.');
+    await setCarWashMembershipFeature(carWashId, true);
+    config = await getCarWashMembershipConfig(carWashId);
   }
 
   // Check existing membership
@@ -3785,7 +3979,23 @@ export async function cancelCustomerMembership(customerId: string, carWashId: st
 // 3. Points Rules (Linked to Services)
 export async function getMembershipPointsRules(carWashId: string): Promise<MembershipPointsRule[]> {
   try {
-    const rows = await runQueryAll('SELECT * FROM membership_points_rules WHERE carWashId = ? ORDER BY createdAt ASC', [carWashId]);
+    let rows = await runQueryAll('SELECT * FROM membership_points_rules WHERE carWashId = ? ORDER BY createdAt ASC', [carWashId]);
+    if (rows.length === 0) {
+      // Auto-seed default rules for this car wash location so every wash earns points!
+      const cw = await getCarWashById(carWashId);
+      const services = cw?.services || [];
+      if (services.length > 0) {
+        for (const s of services) {
+          const pts = s.price ? Math.max(10, Math.round(s.price)) : 10;
+          await upsertMembershipPointsRule(carWashId, s.id, s.name, pts, true).catch(() => {});
+        }
+      } else {
+        await upsertMembershipPointsRule(carWashId, 'srv_express_wash', 'Express Jet Wash & Towel Dry', 10, true).catch(() => {});
+        await upsertMembershipPointsRule(carWashId, 'srv_deluxe_wash', 'Deluxe Foam Wash, Wax & Tyre Shine', 25, true).catch(() => {});
+        await upsertMembershipPointsRule(carWashId, 'srv_ceramic_detail', 'Premium Ceramic Coating & Detailing', 50, true).catch(() => {});
+      }
+      rows = await runQueryAll('SELECT * FROM membership_points_rules WHERE carWashId = ? ORDER BY createdAt ASC', [carWashId]);
+    }
     return rows.map(mapPointsRule);
   } catch (error) {
     console.error('Database getMembershipPointsRules Error:', error);
@@ -3959,45 +4169,80 @@ export async function awardPointsForBookingCompletion(
     return null;
   }
 
-  // Check if loyalty programme is enabled and active
-  const config = await getCarWashMembershipConfig(booking.carWashId);
-  const isEnabled = config ? (config.isFeatureEnabled && config.isProgrammeActive !== false) : false;
+  // Check if loyalty programme is enabled and active - auto-enable for business if needed
+  let config = await getCarWashMembershipConfig(booking.carWashId);
+  let isEnabled = config ? (config.isFeatureEnabled && config.isProgrammeActive !== false) : false;
   if (!isEnabled) {
+    await setCarWashMembershipFeature(booking.carWashId, true);
+    config = await getCarWashMembershipConfig(booking.carWashId);
+  }
+
+  // Resolve target customer: check booking.customerId first, then fallback to email/phone lookup in users
+  let targetCustomerId = booking.customerId;
+  const isGuestOrEmpty = !targetCustomerId || targetCustomerId.startsWith('guest_');
+
+  if (isGuestOrEmpty && booking.customerEmail) {
+    const userRow = await runQueryOne('SELECT id FROM users WHERE LOWER(email) = LOWER(?)', [booking.customerEmail.trim()]);
+    if (userRow?.id) {
+      targetCustomerId = userRow.id;
+      await runQueryRun('UPDATE bookings SET customerId = ? WHERE id = ?', [targetCustomerId, booking.id]).catch(() => {});
+    }
+  }
+
+  if ((!targetCustomerId || targetCustomerId.startsWith('guest_')) && booking.customerPhone) {
+    const cleanPhone = booking.customerPhone.trim();
+    if (cleanPhone && cleanPhone.toUpperCase() !== 'NA') {
+      const userRow = await runQueryOne('SELECT id FROM users WHERE phone = ?', [cleanPhone]);
+      if (userRow?.id) {
+        targetCustomerId = userRow.id;
+        await runQueryRun('UPDATE bookings SET customerId = ? WHERE id = ?', [targetCustomerId, booking.id]).catch(() => {});
+      }
+    }
+  }
+
+  if (!targetCustomerId || targetCustomerId.startsWith('guest_')) {
+    console.log(`[Points] Cannot award points: no registered customer found for booking ${bookingId}.`);
     return null;
   }
 
   // Check if customer has active membership with this car wash; auto-enroll if booking at an enabled location
-  let membership = await getCustomerMembership(booking.customerId, booking.carWashId);
+  let membership = await getCustomerMembership(targetCustomerId, booking.carWashId);
   if (!membership || membership.status !== 'ACTIVE') {
     try {
-      membership = await joinCarWashMembership(booking.customerId, booking.carWashId, 'BOOKING_COMPLETION');
+      membership = await joinCarWashMembership(targetCustomerId, booking.carWashId, 'BOOKING_COMPLETION');
     } catch (joinErr) {
       console.warn('Could not auto-enroll member on booking completion:', joinErr);
       return null;
     }
   }
 
-  // Calculate points
-  let pointsToAward = 0;
+  // Calculate points: look up rule for service(s), or default to price or 10 points minimum
+  let pointsToAward = 10;
   if (booking.serviceId) {
     const rules = await getMembershipPointsRules(booking.carWashId);
-    const rule = rules.find((r) => r.serviceId === booking.serviceId && r.isActive);
-    if (rule) {
-      pointsToAward = rule.pointsAwarded;
+    const serviceIds = booking.serviceId.split(',').map((s) => s.trim()).filter(Boolean);
+    let matchedSum = 0;
+    for (const sid of serviceIds) {
+      const match = rules.find((r) => (r.serviceId === sid || r.serviceName.toLowerCase() === sid.toLowerCase()) && r.isActive);
+      if (match && typeof match.pointsAwarded === 'number') {
+        matchedSum += match.pointsAwarded;
+      }
+    }
+    if (matchedSum > 0) {
+      pointsToAward = matchedSum;
     } else {
-      // Default: 10 points or 1 point per $1
-      pointsToAward = booking.price ? Math.max(1, Math.round(booking.price)) : 10;
+      pointsToAward = booking.price ? Math.max(10, Math.round(booking.price)) : 10;
     }
   } else {
-    pointsToAward = booking.price ? Math.max(1, Math.round(booking.price)) : 10;
+    pointsToAward = booking.price ? Math.max(10, Math.round(booking.price)) : 10;
   }
 
-  if (pointsToAward <= 0) return null;
+  if (pointsToAward <= 0) pointsToAward = 10;
 
   const desc = `Completed wash: ${booking.serviceName || 'Car Wash Service'} (${booking.date})`;
   await recordPointsTransaction({
     membershipId: membership.id,
-    customerId: booking.customerId,
+    customerId: targetCustomerId,
     carWashId: booking.carWashId,
     points: pointsToAward,
     transactionType: 'EARN',
@@ -4058,17 +4303,34 @@ export async function getMembershipRewards(carWashId: string, activeOnly: boolea
   try {
     const cw = await runQueryOne('SELECT id, membershipEnabled, isActive FROM car_washes WHERE id = ?', [carWashId]);
     if (!cw) return [];
-    const isFeature = Boolean(cw.membershipEnabled === 1 || cw.membership_enabled === 1 || cw.membershipEnabled === true);
-    if (!isFeature) {
-      return [];
-    }
 
     let sql = 'SELECT * FROM membership_rewards WHERE carWashId = ?';
     if (activeOnly) {
       sql += ' AND isActive = 1';
     }
     sql += ' ORDER BY pointsCost ASC, createdAt DESC';
-    const rows = await runQueryAll(sql, [carWashId]);
+    let rows = await runQueryAll(sql, [carWashId]);
+
+    // If car wash has no rewards configured yet, seed standard rewards so customer can always redeem
+    if (rows.length === 0) {
+      const initTimestamp = new Date().toISOString();
+      const stdRewards = [
+        { id: `mrw_${carWashId}_tyre_shine`, title: 'Free Tyre Shine & Rim Gloss', desc: 'Complimentary high-gloss tyre shine coat and rim cleaning.', pts: 50, type: 'FREE_ADDON', val: 5 },
+        { id: `mrw_${carWashId}_voucher_5`, title: 'BND $5.00 Off Any Wash Service', desc: 'Instant BND $5 cash voucher off your next wash or detailing package.', pts: 100, type: 'DISCOUNT_FIXED', val: 5 },
+        { id: `mrw_${carWashId}_free_express`, title: 'Free Express Jet Wash', desc: '100% complimentary Express Jet Wash & Microfiber Towel Hand Dry.', pts: 150, type: 'FREE_SERVICE', val: 10 },
+        { id: `mrw_${carWashId}_free_deluxe`, title: 'Free Deluxe Foam Wash & Wax', desc: '100% complimentary Deluxe Foam Wash, deep interior vacuum, and wax coat.', pts: 250, type: 'FREE_SERVICE', val: 25 },
+      ];
+      for (const sr of stdRewards) {
+        await runQueryRun(`
+          INSERT INTO membership_rewards (
+            id, carWashId, title, description, pointsCost, rewardType, discountValue,
+            isActive, maxRedemptionsPerMember, maxTotalSupply, claimCount, createdAt, updatedAt
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 3, 100, 0, ?, ?)
+        `, [sr.id, carWashId, sr.title, sr.desc, sr.pts, sr.type, sr.val, initTimestamp, initTimestamp]);
+      }
+      rows = await runQueryAll(sql, [carWashId]);
+    }
+
     return rows.map(mapReward);
   } catch (error) {
     console.error('Database getMembershipRewards Error:', error);
