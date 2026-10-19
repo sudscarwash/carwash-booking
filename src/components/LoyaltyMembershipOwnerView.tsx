@@ -22,7 +22,8 @@ import {
   CheckCircle,
   Sparkles,
   Sliders,
-  DollarSign
+  DollarSign,
+  Trash2
 } from 'lucide-react';
 import { 
   CarWash, 
@@ -123,6 +124,15 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
   const [adjustPointsDelta, setAdjustPointsDelta] = useState<string>('');
   const [adjustReason, setAdjustReason] = useState('');
   const [isAdjusting, setIsAdjusting] = useState(false);
+
+  // In-app delete confirmation & toast notification state (prevents iframe alert/confirm issues)
+  const [rewardToDelete, setRewardToDelete] = useState<{ id: string; title: string } | null>(null);
+  const [toastBanner, setToastBanner] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const showBanner = (message: string, type: 'success' | 'error' = 'success') => {
+    setToastBanner({ message, type });
+    setTimeout(() => setToastBanner(null), 3500);
+  };
 
   // 5. Redemptions History
   const [redemptions, setRedemptions] = useState<MembershipRedemption[]>([]);
@@ -253,9 +263,10 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
       const updated = await safeJsonOrError(res, 'Failed to save programme settings');
       setConfig(updated);
       setConfigSuccess(true);
+      showBanner('Programme settings saved successfully!', 'success');
       setTimeout(() => setConfigSuccess(false), 3000);
     } catch (err: any) {
-      alert(err.message || 'Error saving settings');
+      showBanner(err.message || 'Error saving settings', 'error');
     } finally {
       setSavingConfig(false);
     }
@@ -286,9 +297,9 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
         const filtered = prev.filter((r) => r.serviceId !== service.id);
         return [...filtered, saved];
       });
-      alert(`Points rule for "${service.name}" updated to ${pts} pts!`);
+      showBanner(`Points rule for "${service.name}" updated to ${pts} pts!`, 'success');
     } catch (err: any) {
-      alert(err.message || 'Error saving rule');
+      showBanner(err.message || 'Error saving rule', 'error');
     } finally {
       setSavingRules(false);
     }
@@ -354,6 +365,7 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
       await safeJsonOrError(res, 'Failed to save reward');
 
       setShowRewardModal(false);
+      showBanner(editingReward ? 'Reward updated successfully!' : 'Reward created successfully!', 'success');
       // Refresh rewards
       const freshRes = await fetch(`/api/membership/rewards/${carWash.id}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -361,9 +373,37 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
       const freshData = await safeJsonFetch(freshRes);
       if (freshData && Array.isArray(freshData)) setRewards(freshData);
     } catch (err: any) {
-      alert(err.message || 'Error saving reward');
+      showBanner(err.message || 'Error saving reward', 'error');
     } finally {
       setSavingReward(false);
+    }
+  };
+
+  // Delete Reward
+  const [deletingRewardId, setDeletingRewardId] = useState<string | null>(null);
+
+  const confirmDeleteReward = async () => {
+    if (!rewardToDelete || !token) return;
+    const { id: rewardId, title } = rewardToDelete;
+    setDeletingRewardId(rewardId);
+    try {
+      const res = await fetch(`/api/membership/rewards/${carWash.id}/${rewardId}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      await safeJsonOrError(res, 'Failed to delete reward');
+      setRewards((prev) => prev.filter((r) => r.id !== rewardId));
+      if (showRewardModal && editingReward?.id === rewardId) {
+        setShowRewardModal(false);
+      }
+      showBanner(`Reward "${title}" was permanently deleted.`, 'success');
+    } catch (err: any) {
+      showBanner(err.message || 'Error deleting reward', 'error');
+    } finally {
+      setDeletingRewardId(null);
+      setRewardToDelete(null);
     }
   };
 
@@ -393,11 +433,11 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
 
     const delta = parseInt(adjustPointsDelta, 10);
     if (isNaN(delta) || delta === 0) {
-      alert('Points delta must be a non-zero integer.');
+      showBanner('Points delta must be a non-zero integer.', 'error');
       return;
     }
     if (!adjustReason.trim()) {
-      alert('A valid reason note is required for audit compliance.');
+      showBanner('A valid reason note is required for audit compliance.', 'error');
       return;
     }
 
@@ -423,9 +463,9 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
       setAdjustingMember(null);
       setAdjustPointsDelta('');
       setAdjustReason('');
-      alert(`Points successfully adjusted! New balance: ${updated.balanceAfter} pts.`);
+      showBanner(`Points successfully adjusted! New balance: ${updated.balanceAfter} pts.`, 'success');
     } catch (err: any) {
-      alert(err.message || 'Error adjusting points');
+      showBanner(err.message || 'Error adjusting points', 'error');
     } finally {
       setIsAdjusting(false);
     }
@@ -784,11 +824,21 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
                   </div>
                 </div>
 
-                <div className="pt-3 border-t border-slate-100 flex justify-end">
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    disabled={deletingRewardId === reward.id}
+                    onClick={() => setRewardToDelete({ id: reward.id, title: reward.title })}
+                    className="px-2.5 py-1.5 text-rose-600 hover:bg-rose-50 rounded-xl text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                    title="Delete reward"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    <span>{deletingRewardId === reward.id ? 'Deleting...' : 'Delete'}</span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => handleOpenRewardModal(reward)}
-                    className="p-2 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-xl text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                    className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors border border-slate-200/80"
                   >
                     <Edit3 className="h-3.5 w-3.5" /> Edit Reward
                   </button>
@@ -1251,24 +1301,87 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
                 <span className="font-semibold">Active &amp; Visible to Customers in Catalog</span>
               </label>
 
-              <div className="flex gap-2 pt-2">
+              <div className="flex items-center gap-2 pt-2">
+                {editingReward && (
+                  <button
+                    type="button"
+                    disabled={deletingRewardId === editingReward.id}
+                    onClick={() => setRewardToDelete({ id: editingReward.id, title: editingReward.title })}
+                    className="py-2.5 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-xl cursor-pointer flex items-center justify-center gap-1.5 transition-colors border border-rose-200 text-xs"
+                    title="Delete this reward"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    <span>Delete</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setShowRewardModal(false)}
-                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer"
+                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer text-xs"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={savingReward}
-                  className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-md cursor-pointer flex items-center justify-center gap-1.5"
+                  className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-md cursor-pointer flex items-center justify-center gap-1.5 text-xs"
                 >
                   {savingReward ? <RefreshCw className="h-4 w-4 animate-spin" /> : 'Save Reward'}
                 </button>
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* In-App Delete Confirmation Modal (Prevents browser popup issues in iframe) */}
+      {rewardToDelete && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5 text-rose-600" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-slate-900 text-sm">Delete Loyalty Reward</h3>
+                <p className="text-[11px] text-slate-500">This action cannot be undone.</p>
+              </div>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Are you sure you want to permanently delete <span className="font-bold text-slate-900">"{rewardToDelete.title}"</span> from your catalog?
+            </p>
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setRewardToDelete(null)}
+                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deletingRewardId === rewardToDelete.id}
+                onClick={confirmDeleteReward}
+                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl shadow-md text-xs cursor-pointer flex items-center justify-center gap-1.5 transition-colors"
+              >
+                {deletingRewardId === rewardToDelete.id ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating In-App Toast Banner */}
+      {toastBanner && (
+        <div
+          className={`fixed top-20 right-4 z-[9999] px-4 py-3 rounded-2xl shadow-2xl border flex items-center gap-2 text-xs font-bold animate-bounce ${
+            toastBanner.type === 'error'
+              ? 'bg-rose-900 text-rose-100 border-rose-700'
+              : 'bg-slate-900 text-emerald-300 border-slate-700'
+          }`}
+        >
+          <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{toastBanner.message}</span>
         </div>
       )}
 

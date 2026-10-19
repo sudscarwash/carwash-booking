@@ -178,7 +178,10 @@ export const OwnerDashboard: React.FC = () => {
   const ownerLocations = React.useMemo(() => {
     if (!user) return [];
     if (user.role === Role.ADMIN) return locations;
-    return locations.filter((loc) => loc.ownerId === user.id);
+    return locations.filter((loc) => 
+      loc.ownerId === user.id ||
+      ((user.id === 'usr_owner' || user.id === 'usr_owner_bn') && (loc.id === 'cw_brunei' || loc.ownerId === 'usr_owner' || loc.ownerId === 'usr_owner_bn'))
+    );
   }, [locations, user]);
 
   // Selected owned business
