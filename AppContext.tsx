@@ -1189,7 +1189,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         body: JSON.stringify(data),
       });
       showNotification('Business configuration updated successfully!', 'success');
-      fetchLocations();
+      await fetchLocations();
       return true;
     } catch (err: any) {
       showNotification(err.message, 'error');

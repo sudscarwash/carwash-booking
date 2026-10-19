@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext.js';
 import { MapSimulation } from '../components/MapSimulation.js';
 import {
@@ -30,6 +30,7 @@ import {
   QrCode,
   EyeOff,
   Award,
+  ChevronDown,
 } from 'lucide-react';
 import { CarWash, Role, Review } from '../types.js';
 import { FEATURES } from '../config/features.js';
@@ -51,7 +52,7 @@ const BRUNEI_PRESETS = [
 ];
 
 export const SpecialUserDashboard: React.FC = () => {
-  const { locations, adminUsersList, createOwnerWithBusiness, updateLocationConfig, token } = useApp();
+  const { locations, adminUsersList, createOwnerWithBusiness, updateLocationConfig, token, fetchLocations } = useApp();
 
   const [activeTab, setActiveTab] = useState<'onboard' | 'edit_existing' | 'reviews'>('onboard');
   useTabBack(activeTab, setActiveTab, 'onboard', 'specialTab');
@@ -143,8 +144,14 @@ export const SpecialUserDashboard: React.FC = () => {
   const [existLatInput, setExistLatInput] = useState<string>('4.8917');
   const [existLngInput, setExistLngInput] = useState<string>('114.9401');
   const [existMembership, setExistMembership] = useState<boolean>(true);
+  const [existOwnerQr, setExistOwnerQr] = useState<boolean>(false);
   const [existQuickQuery, setExistQuickQuery] = useState('');
   const [isUpdatingExisting, setIsUpdatingExisting] = useState(false);
+  const [operatorSearchQuery, setOperatorSearchQuery] = useState('');
+  const [operatorFilterTab, setOperatorFilterTab] = useState<'ALL' | 'LOYALTY_ACTIVE' | 'LOYALTY_OFF' | 'QR_ALLOWED' | 'QR_HIDDEN'>('ALL');
+  const [isOperatorListOpen, setIsOperatorListOpen] = useState(false);
+  const [isTogglingQr, setIsTogglingQr] = useState(false);
+  const [isTogglingLoyalty, setIsTogglingLoyalty] = useState(false);
 
   // Initialize selected existing business when switching tabs or loading locations
   useEffect(() => {
@@ -157,8 +164,20 @@ export const SpecialUserDashboard: React.FC = () => {
       setExistLatInput(first.locationLat.toString());
       setExistLngInput(first.locationLng.toString());
       setExistMembership(first.membershipEnabled === true);
+      setExistOwnerQr(first.ownerQrCodeEnabled === true);
     }
   }, [locations]);
+
+  // Keep form's existMembership & existOwnerQr synchronized whenever locations or selected business updates
+  useEffect(() => {
+    if (selectedExistingId && locations && locations.length > 0) {
+      const current = locations.find((l) => l.id === selectedExistingId);
+      if (current) {
+        setExistMembership(current.membershipEnabled === true);
+        setExistOwnerQr(current.ownerQrCodeEnabled === true);
+      }
+    }
+  }, [locations, selectedExistingId]);
 
   // Sync state when picking a different business to edit
   const handleSelectExistingBusiness = (id: string) => {
@@ -171,7 +190,9 @@ export const SpecialUserDashboard: React.FC = () => {
       setExistLatInput(found.locationLat.toString());
       setExistLngInput(found.locationLng.toString());
       setExistMembership(found.membershipEnabled === true);
+      setExistOwnerQr(found.ownerQrCodeEnabled === true);
     }
+    setIsOperatorListOpen(false);
   };
 
   // Helper to update Onboard Lat/Lng cleanly
@@ -321,6 +342,7 @@ export const SpecialUserDashboard: React.FC = () => {
       locationLng: existLng,
       ownerId: existOwnerId || undefined,
       membershipEnabled: existMembership,
+      ownerQrCodeEnabled: existOwnerQr,
     });
     setIsUpdatingExisting(false);
 
@@ -332,6 +354,61 @@ export const SpecialUserDashboard: React.FC = () => {
   };
 
   const selectedWashObj = locations.find((loc) => loc.id === selectedExistingId);
+
+  const filteredExistingLocations = useMemo(() => {
+    return locations.filter((loc) => {
+      if (operatorSearchQuery.trim()) {
+        const q = operatorSearchQuery.toLowerCase();
+        const matchName = loc.name.toLowerCase().includes(q);
+        const matchAddr = (loc.address || '').toLowerCase().includes(q);
+        const matchEmail = (loc.ownerEmail || '').toLowerCase().includes(q);
+        const matchId = loc.id.toLowerCase().includes(q);
+        if (!matchName && !matchAddr && !matchEmail && !matchId) return false;
+      }
+      if (operatorFilterTab === 'LOYALTY_ACTIVE' && !loc.membershipEnabled) return false;
+      if (operatorFilterTab === 'LOYALTY_OFF' && loc.membershipEnabled) return false;
+      if (operatorFilterTab === 'QR_ALLOWED' && !loc.ownerQrCodeEnabled) return false;
+      if (operatorFilterTab === 'QR_HIDDEN' && loc.ownerQrCodeEnabled) return false;
+      return true;
+    });
+  }, [locations, operatorSearchQuery, operatorFilterTab]);
+
+  const handleQuickToggleQr = async () => {
+    if (!selectedWashObj || isTogglingQr) return;
+    setIsTogglingQr(true);
+    const next = !selectedWashObj.ownerQrCodeEnabled;
+    try {
+      const success = await updateLocationConfig(selectedWashObj.id, {
+        ownerNavigationEnabled: true,
+        ownerQrCodeEnabled: next,
+      });
+      if (success) {
+        setExistOwnerQr(next);
+        showToast(`Owner QR Code ${next ? 'enabled' : 'hidden'} for "${selectedWashObj.name}"`);
+        if (fetchLocations) await fetchLocations();
+      }
+    } finally {
+      setIsTogglingQr(false);
+    }
+  };
+
+  const handleQuickToggleLoyalty = async () => {
+    if (!selectedWashObj || isTogglingLoyalty) return;
+    setIsTogglingLoyalty(true);
+    const next = !selectedWashObj.membershipEnabled;
+    try {
+      const success = await updateLocationConfig(selectedWashObj.id, {
+        membershipEnabled: next,
+      });
+      if (success) {
+        setExistMembership(next);
+        showToast(`Loyalty Programme ${next ? 'enabled' : 'disabled'} for "${selectedWashObj.name}"`);
+        if (fetchLocations) await fetchLocations();
+      }
+    } finally {
+      setIsTogglingLoyalty(false);
+    }
+  };
 
   return (
     <div className="space-y-6 animate-fade-in max-w-5xl mx-auto pb-12">
@@ -761,19 +838,172 @@ export const SpecialUserDashboard: React.FC = () => {
                 <p className="text-xs text-slate-500">No car wash businesses registered yet.</p>
               ) : (
                 <div className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1.5">Choose Car Wash Facility</label>
-                    <select
-                      value={selectedExistingId}
-                      onChange={(e) => handleSelectExistingBusiness(e.target.value)}
-                      className="w-full px-3.5 py-2.5 border border-slate-200 focus:border-emerald-500 rounded-2xl text-xs font-bold text-slate-800 bg-white"
-                    >
-                      {locations.map((wash) => (
-                        <option key={wash.id} value={wash.id}>
-                          {wash.name} ({wash.address || 'No Address'})
-                        </option>
-                      ))}
-                    </select>
+                  {/* Clean Operator Switcher & Scalable Browser */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700">Car Wash Facility</label>
+                        <span className="text-[10px] text-slate-500 font-medium">
+                          {selectedWashObj ? `Selected: ${selectedWashObj.name}` : `Total ${locations.length} operators`}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsOperatorListOpen((prev) => !prev)}
+                        className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200/80 rounded-xl text-[11px] font-bold flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs"
+                        id="special-toggle-operators-btn"
+                      >
+                        <span>{isOperatorListOpen ? 'Close List' : `Switch Facility (${locations.length})`}</span>
+                        <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isOperatorListOpen ? 'rotate-180' : ''}`} />
+                      </button>
+                    </div>
+
+                    {/* Expandable Operator Browser */}
+                    {isOperatorListOpen && (
+                      <div className="space-y-2.5 p-3 bg-slate-50/80 rounded-2xl border border-slate-200/80 animate-fade-in">
+                        {/* Instant Search Bar */}
+                        <div className="relative">
+                          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                          <input
+                            type="text"
+                            placeholder="Search operator name, address, owner email..."
+                            value={operatorSearchQuery}
+                            onChange={(e) => setOperatorSearchQuery(e.target.value)}
+                            className="w-full pl-9 pr-8 py-2 bg-white border border-slate-200 focus:border-emerald-500 rounded-xl text-xs font-semibold text-slate-800 outline-none transition-all"
+                            autoFocus
+                          />
+                          {operatorSearchQuery && (
+                            <button
+                              type="button"
+                              onClick={() => setOperatorSearchQuery('')}
+                              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold p-1"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Status Filter Pills */}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => setOperatorFilterTab('ALL')}
+                            className={`px-2 py-0.5 rounded-lg text-[10px] font-bold cursor-pointer transition-colors ${
+                              operatorFilterTab === 'ALL'
+                                ? 'bg-slate-800 text-white shadow-2xs'
+                                : 'bg-white hover:bg-slate-200 text-slate-600 border border-slate-200/80'
+                            }`}
+                          >
+                            All ({locations.length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setOperatorFilterTab('LOYALTY_ACTIVE')}
+                            className={`px-2 py-0.5 rounded-lg text-[10px] font-bold cursor-pointer transition-colors ${
+                              operatorFilterTab === 'LOYALTY_ACTIVE'
+                                ? 'bg-indigo-600 text-white shadow-2xs'
+                                : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/60'
+                            }`}
+                          >
+                            ⭐ Loyalty ({locations.filter((l) => l.membershipEnabled).length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setOperatorFilterTab('LOYALTY_OFF')}
+                            className={`px-2 py-0.5 rounded-lg text-[10px] font-bold cursor-pointer transition-colors ${
+                              operatorFilterTab === 'LOYALTY_OFF'
+                                ? 'bg-slate-700 text-white shadow-2xs'
+                                : 'bg-white hover:bg-slate-200 text-slate-600 border border-slate-200/80'
+                            }`}
+                          >
+                            No Loyalty ({locations.filter((l) => !l.membershipEnabled).length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setOperatorFilterTab('QR_ALLOWED')}
+                            className={`px-2 py-0.5 rounded-lg text-[10px] font-bold cursor-pointer transition-colors ${
+                              operatorFilterTab === 'QR_ALLOWED'
+                                ? 'bg-emerald-600 text-white shadow-2xs'
+                                : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/60'
+                            }`}
+                          >
+                            QR Allowed ({locations.filter((l) => l.ownerQrCodeEnabled).length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setOperatorFilterTab('QR_HIDDEN')}
+                            className={`px-2 py-0.5 rounded-lg text-[10px] font-bold cursor-pointer transition-colors ${
+                              operatorFilterTab === 'QR_HIDDEN'
+                                ? 'bg-amber-600 text-white shadow-2xs'
+                                : 'bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200/60'
+                            }`}
+                          >
+                            QR Hidden ({locations.filter((l) => !l.ownerQrCodeEnabled).length})
+                          </button>
+                        </div>
+
+                        {/* Quick Select Dropdown / Searchable List */}
+                        <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1 scrollbar-thin rounded-xl border border-slate-200/90 bg-white p-1.5">
+                          {filteredExistingLocations.length === 0 ? (
+                            <p className="text-center py-4 text-xs text-slate-400 font-medium">No operators matched your filter.</p>
+                          ) : (
+                            filteredExistingLocations.map((wash) => {
+                              const isSelected = wash.id === selectedExistingId;
+                              return (
+                                <button
+                                  key={wash.id}
+                                  type="button"
+                                  onClick={() => handleSelectExistingBusiness(wash.id)}
+                                  className={`w-full text-left p-2.5 rounded-xl transition-all cursor-pointer flex items-center justify-between gap-3 border ${
+                                    isSelected
+                                      ? 'bg-emerald-50/50 border-emerald-500 shadow-sm ring-2 ring-emerald-500/20'
+                                      : 'bg-white hover:bg-slate-50 border-slate-200/70'
+                                  }`}
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="font-extrabold text-xs text-slate-800 truncate block">
+                                        {wash.name}
+                                      </span>
+                                      {isSelected && (
+                                        <span className="bg-emerald-600 text-white text-[9px] font-black px-1.5 py-0.2 rounded-sm shrink-0">
+                                          CURRENT
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-[10px] text-slate-500 truncate mt-0.5">
+                                      {wash.address || 'No Address Set'}
+                                      {wash.ownerEmail ? ` • ${wash.ownerEmail}` : ''}
+                                    </p>
+                                    <div className="flex items-center gap-1.5 mt-1">
+                                      <span
+                                        className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
+                                          wash.membershipEnabled
+                                            ? 'bg-indigo-50 text-indigo-700 border border-indigo-200/60'
+                                            : 'bg-slate-100 text-slate-500'
+                                        }`}
+                                      >
+                                        {wash.membershipEnabled ? '⭐ Loyalty Active' : 'No Loyalty'}
+                                      </span>
+                                      <span
+                                        className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
+                                          wash.ownerQrCodeEnabled
+                                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60'
+                                            : 'bg-amber-50 text-amber-700 border border-amber-200/60'
+                                        }`}
+                                      >
+                                        {wash.ownerQrCodeEnabled ? 'QR Allowed' : 'QR Hidden'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  {isSelected && <Check className="w-4 h-4 text-emerald-600 shrink-0" />}
+                                </button>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {selectedWashObj && (
@@ -832,25 +1062,19 @@ export const SpecialUserDashboard: React.FC = () => {
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <button
                               type="button"
-                              onClick={async () => {
-                                const next = !selectedWashObj.ownerQrCodeEnabled;
-                                const success = await updateLocationConfig(selectedWashObj.id, {
-                                  ownerNavigationEnabled: true,
-                                  ownerQrCodeEnabled: next,
-                                });
-                                if (success) {
-                                  showToast(`Owner QR Code ${next ? 'enabled' : 'hidden'} for "${selectedWashObj.name}"`);
-                                }
-                              }}
+                              disabled={isTogglingQr}
+                              onClick={handleQuickToggleQr}
                               className={`px-2.5 py-1 rounded-xl text-[11px] font-extrabold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs ${
                                 selectedWashObj.ownerQrCodeEnabled
                                   ? 'bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300'
                                   : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300'
-                              }`}
+                              } disabled:opacity-50`}
                               id="special-quick-toggle-owner-qr-btn"
                               title="Toggle Owner QR code access"
                             >
-                              {selectedWashObj.ownerQrCodeEnabled ? (
+                              {isTogglingQr ? (
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                              ) : selectedWashObj.ownerQrCodeEnabled ? (
                                 <>
                                   <EyeOff className="w-3.5 h-3.5" />
                                   <span>Hide QR</span>
@@ -865,28 +1089,28 @@ export const SpecialUserDashboard: React.FC = () => {
 
                             <button
                               type="button"
-                              onClick={async () => {
-                                const next = !selectedWashObj.membershipEnabled;
-                                const success = await updateLocationConfig(selectedWashObj.id, {
-                                  membershipEnabled: next,
-                                });
-                                if (success) {
-                                  showToast(`Loyalty Programme ${next ? 'enabled' : 'disabled'} for "${selectedWashObj.name}"`);
-                                }
-                              }}
+                              disabled={isTogglingLoyalty}
+                              onClick={handleQuickToggleLoyalty}
                               className={`px-2.5 py-1 rounded-xl text-[11px] font-extrabold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs ${
                                 selectedWashObj.membershipEnabled
                                   ? 'bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200'
                                   : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200'
-                              }`}
+                              } disabled:opacity-50`}
                               id="special-quick-toggle-loyalty-btn"
                               title="Toggle Loyalty & Rewards membership for this car wash"
                             >
-                              <Award className="w-3.5 h-3.5" />
-                              <span>{selectedWashObj.membershipEnabled ? 'Disable Loyalty' : 'Enable Loyalty'}</span>
+                              {isTogglingLoyalty ? (
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <>
+                                  <Award className="w-3.5 h-3.5" />
+                                  <span>{selectedWashObj.membershipEnabled ? 'Disable Loyalty' : 'Enable Loyalty'}</span>
+                                </>
+                              )}
                             </button>
                           </div>
                         </div>
+
 
                         <button
                           type="button"
@@ -1033,6 +1257,24 @@ export const SpecialUserDashboard: React.FC = () => {
                   </select>
                   <p className="text-[10px] text-slate-400 mt-1">
                     Enabling grants the car wash owner and bay operators active loyalty points awarding and customer reward redemptions.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 mb-1 uppercase tracking-wider">
+                    Owner QR Code Access (Visible / Hidden)
+                  </label>
+                  <select
+                    value={existOwnerQr ? 'allowed' : 'hidden'}
+                    onChange={(e) => setExistOwnerQr(e.target.value === 'allowed')}
+                    className="w-full px-3 py-2 border border-slate-200 focus:border-emerald-500 rounded-xl bg-white font-medium text-xs text-slate-800 outline-none"
+                    id="special-form-owner-qr-select"
+                  >
+                    <option value="allowed">Allowed (Visible on Portal &amp; Mobile Booking Page)</option>
+                    <option value="hidden">Hidden (Restricted / Internal Operations Only)</option>
+                  </select>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Controls whether the car wash facility's public booking QR code and promotional badges are displayed to the public.
                   </p>
                 </div>
 

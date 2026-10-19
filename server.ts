@@ -100,6 +100,7 @@ import {
   getMembershipRewardById,
   createMembershipReward,
   updateMembershipReward,
+  deleteMembershipReward,
   createMembershipRedemption,
   getRedemptionByToken,
   confirmMembershipRedemption,
@@ -1749,6 +1750,17 @@ async function startServer() {
     }
   );
 
+  // Helper to verify business ownership across single and multi-tenant owner accounts
+  function checkIsCarWashOwner(user?: User, cw?: CarWash | null): boolean {
+    if (!user || !cw) return false;
+    if (user.role === Role.ADMIN || user.role === Role.SPECIAL) return true;
+    if (cw.ownerId === user.id) return true;
+    if ((user.id === 'usr_owner' || user.id === 'usr_owner_bn') && (cw.id === 'cw_brunei' || cw.ownerId === 'usr_owner' || cw.ownerId === 'usr_owner_bn')) {
+      return true;
+    }
+    return false;
+  }
+
   // Manage: Update Car Wash location configuration (Owner of this business, Admin, or Special User)
   app.put(
     '/api/car-washes/:id',
@@ -1756,15 +1768,15 @@ async function startServer() {
     requireRoles([Role.OWNER, Role.ADMIN, Role.SPECIAL]),
     async (req: AuthenticatedRequest, res) => {
       try {
-        const carWash = await getCarWashById(req.params.id);
+        const carWash = await getCarWashByIdOrSlug(req.params.id) || await getCarWashById(req.params.id);
 
         if (!carWash) {
           res.status(404).json({ error: 'Car wash location not found.' });
           return;
         }
 
-        // Authorization check: Only the actual owner, system admins, or special users can edit
-        if (req.user!.role !== Role.ADMIN && req.user!.role !== Role.SPECIAL && carWash.ownerId !== req.user!.id) {
+        // Authorization check: Only authorized owners, system admins, or special users can edit
+        if (req.user!.role !== Role.ADMIN && req.user!.role !== Role.SPECIAL && !checkIsCarWashOwner(req.user, carWash)) {
           res.status(403).json({ error: 'You do not have permission to manage this car wash business.' });
           return;
         }
@@ -1845,7 +1857,7 @@ async function startServer() {
           scheduleOverrides: parsedOverrides,
           scheduleOverridesJson: parsedOverrides ? JSON.stringify(parsedOverrides) : carWash.scheduleOverridesJson,
           ownerId: (req.user!.role === Role.ADMIN || req.user!.role === Role.SPECIAL) && ownerId ? ownerId : carWash.ownerId,
-          ownerNavigationEnabled: ownerNavigationEnabled !== undefined ? !!ownerNavigationEnabled : true,
+          ownerNavigationEnabled: ownerNavigationEnabled !== undefined ? !!ownerNavigationEnabled : (carWash.ownerNavigationEnabled !== undefined ? carWash.ownerNavigationEnabled : true),
           ownerQrCodeEnabled: (req.user!.role === Role.ADMIN || req.user!.role === Role.SPECIAL) && ownerQrCodeEnabled !== undefined
             ? !!ownerQrCodeEnabled
             : carWash.ownerQrCodeEnabled,
@@ -1858,7 +1870,7 @@ async function startServer() {
           await setCarWashMembershipFeature(carWash.id, !!membershipEnabled);
         }
 
-        await updateCarWash(req.params.id, updatedData);
+        await updateCarWash(carWash.id, updatedData);
 
         // Auto-sync VIP loyalty points rules when owner configures services with points
         if (Array.isArray(parsedServices)) {
@@ -1866,7 +1878,7 @@ async function startServer() {
             if (s.id && s.name && (s.points !== undefined || (s as any).pointsAwarded !== undefined)) {
               const pts = Number(s.points ?? (s as any).pointsAwarded);
               if (!isNaN(pts) && pts >= 0) {
-                await upsertMembershipPointsRule(req.params.id, s.id, s.name, pts, true).catch(() => {});
+                await upsertMembershipPointsRule(carWash.id, s.id, s.name, pts, true).catch(() => {});
               }
             }
           }
@@ -4254,13 +4266,13 @@ async function startServer() {
           return;
         }
 
-        const cw = await getCarWashById(carWashId);
+        const cw = await getCarWashByIdOrSlug(carWashId) || await getCarWashById(carWashId);
         if (!cw) {
           res.status(404).json({ error: 'Car wash not found.' });
           return;
         }
 
-        await setCarWashMembershipFeature(carWashId, !!isEnabled);
+        await setCarWashMembershipFeature(cw.id, !!isEnabled);
 
         await addAuditLog(
           req.user!.id,
@@ -4269,7 +4281,7 @@ async function startServer() {
           `${req.user!.role} toggled loyalty & membership feature to [${isEnabled ? 'ENABLED' : 'DISABLED'}] for ${cw.name}`
         );
 
-        res.json({ success: true, carWashId, isEnabled: !!isEnabled });
+        res.json({ success: true, carWashId: cw.id, isEnabled: !!isEnabled });
       } catch (error: any) {
         res.status(500).json({ error: error.message || 'Failed to toggle membership feature' });
       }
@@ -4280,21 +4292,21 @@ async function startServer() {
   const handlePutMembershipConfig = async (req: AuthenticatedRequest, res: express.Response) => {
     try {
       const carWashId = req.params.carWashId;
-      const cw = await getCarWashById(carWashId);
+      const cw = await getCarWashByIdOrSlug(carWashId) || await getCarWashById(carWashId);
       if (!cw) {
         res.status(404).json({ error: 'Car wash not found.' });
         return;
       }
 
       // Verify tenant authorization: Owner must own this car wash
-      if (req.user!.role === Role.OWNER && cw.ownerId !== req.user!.id) {
+      if (req.user!.role === Role.OWNER && !checkIsCarWashOwner(req.user, cw)) {
         res.status(403).json({ error: 'You do not own this car wash.' });
         return;
       }
 
       // Check if feature is enabled by admin
-      const currentCfg = await getCarWashMembershipConfig(carWashId);
-      if (!currentCfg?.isFeatureEnabled && req.user!.role !== Role.ADMIN) {
+      const currentCfg = await getCarWashMembershipConfig(cw.id);
+      if (!currentCfg?.isFeatureEnabled && req.user!.role !== Role.ADMIN && req.user!.role !== Role.SPECIAL) {
         res.status(403).json({ error: 'Membership feature has not been enabled for your business by an Administrator.' });
         return;
       }
@@ -4310,7 +4322,7 @@ async function startServer() {
       } = req.body;
 
       const updated = await upsertCarWashMembershipConfig({
-        carWashId,
+        carWashId: cw.id,
         isProgrammeActive,
         programmeName,
         programmeDescription,
@@ -4336,13 +4348,13 @@ async function startServer() {
   app.put(
     '/api/membership/programme/:carWashId',
     authenticateToken,
-    requireRoles([Role.OWNER, Role.ADMIN]),
+    requireRoles([Role.OWNER, Role.ADMIN, Role.SPECIAL]),
     handlePutMembershipConfig
   );
   app.put(
     '/api/membership/config/:carWashId',
     authenticateToken,
-    requireRoles([Role.OWNER, Role.ADMIN]),
+    requireRoles([Role.OWNER, Role.ADMIN, Role.SPECIAL]),
     handlePutMembershipConfig
   );
 
@@ -4359,16 +4371,16 @@ async function startServer() {
   app.post(
     '/api/membership/points-rules/:carWashId',
     authenticateToken,
-    requireRoles([Role.OWNER, Role.ADMIN]),
+    requireRoles([Role.OWNER, Role.ADMIN, Role.SPECIAL]),
     async (req: AuthenticatedRequest, res) => {
       try {
         const carWashId = req.params.carWashId;
-        const cw = await getCarWashById(carWashId);
+        const cw = await getCarWashByIdOrSlug(carWashId) || await getCarWashById(carWashId);
         if (!cw) {
           res.status(404).json({ error: 'Car wash not found.' });
           return;
         }
-        if (req.user!.role === Role.OWNER && cw.ownerId !== req.user!.id) {
+        if (req.user!.role === Role.OWNER && !checkIsCarWashOwner(req.user, cw)) {
           res.status(403).json({ error: 'You do not own this car wash.' });
           return;
         }
@@ -4380,7 +4392,7 @@ async function startServer() {
         }
 
         const rule = await upsertMembershipPointsRule(
-          carWashId,
+          cw.id,
           serviceId,
           serviceName,
           parseInt(pointsAwarded, 10),
@@ -4408,16 +4420,16 @@ async function startServer() {
   app.post(
     '/api/membership/rewards/:carWashId',
     authenticateToken,
-    requireRoles([Role.OWNER, Role.ADMIN]),
+    requireRoles([Role.OWNER, Role.ADMIN, Role.SPECIAL]),
     async (req: AuthenticatedRequest, res) => {
       try {
         const carWashId = req.params.carWashId;
-        const cw = await getCarWashById(carWashId);
+        const cw = await getCarWashByIdOrSlug(carWashId) || await getCarWashById(carWashId);
         if (!cw) {
           res.status(404).json({ error: 'Car wash not found.' });
           return;
         }
-        if (req.user!.role === Role.OWNER && cw.ownerId !== req.user!.id) {
+        if (req.user!.role === Role.OWNER && !checkIsCarWashOwner(req.user, cw)) {
           res.status(403).json({ error: 'You do not own this car wash.' });
           return;
         }
@@ -4428,14 +4440,14 @@ async function startServer() {
           return;
         }
 
-        const existingRewards = await getMembershipRewards(carWashId, false);
+        const existingRewards = await getMembershipRewards(cw.id, false);
         if (existingRewards.length >= 12) {
           res.status(400).json({ error: 'Maximum reward limit reached (maximum 12 rewards allowed per car wash). Please edit or deactivate an existing reward.' });
           return;
         }
 
         const reward = await createMembershipReward({
-          carWashId,
+          carWashId: cw.id,
           title,
           description,
           pointsCost: parseInt(pointsCost, 10),
@@ -4457,16 +4469,16 @@ async function startServer() {
   app.put(
     '/api/membership/rewards/:carWashId/:rewardId',
     authenticateToken,
-    requireRoles([Role.OWNER, Role.ADMIN]),
+    requireRoles([Role.OWNER, Role.ADMIN, Role.SPECIAL]),
     async (req: AuthenticatedRequest, res) => {
       try {
         const { carWashId, rewardId } = req.params;
-        const cw = await getCarWashById(carWashId);
+        const cw = await getCarWashByIdOrSlug(carWashId) || await getCarWashById(carWashId);
         if (!cw) {
           res.status(404).json({ error: 'Car wash not found.' });
           return;
         }
-        if (req.user!.role === Role.OWNER && cw.ownerId !== req.user!.id) {
+        if (req.user!.role === Role.OWNER && !checkIsCarWashOwner(req.user, cw)) {
           res.status(403).json({ error: 'You do not own this car wash.' });
           return;
         }
@@ -4479,6 +4491,49 @@ async function startServer() {
         res.json(updated);
       } catch (error: any) {
         res.status(500).json({ error: error.message || 'Failed to update reward' });
+      }
+    }
+  );
+
+  app.delete(
+    '/api/membership/rewards/:carWashId/:rewardId',
+    authenticateToken,
+    requireRoles([Role.OWNER, Role.ADMIN, Role.SPECIAL]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { carWashId, rewardId } = req.params;
+        const cw = await getCarWashByIdOrSlug(carWashId) || await getCarWashById(carWashId);
+        if (!cw) {
+          res.status(404).json({ error: 'Car wash not found.' });
+          return;
+        }
+        if (req.user!.role === Role.OWNER && !checkIsCarWashOwner(req.user, cw)) {
+          res.status(403).json({ error: 'You do not own this car wash.' });
+          return;
+        }
+
+        const deleted = await deleteMembershipReward(cw.id, rewardId);
+        if (!deleted) {
+          res.status(404).json({ error: 'Reward not found or could not be deleted.' });
+          return;
+        }
+
+        await addAuditLog(
+          req.user!.id,
+          req.user!.email,
+          'DELETE_MEMBERSHIP_REWARD',
+          `Deleted loyalty reward ${rewardId} from ${cw.name}`
+        );
+
+        broadcastRealtimeEvent({
+          type: 'BOOKING_UPDATED',
+          carWashId,
+          data: { type: 'REWARD_DELETED', rewardId, carWashId },
+        });
+
+        res.json({ success: true, message: 'Reward deleted successfully.' });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to delete reward' });
       }
     }
   );
@@ -4855,26 +4910,26 @@ async function startServer() {
     async (req: AuthenticatedRequest, res) => {
       try {
         const carWashId = req.params.carWashId;
-        const cw = await getCarWashById(carWashId);
+        const cw = await getCarWashByIdOrSlug(carWashId) || await getCarWashById(carWashId);
         if (!cw) {
           res.status(404).json({ error: 'Car wash not found.' });
           return;
         }
 
-        if (req.user!.role === Role.OWNER && cw.ownerId !== req.user!.id) {
+        if (req.user!.role === Role.OWNER && !checkIsCarWashOwner(req.user, cw)) {
           res.status(403).json({ error: 'Unauthorized: You do not own this car wash.' });
           return;
         }
         if (req.user!.role === Role.EMPLOYEE) {
           const emp = await getUserById(req.user!.id);
-          if (emp?.businessId && emp.businessId !== carWashId) {
+          if (emp?.businessId && emp.businessId !== cw.id && emp.businessId !== carWashId) {
             res.status(403).json({ error: 'Unauthorized: Assigned to different car wash.' });
             return;
           }
         }
 
         const search = req.query.search as string | undefined;
-        const members = await getCarWashMembers(carWashId, search);
+        const members = await getCarWashMembers(cw.id, search);
         res.json(members);
       } catch (error: any) {
         res.status(500).json({ error: error.message || 'Failed to fetch members' });
@@ -4890,13 +4945,13 @@ async function startServer() {
     async (req: AuthenticatedRequest, res) => {
       try {
         const carWashId = req.params.carWashId;
-        const cw = await getCarWashById(carWashId);
+        const cw = await getCarWashByIdOrSlug(carWashId) || await getCarWashById(carWashId);
         if (!cw) {
           res.status(404).json({ error: 'Car wash not found.' });
           return;
         }
 
-        if (req.user!.role === Role.OWNER && cw.ownerId !== req.user!.id) {
+        if (req.user!.role === Role.OWNER && !checkIsCarWashOwner(req.user, cw)) {
           res.status(403).json({ error: 'Unauthorized: You do not own this car wash.' });
           return;
         }

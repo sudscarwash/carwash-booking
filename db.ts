@@ -51,33 +51,537 @@ function parseHostAndPort(url?: string | null): { host: string | null; port: str
 const dataDir = path.resolve(process.cwd(), 'data');
 const dbPath = path.resolve(dataDir, 'carwash.db');
 
-try {
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
-  }
-  sqliteDb = new Database(dbPath);
+const SQLITE_BOOTSTRAP_DDL = `
+  CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    email TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
+    role TEXT NOT NULL,
+    isActive INTEGER NOT NULL DEFAULT 1,
+    isEmailVerified INTEGER NOT NULL DEFAULT 1,
+    phone TEXT,
+    dateOfBirth TEXT,
+    gender TEXT,
+    profileImageUrl TEXT,
+    address TEXT,
+    businessId TEXT,
+    passwordHash TEXT NOT NULL,
+    createdAt TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS car_washes (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    locationLat REAL NOT NULL,
+    locationLng REAL NOT NULL,
+    address TEXT NOT NULL,
+    openingHours TEXT NOT NULL,
+    slotDuration INTEGER NOT NULL,
+    capacityPerSlot INTEGER NOT NULL,
+    ownerId TEXT NOT NULL,
+    isActive INTEGER NOT NULL DEFAULT 1,
+    createdAt TEXT NOT NULL,
+    membershipEnabled INTEGER DEFAULT 1,
+    slug TEXT,
+    phone TEXT,
+    instagram TEXT,
+    logoUrl TEXT,
+    bibdAccountName TEXT,
+    bibdAccountNo TEXT,
+    bibdEnabled INTEGER DEFAULT 0,
+    baiduriAccountName TEXT,
+    baiduriAccountNo TEXT,
+    baiduriEnabled INTEGER DEFAULT 0,
+    bibdQrImageUrl TEXT,
+    baiduriQrImageUrl TEXT,
+    customPaymentsJson TEXT,
+    paymentPolicy TEXT DEFAULT 'PAY_ON_SITE',
+    servicesJson TEXT,
+    scheduleOverridesJson TEXT,
+    ownerNavigationEnabled INTEGER DEFAULT 1,
+    ownerQrCodeEnabled INTEGER DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS bookings (
+    id TEXT PRIMARY KEY,
+    carWashId TEXT NOT NULL,
+    customerId TEXT NOT NULL,
+    customerName TEXT NOT NULL,
+    customerEmail TEXT NOT NULL,
+    date TEXT NOT NULL,
+    timeSlot TEXT NOT NULL,
+    status TEXT NOT NULL,
+    notes TEXT,
+    employeeId TEXT,
+    createdAt TEXT NOT NULL,
+    updatedAt TEXT NOT NULL,
+    paymentBank TEXT,
+    txnReference TEXT UNIQUE,
+    receiptFilename TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS audit_logs (
+    id TEXT PRIMARY KEY,
+    userId TEXT NOT NULL,
+    userEmail TEXT NOT NULL,
+    action TEXT NOT NULL,
+    details TEXT NOT NULL,
+    timestamp TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS password_resets (
+    email TEXT PRIMARY KEY,
+    token TEXT NOT NULL,
+    expiresAt TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS map_presets (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    lat REAL NOT NULL,
+    lng REAL NOT NULL,
+    country TEXT NOT NULL,
+    isCustom INTEGER NOT NULL DEFAULT 0,
+    createdAt TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS notifications (
+    id TEXT PRIMARY KEY,
+    userId TEXT NOT NULL,
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    type TEXT NOT NULL,
+    bookingId TEXT,
+    isRead INTEGER NOT NULL DEFAULT 0,
+    createdAt TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS platform_info (
+    id TEXT PRIMARY KEY,
+    email TEXT NOT NULL,
+    contact TEXT NOT NULL,
+    whatsapp TEXT NOT NULL,
+    address TEXT NOT NULL,
+    companyName TEXT,
+    description TEXT,
+    updatedAt TEXT NOT NULL,
+    emailSettingsJson TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS email_logs (
+    id TEXT PRIMARY KEY,
+    recipient TEXT NOT NULL,
+    sender TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    html TEXT,
+    status TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    errorDetails TEXT,
+    timestamp TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS reviews (
+    id TEXT PRIMARY KEY,
+    carWashId TEXT NOT NULL,
+    customerId TEXT NOT NULL,
+    customerName TEXT NOT NULL,
+    customerEmail TEXT,
+    rating INTEGER NOT NULL,
+    comment TEXT NOT NULL,
+    createdAt TEXT NOT NULL,
+    updatedAt TEXT NOT NULL,
+    ownerReply TEXT,
+    ownerReplyAt TEXT,
+    ownerReplyBy TEXT,
+    bookingId TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS car_wash_memberships_config (
+    id TEXT PRIMARY KEY,
+    carWashId TEXT UNIQUE NOT NULL,
+    isFeatureEnabled INTEGER NOT NULL DEFAULT 0,
+    isProgrammeActive INTEGER NOT NULL DEFAULT 0,
+    programmeName TEXT NOT NULL,
+    programmeDescription TEXT,
+    pointsExpiryMonths INTEGER NOT NULL DEFAULT 0,
+    allowQrJoin INTEGER NOT NULL DEFAULT 1,
+    allowCounterJoin INTEGER NOT NULL DEFAULT 1,
+    termsConditions TEXT,
+    updatedAt TEXT NOT NULL,
+    maxRedemptionsPerMemberPerDay INTEGER DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS customer_memberships (
+    id TEXT PRIMARY KEY,
+    customerId TEXT NOT NULL,
+    carWashId TEXT NOT NULL,
+    membershipNumber TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'ACTIVE',
+    pointsBalance INTEGER NOT NULL DEFAULT 0,
+    joinedAt TEXT NOT NULL,
+    joinMethod TEXT NOT NULL DEFAULT 'ONLINE_OPT_IN',
+    consentGiven INTEGER NOT NULL DEFAULT 1,
+    consentTimestamp TEXT NOT NULL,
+    termsVersion TEXT DEFAULT '1.0',
+    qrToken TEXT UNIQUE NOT NULL,
+    createdAt TEXT NOT NULL,
+    updatedAt TEXT NOT NULL,
+    UNIQUE(customerId, carWashId)
+  );
+
+  CREATE TABLE IF NOT EXISTS membership_points_rules (
+    id TEXT PRIMARY KEY,
+    carWashId TEXT NOT NULL,
+    serviceId TEXT NOT NULL,
+    serviceName TEXT NOT NULL,
+    pointsAwarded INTEGER NOT NULL DEFAULT 10,
+    isActive INTEGER NOT NULL DEFAULT 1,
+    createdAt TEXT NOT NULL,
+    updatedAt TEXT NOT NULL,
+    UNIQUE(carWashId, serviceId)
+  );
+
+  CREATE TABLE IF NOT EXISTS membership_points_ledger (
+    id TEXT PRIMARY KEY,
+    membershipId TEXT NOT NULL,
+    customerId TEXT NOT NULL,
+    carWashId TEXT NOT NULL,
+    points INTEGER NOT NULL,
+    transactionType TEXT NOT NULL,
+    description TEXT NOT NULL,
+    bookingId TEXT,
+    redemptionId TEXT,
+    performedById TEXT NOT NULL,
+    performedByRole TEXT NOT NULL,
+    createdAt TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS membership_rewards (
+    id TEXT PRIMARY KEY,
+    carWashId TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    pointsCost INTEGER NOT NULL,
+    rewardType TEXT NOT NULL DEFAULT 'FREE_SERVICE',
+    discountValue REAL DEFAULT 0,
+    eligibleServiceId TEXT,
+    maxRedemptionsPerMember INTEGER DEFAULT 0,
+    maxTotalSupply INTEGER DEFAULT 0,
+    claimCount INTEGER DEFAULT 0,
+    isActive INTEGER NOT NULL DEFAULT 1,
+    createdAt TEXT NOT NULL,
+    updatedAt TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS membership_redemptions (
+    id TEXT PRIMARY KEY,
+    redemptionCode TEXT UNIQUE NOT NULL,
+    membershipId TEXT NOT NULL,
+    customerId TEXT NOT NULL,
+    carWashId TEXT NOT NULL,
+    rewardId TEXT NOT NULL,
+    rewardTitle TEXT NOT NULL,
+    pointsSpent INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'PENDING',
+    redemptionToken TEXT UNIQUE NOT NULL,
+    expiresAt TEXT,
+    redeemedAt TEXT,
+    redeemedByStaffId TEXT,
+    createdAt TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_bookings_carwash ON bookings(carWashId);
+  CREATE INDEX IF NOT EXISTS idx_bookings_customer ON bookings(customerId);
+  CREATE INDEX IF NOT EXISTS idx_bookings_date ON bookings(date);
+  CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status);
+  CREATE INDEX IF NOT EXISTS idx_memberships_carwash ON customer_memberships(carWashId);
+  CREATE INDEX IF NOT EXISTS idx_memberships_customer ON customer_memberships(customerId);
+  CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+`;
+
+function ensureSqliteTablesSync(db: Database.Database): void {
   try {
-    sqliteDb.pragma('journal_mode = WAL');
-    sqliteDb.pragma('synchronous = NORMAL');
-    sqliteDb.pragma('auto_vacuum = INCREMENTAL');
-    // Checkpoint WAL immediately on boot to truncate stale WAL logs
-    sqliteDb.pragma('wal_checkpoint(TRUNCATE)');
-  } catch (pErr) {
-    console.warn('[SQLite Pragma Warning]:', pErr);
+    db.exec(SQLITE_BOOTSTRAP_DDL);
+  } catch (err: any) {
+    console.error('[SQLite Schema Init Error]:', err?.message || err);
   }
 
-  // Periodic WAL truncation & vacuuming every 30 minutes to minimize storage footprint
-  setInterval(() => {
-    try {
-      if (sqliteDb && sqliteDb.open) {
-        sqliteDb.pragma('wal_checkpoint(TRUNCATE)');
-        sqliteDb.pragma('incremental_vacuum(100)');
-      }
-    } catch {}
-  }, 30 * 60 * 1000).unref();
-} catch (sqliteInitErr) {
-  console.warn('[SQLite Init Fallback Notice]:', sqliteInitErr);
+  // Ensure all columns exist in car_washes
+  const carWashCols = [
+    'membershipEnabled INTEGER DEFAULT 1',
+    'slug TEXT',
+    'phone TEXT',
+    'instagram TEXT',
+    'logoUrl TEXT',
+    'bibdAccountName TEXT',
+    'bibdAccountNo TEXT',
+    'bibdEnabled INTEGER DEFAULT 0',
+    'baiduriAccountName TEXT',
+    'baiduriAccountNo TEXT',
+    'baiduriEnabled INTEGER DEFAULT 0',
+    'bibdQrImageUrl TEXT',
+    'baiduriQrImageUrl TEXT',
+    'customPaymentsJson TEXT',
+    'paymentPolicy TEXT DEFAULT "PAY_ON_SITE"',
+    'servicesJson TEXT',
+    'scheduleOverridesJson TEXT',
+    'ownerNavigationEnabled INTEGER DEFAULT 1',
+    'ownerQrCodeEnabled INTEGER DEFAULT 0',
+  ];
+  for (const col of carWashCols) {
+    try { db.exec(`ALTER TABLE car_washes ADD COLUMN ${col}`); } catch {}
+  }
+
+  // Ensure all columns exist in membership_rewards
+  const rewardCols = [
+    'maxRedemptionsPerMember INTEGER DEFAULT 0',
+    'maxTotalSupply INTEGER DEFAULT 0',
+    'claimCount INTEGER DEFAULT 0',
+    'eligibleServiceId TEXT',
+    'discountValue REAL DEFAULT 0',
+    'rewardType TEXT DEFAULT "FREE_SERVICE"',
+    'isActive INTEGER NOT NULL DEFAULT 1',
+  ];
+  for (const col of rewardCols) {
+    try { db.exec(`ALTER TABLE membership_rewards ADD COLUMN ${col}`); } catch {}
+  }
+
+  // Ensure all columns exist in car_wash_memberships_config
+  const configCols = [
+    'maxRedemptionsPerMemberPerDay INTEGER DEFAULT 0',
+    'termsConditions TEXT',
+  ];
+  for (const col of configCols) {
+    try { db.exec(`ALTER TABLE car_wash_memberships_config ADD COLUMN ${col}`); } catch {}
+  }
+
+  // Ensure all columns exist in users
+  const userCols = [
+    'isActive INTEGER DEFAULT 1',
+    'isEmailVerified INTEGER DEFAULT 1',
+    'businessId TEXT',
+    'dateOfBirth TEXT',
+    'gender TEXT',
+    'profileImageUrl TEXT',
+    'address TEXT',
+    'phone TEXT',
+  ];
+  for (const col of userCols) {
+    try { db.exec(`ALTER TABLE users ADD COLUMN ${col}`); } catch {}
+  }
+
+  // Ensure all columns exist in bookings
+  const bookingCols = [
+    'customerPhone TEXT',
+    'vehicleInfo TEXT',
+    'bookingSource TEXT DEFAULT "ONLINE"',
+    'createdByRole TEXT',
+    'createdByEmail TEXT',
+    'serviceId TEXT',
+    'serviceName TEXT',
+    'paymentBank TEXT',
+    'txnReference TEXT',
+    'receiptFilename TEXT',
+  ];
+  for (const col of bookingCols) {
+    try { db.exec(`ALTER TABLE bookings ADD COLUMN ${col}`); } catch {}
+  }
 }
+
+function seedCoreSqliteDataSync(db: Database.Database): void {
+  try {
+    const insertUser = db.prepare(`
+      INSERT OR IGNORE INTO users (id, email, name, role, isActive, isEmailVerified, passwordHash, createdAt)
+      VALUES (?, ?, ?, ?, 1, 1, ?, ?)
+    `);
+    const now = new Date().toISOString();
+    const hash = bcrypt.hashSync('owner123', 10);
+    const adminHash = bcrypt.hashSync('admin123', 10);
+    const passHash = bcrypt.hashSync('password123', 10);
+
+    insertUser.run('usr_admin', 'admin@carwash.com', 'System Admin', 'ADMIN', adminHash, now);
+    insertUser.run('usr_admin_bn', 'admin@autoshinebn.com', 'System Admin (BN)', 'ADMIN', adminHash, now);
+    insertUser.run('usr_owner', 'owner@carwash.com', 'Jack Owner', 'OWNER', hash, now);
+    insertUser.run('usr_owner_bn', 'owner@autoshinebn.com', 'Jack Owner (BN)', 'OWNER', hash, now);
+    insertUser.run('usr_special', 'special@carwash.com', 'Sarah Special', 'SPECIAL', passHash, now);
+    insertUser.run('usr_special_bn', 'special@autoshinebn.com', 'Sarah Special (BN)', 'SPECIAL', passHash, now);
+    insertUser.run('usr_customer', 'customer@carwash.com', 'Alex Customer', 'CUSTOMER', passHash, now);
+    insertUser.run('usr_customer_bn', 'customer@autoshinebn.com', 'Alex Customer (BN)', 'CUSTOMER', passHash, now);
+    insertUser.run('usr_employee', 'employee@carwash.com', 'Sam Employee', 'EMPLOYEE', passHash, now);
+    insertUser.run('usr_employee_bn', 'employee@autoshinebn.com', 'Sam Employee (BN)', 'EMPLOYEE', passHash, now);
+
+    const insertCw = db.prepare(`
+      INSERT OR IGNORE INTO car_washes (
+        id, name, slug, description, locationLat, locationLng, address, openingHours,
+        slotDuration, capacityPerSlot, ownerId, isActive, membershipEnabled, ownerNavigationEnabled, ownerQrCodeEnabled, paymentPolicy, createdAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 1, 1, 'PAY_ON_SITE', ?)
+    `);
+
+    insertCw.run(
+      'cw_brunei',
+      'Brunei Royal Auto Spa',
+      'brunei-royal-auto-spa',
+      'Premium hand wash, ceramic shield protection, and interior luxury detailing in Bandar Seri Begawan.',
+      4.8917,
+      114.9401,
+      'Simpang 123, Jalan Gadong, Bandar Seri Begawan BE3919, Brunei',
+      JSON.stringify(DEFAULT_SCHEDULE),
+      30,
+      2,
+      'usr_owner_bn',
+      now
+    );
+
+    insertCw.run(
+      'cw_downtown',
+      'Downtown Crystal Clean',
+      'downtown-crystal-clean',
+      'State-of-the-art automated tunnels, hand-waxing bays, and precision detailing.',
+      37.7749,
+      -122.4194,
+      '455 Market St, San Francisco, CA 94105',
+      JSON.stringify(DEFAULT_SCHEDULE),
+      30,
+      2,
+      'usr_owner',
+      now
+    );
+
+    // Seed default rewards for cw_brunei
+    const insertReward = db.prepare(`
+      INSERT OR IGNORE INTO membership_rewards (
+        id, carWashId, title, description, pointsCost, rewardType, discountValue,
+        maxRedemptionsPerMember, maxTotalSupply, claimCount, isActive, createdAt, updatedAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, ?)
+    `);
+
+    insertReward.run('mrw_cw_brunei_tyre_shine', 'cw_brunei', 'Free Tyre Shine & Rim Gloss', 'Complimentary high-gloss tyre shine coat and rim cleaning.', 50, 'FREE_ADDON', 5, 3, 100, now, now);
+    insertReward.run('mrw_cw_brunei_voucher_5', 'cw_brunei', 'BND $5.00 Off Any Wash Service', 'Instant BND $5 cash voucher off your next wash or detailing package.', 100, 'DISCOUNT_FIXED', 5, 5, 100, now, now);
+    insertReward.run('mrw_cw_brunei_free_express', 'cw_brunei', 'Free Express Jet Wash', '100% complimentary Express Jet Wash & Microfiber Towel Hand Dry.', 150, 'FREE_SERVICE', 10, 2, 100, now, now);
+    insertReward.run('mrw_cw_brunei_free_deluxe', 'cw_brunei', 'Free Deluxe Foam Wash & Wax', '100% complimentary Deluxe Foam Wash, deep interior vacuum, and wax coat.', 250, 'FREE_SERVICE', 25, 1, 100, now, now);
+
+    // Seed config for cw_brunei
+    db.prepare(`
+      INSERT OR IGNORE INTO car_wash_memberships_config (
+        id, carWashId, isFeatureEnabled, isProgrammeActive, programmeName, programmeDescription,
+        pointsExpiryMonths, allowQrJoin, allowCounterJoin, maxRedemptionsPerMemberPerDay, termsConditions, updatedAt
+      ) VALUES ('mcfg_cw_brunei', 'cw_brunei', 1, 1, 'Brunei Royal VIP Club', 'Earn loyalty points on every wash.', 12, 1, 1, 2, 'Points valid for 12 months.', ?)
+    `).run(now);
+  } catch (seedErr) {
+    console.error('[seedCoreSqliteDataSync Error]:', seedErr);
+  }
+}
+
+export function recoverCorruptedSqliteDbSync(): Database.Database | null {
+  try {
+    console.warn('[SQLite Recovery] Attempting self-healing of corrupt SQLite database...');
+    if (sqliteDb && sqliteDb.open) {
+      try { sqliteDb.close(); } catch {}
+    }
+    sqliteDb = null;
+    const timestamp = Date.now();
+    if (fs.existsSync(dbPath)) {
+      try { fs.renameSync(dbPath, `${dbPath}.corrupt.${timestamp}`); } catch {}
+    }
+    if (fs.existsSync(`${dbPath}-wal`)) {
+      try { fs.unlinkSync(`${dbPath}-wal`); } catch {
+        try { fs.renameSync(`${dbPath}-wal`, `${dbPath}-wal.corrupt.${timestamp}`); } catch {}
+      }
+    }
+    if (fs.existsSync(`${dbPath}-shm`)) {
+      try { fs.unlinkSync(`${dbPath}-shm`); } catch {
+        try { fs.renameSync(`${dbPath}-shm`, `${dbPath}-shm.corrupt.${timestamp}`); } catch {}
+      }
+    }
+
+    const freshDb = new Database(dbPath);
+    try {
+      freshDb.pragma('journal_mode = DELETE');
+      freshDb.pragma('synchronous = NORMAL');
+      freshDb.pragma('busy_timeout = 10000');
+    } catch {}
+
+    ensureSqliteTablesSync(freshDb);
+    seedCoreSqliteDataSync(freshDb);
+    sqliteDb = freshDb;
+
+    console.log('[SQLite Recovery] Brand new SQLite database initialized, tables bootstrapped, and core data seeded synchronously.');
+    executeSeedFirestore().catch((e) => console.error('[SQLite Recovery Seed Error]:', e));
+    return freshDb;
+  } catch (recErr) {
+    console.error('[SQLite Recovery Fatal Error]:', recErr);
+    return null;
+  }
+}
+
+export function recoverCorruptedSqliteDb(): void {
+  recoverCorruptedSqliteDbSync();
+}
+
+function initSqliteDb(): Database.Database | null {
+  try {
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    const db = new Database(dbPath);
+    try {
+      db.pragma('wal_checkpoint(TRUNCATE)');
+      db.pragma('journal_mode = DELETE');
+      db.pragma('synchronous = NORMAL');
+      db.pragma('busy_timeout = 10000');
+    } catch (pErr) {
+      console.warn('[SQLite Pragma Warning]:', pErr);
+    }
+
+    // Proactive integrity verification to intercept malformed disk images before queries run
+    try {
+      const check = db.pragma('quick_check') as any;
+      const isOk = Array.isArray(check) && (check[0]?.quick_check === 'ok' || check[0] === 'ok');
+      if (!isOk) {
+        throw new Error('SQLite quick_check failed: ' + JSON.stringify(check));
+      }
+    } catch (checkErr: any) {
+      console.error('[SQLite Corruption on Startup]:', checkErr?.message || checkErr);
+      try { db.close(); } catch {}
+      return recoverCorruptedSqliteDbSync();
+    }
+
+    ensureSqliteTablesSync(db);
+    return db;
+  } catch (sqliteInitErr: any) {
+    console.error('[SQLite Init Error]:', sqliteInitErr?.message || sqliteInitErr);
+    if (sqliteInitErr && (sqliteInitErr.code === 'SQLITE_CORRUPT' || String(sqliteInitErr.message || '').includes('database disk image is malformed'))) {
+      return recoverCorruptedSqliteDbSync();
+    }
+    return null;
+  }
+}
+
+sqliteDb = initSqliteDb();
+
+// Clean up database files gracefully on process termination
+const cleanupSqliteOnExit = () => {
+  if (sqliteDb && sqliteDb.open) {
+    try {
+      sqliteDb.close();
+    } catch {}
+  }
+};
+process.on('SIGTERM', cleanupSqliteOnExit);
+process.on('SIGINT', cleanupSqliteOnExit);
+
+// Periodic cleanup to keep SQLite healthy
+const sqliteMaintenanceInterval = setInterval(() => {
+  if (sqliteDb && sqliteDb.open) {
+    try {
+      sqliteDb.pragma('optimize');
+    } catch {}
+  }
+}, 10 * 60 * 1000);
+sqliteMaintenanceInterval.unref();
+if (sqliteMaintenanceInterval.unref) sqliteMaintenanceInterval.unref();
+
 
 // Initialize PostgreSQL Pool with robust Supabase PgBouncer / Direct parameters
 function createPgPool(connectionString: string): pg.Pool {
@@ -284,6 +788,14 @@ function convertQueryToPg(sql: string): string {
     redeemedat: 'redeemed_at',
     redeemedByStaffId: 'redeemed_by_staff_id',
     redeemedbystaffid: 'redeemed_by_staff_id',
+    maxRedemptionsPerMember: 'max_redemptions_per_member',
+    maxredemptionspermember: 'max_redemptions_per_member',
+    maxTotalSupply: 'max_total_supply',
+    maxtotalsupply: 'max_total_supply',
+    claimCount: 'claim_count',
+    claimcount: 'claim_count',
+    maxRedemptionsPerMemberPerDay: 'max_redemptions_per_member_per_day',
+    maxredemptionspermemberperday: 'max_redemptions_per_member_per_day',
   };
 
   // Perform whole-word replacements to avoid matching partial strings
@@ -387,14 +899,43 @@ function sanitizeParamsForSqlite(params: any[] = []): any[] {
   });
 }
 
+// Sanitize query parameters for PostgreSQL (converts undefined and NaN to null, stringifies objects if needed)
+function sanitizeParamsForPostgres(params: any[] = []): any[] {
+  return params.map((p) => {
+    if (p === undefined) return null;
+    if (typeof p === 'number' && Number.isNaN(p)) return null;
+    return p;
+  });
+}
+
+function safeSqliteOperation<T>(operation: () => T): T {
+  try {
+    if (!sqliteDb || !sqliteDb.open) {
+      sqliteDb = initSqliteDb();
+    }
+    return operation();
+  } catch (err: any) {
+    if (err && (err.code === 'SQLITE_CORRUPT' || String(err.message || '').includes('database disk image is malformed'))) {
+      console.error('[SQLITE_CORRUPT DETECTED] Automatically recovering malformed SQLite database and retrying...');
+      recoverCorruptedSqliteDb();
+      if (!sqliteDb || !sqliteDb.open) {
+        sqliteDb = initSqliteDb();
+      }
+      return operation();
+    }
+    throw err;
+  }
+}
+
 // Low-level query execution helpers with automatic retry for hosted PostgreSQL (Supabase/PgBouncer)
 async function runQueryAll(sql: string, params: any[] = []): Promise<any[]> {
   if (usePostgres) {
     await ensureDbInitialized();
     if (pgPool) {
+      const sanitizedPgParams = sanitizeParamsForPostgres(params);
       try {
         const pgSql = convertQueryToPg(sql);
-        const res = await pgPool.query(pgSql, params);
+        const res = await pgPool.query(pgSql, sanitizedPgParams);
         return res.rows;
       } catch (pgErr: any) {
         console.warn('[Postgres Query Warning - runQueryAll]:', pgErr.message || pgErr);
@@ -402,71 +943,73 @@ async function runQueryAll(sql: string, params: any[] = []): Promise<any[]> {
         await new Promise((resolve) => setTimeout(resolve, 400));
         try {
           const pgSql = convertQueryToPg(sql);
-          const res = await pgPool.query(pgSql, params);
+          const res = await pgPool.query(pgSql, sanitizedPgParams);
           return res.rows;
         } catch (retryErr: any) {
           console.error('[Postgres Query Final Error - runQueryAll]:', retryErr.message || retryErr);
           if (sqliteDb) {
             console.warn(`[Postgres Resilient Fallback]: PostgreSQL failed (${retryErr.code || retryErr.message}). Automatically serving from local SQLite engine to maintain 100% platform uptime.`);
-            return sqliteDb.prepare(sql).all(...sanitizeParamsForSqlite(params));
+            return safeSqliteOperation(() => sqliteDb!.prepare(sql).all(...sanitizeParamsForSqlite(params)));
           }
           throw retryErr;
         }
       }
     }
   }
-  return sqliteDb!.prepare(sql).all(...sanitizeParamsForSqlite(params));
+  return safeSqliteOperation(() => sqliteDb!.prepare(sql).all(...sanitizeParamsForSqlite(params)));
 }
 
 async function runQueryOne(sql: string, params: any[] = []): Promise<any | null> {
   if (usePostgres) {
     await ensureDbInitialized();
     if (pgPool) {
+      const sanitizedPgParams = sanitizeParamsForPostgres(params);
       try {
         const pgSql = convertQueryToPg(sql);
-        const res = await pgPool.query(pgSql, params);
+        const res = await pgPool.query(pgSql, sanitizedPgParams);
         return res.rows[0] || null;
       } catch (pgErr: any) {
         console.warn('[Postgres Query Warning - runQueryOne]:', pgErr.message || pgErr);
         await new Promise((resolve) => setTimeout(resolve, 400));
         try {
           const pgSql = convertQueryToPg(sql);
-          const res = await pgPool.query(pgSql, params);
+          const res = await pgPool.query(pgSql, sanitizedPgParams);
           return res.rows[0] || null;
         } catch (retryErr: any) {
           console.error('[Postgres Query Final Error - runQueryOne]:', retryErr.message || retryErr);
           if (sqliteDb) {
             console.warn(`[Postgres Resilient Fallback]: PostgreSQL failed (${retryErr.code || retryErr.message}). Automatically serving from local SQLite engine to maintain 100% platform uptime.`);
-            return sqliteDb.prepare(sql).get(...sanitizeParamsForSqlite(params)) || null;
+            return safeSqliteOperation(() => sqliteDb!.prepare(sql).get(...sanitizeParamsForSqlite(params)) || null);
           }
           throw retryErr;
         }
       }
     }
   }
-  return sqliteDb!.prepare(sql).get(...sanitizeParamsForSqlite(params)) || null;
+  return safeSqliteOperation(() => sqliteDb!.prepare(sql).get(...sanitizeParamsForSqlite(params)) || null);
 }
 
 async function runQueryRun(sql: string, params: any[] = []): Promise<void> {
   if (usePostgres) {
     await ensureDbInitialized();
     if (pgPool) {
+      const sanitizedPgParams = sanitizeParamsForPostgres(params);
       try {
         const pgSql = convertQueryToPg(sql);
-        await pgPool.query(pgSql, params);
+        await pgPool.query(pgSql, sanitizedPgParams);
         return;
       } catch (pgErr: any) {
         console.warn('[Postgres Query Warning - runQueryRun]:', pgErr.message || pgErr);
         await new Promise((resolve) => setTimeout(resolve, 400));
         try {
           const pgSql = convertQueryToPg(sql);
-          await pgPool.query(pgSql, params);
+          await pgPool.query(pgSql, sanitizedPgParams);
           return;
         } catch (retryErr: any) {
           console.error('[Postgres Query Final Error - runQueryRun]:', retryErr.message || retryErr);
           if (sqliteDb) {
             console.warn(`[Postgres Resilient Fallback]: PostgreSQL failed (${retryErr.code || retryErr.message}). Executing against local SQLite engine to maintain 100% platform uptime.`);
-            sqliteDb.prepare(sql).run(...sanitizeParamsForSqlite(params));
+            safeSqliteOperation(() => sqliteDb!.prepare(sql).run(...sanitizeParamsForSqlite(params)));
             return;
           }
           throw retryErr;
@@ -474,7 +1017,7 @@ async function runQueryRun(sql: string, params: any[] = []): Promise<void> {
       }
     }
   }
-  sqliteDb!.prepare(sql).run(...sanitizeParamsForSqlite(params));
+  safeSqliteOperation(() => sqliteDb!.prepare(sql).run(...sanitizeParamsForSqlite(params)));
 }
 
 async function runExec(sql: string): Promise<void> {
@@ -495,7 +1038,7 @@ async function runExec(sql: string): Promise<void> {
       }
     }
   } else {
-    sqliteDb!.exec(sql);
+    safeSqliteOperation(() => sqliteDb!.exec(sql));
   }
 }
 
@@ -616,6 +1159,7 @@ const mapCarWash = (row: any): CarWash => {
     slotDuration: Number(row.slotDuration ?? row.slot_duration ?? row.slotduration),
     capacityPerSlot: Number(row.capacityPerSlot ?? row.capacity_per_slot ?? row.capacityperslot),
     ownerId: row.ownerId ?? row.owner_id ?? row.ownerid,
+    ownerEmail: row.ownerEmail ?? row.owner_email ?? row.owneremail ?? undefined,
     isActive: isActiveVal === 1 || isActiveVal === true || isActiveVal === '1',
     ownerNavigationEnabled: ownerNavVal !== undefined ? (ownerNavVal === 1 || ownerNavVal === true || ownerNavVal === '1') : true,
     ownerQrCodeEnabled: ownerQrVal !== undefined ? (ownerQrVal === 1 || ownerQrVal === true || ownerQrVal === '1') : false,
@@ -1248,8 +1792,8 @@ async function executeSeedFirestore() {
     await runQueryRun("UPDATE car_washes SET paymentPolicy = 'PAY_ON_SITE'");
     await runQueryRun("UPDATE car_washes SET logoUrl = NULL WHERE logoUrl LIKE '/src/assets/%'");
     await runQueryRun("UPDATE car_washes SET slug = 'brunei-royal-auto-spa' WHERE id = 'cw_brunei' AND (slug IS NULL OR slug = '')");
-    // Ensure all car washes have membershipEnabled = 1 by default so VIP customer loyalty is active everywhere
-    await runQueryRun("UPDATE car_washes SET membershipEnabled = 1 WHERE membershipEnabled IS NULL OR membershipEnabled = 0");
+    // Ensure unconfigured car washes have membershipEnabled = 1 by default so VIP customer loyalty is active
+    await runQueryRun("UPDATE car_washes SET membershipEnabled = 1 WHERE membershipEnabled IS NULL");
 
     const defaultBruneiServices = [
       {
@@ -1675,8 +2219,8 @@ async function executeSeedFirestore() {
       }
     }
 
-    // 🌟 Enable loyalty & membership feature by default for ALL car wash locations
-    await runQueryRun("UPDATE car_washes SET membershipEnabled = 1 WHERE membershipEnabled IS NULL OR membershipEnabled = 0");
+    // 🌟 Enable loyalty & membership feature by default for unconfigured car wash locations
+    await runQueryRun("UPDATE car_washes SET membershipEnabled = 1 WHERE membershipEnabled IS NULL");
 
     // Ensure all car washes have active membership config, rules, and rewards
     const allCws = await runQueryAll("SELECT id, name, servicesJson FROM car_washes");
@@ -1698,8 +2242,6 @@ async function executeSeedFirestore() {
           'Points are non-transferable and valid for 12 months. Redemptions are subject to bay slot availability.',
           initTimestamp
         ]);
-      } else if (cfgRow.isFeatureEnabled === 0 || cfgRow.is_feature_enabled === 0 || cfgRow.isFeatureEnabled === false) {
-        await runQueryRun("UPDATE car_wash_memberships_config SET isFeatureEnabled = 1, isProgrammeActive = 1, updatedAt = ? WHERE carWashId = ?", [initTimestamp, cwId]);
       }
 
       // Ensure points rules exist
@@ -2103,7 +2645,11 @@ export async function deleteUser(id: string): Promise<void> {
 // CarWash Operations
 export async function getCarWashes(): Promise<CarWash[]> {
   try {
-    const rows = await runQueryAll('SELECT * FROM car_washes');
+    const rows = await runQueryAll(`
+      SELECT c.*, u.email AS ownerEmail, u.name AS ownerName
+      FROM car_washes c
+      LEFT JOIN users u ON c.ownerId = u.id
+    `);
     return rows.map(mapCarWash);
   } catch (error) {
     console.error('Database getCarWashes Error:', error);
@@ -2113,7 +2659,12 @@ export async function getCarWashes(): Promise<CarWash[]> {
 
 export async function getCarWashById(id: string): Promise<CarWash | null> {
   try {
-    const row = await runQueryOne('SELECT * FROM car_washes WHERE id = ?', [id]);
+    const row = await runQueryOne(`
+      SELECT c.*, u.email AS ownerEmail, u.name AS ownerName
+      FROM car_washes c
+      LEFT JOIN users u ON c.ownerId = u.id
+      WHERE c.id = ?
+    `, [id]);
     return row ? mapCarWash(row) : null;
   } catch (error) {
     console.error('Database getCarWashById Error:', error);
@@ -2127,11 +2678,21 @@ export async function getCarWashByIdOrSlug(identifier: string): Promise<CarWash 
     const clean = identifier.trim().toLowerCase();
 
     // 1. Try by exact ID
-    let row = await runQueryOne('SELECT * FROM car_washes WHERE id = ?', [identifier]);
+    let row = await runQueryOne(`
+      SELECT c.*, u.email AS ownerEmail, u.name AS ownerName
+      FROM car_washes c
+      LEFT JOIN users u ON c.ownerId = u.id
+      WHERE c.id = ?
+    `, [identifier]);
     if (row) return mapCarWash(row);
 
     // 2. Try by exact slug
-    row = await runQueryOne('SELECT * FROM car_washes WHERE LOWER(slug) = ?', [clean]);
+    row = await runQueryOne(`
+      SELECT c.*, u.email AS ownerEmail, u.name AS ownerName
+      FROM car_washes c
+      LEFT JOIN users u ON c.ownerId = u.id
+      WHERE LOWER(c.slug) = ?
+    `, [clean]);
     if (row) return mapCarWash(row);
 
     // 3. Fallback: match by slugified name from all records
@@ -2278,6 +2839,8 @@ export async function updateCarWash(id: string, data: Partial<CarWash>): Promise
           'ALTER TABLE car_washes ADD COLUMN phone TEXT',
           'ALTER TABLE car_washes ADD COLUMN instagram TEXT',
           'ALTER TABLE car_washes ADD COLUMN owner_navigation_enabled INTEGER DEFAULT 1',
+          'ALTER TABLE car_washes ADD COLUMN owner_qr_code_enabled INTEGER DEFAULT 0',
+          'ALTER TABLE car_washes ADD COLUMN membership_enabled INTEGER DEFAULT 0',
         ];
         for (const colSql of fixCols) {
           try { await pgPool!.query(colSql); } catch (e) {}
@@ -2285,7 +2848,12 @@ export async function updateCarWash(id: string, data: Partial<CarWash>): Promise
         // Retry execution
         await runQueryRun(sql, values);
       } else {
-        throw dbErr;
+        if (sqliteDb && sqliteDb.open) {
+          ensureSqliteTablesSync(sqliteDb);
+          await runQueryRun(sql, values);
+        } else {
+          throw dbErr;
+        }
       }
     }
   } catch (error) {
@@ -3806,17 +4374,23 @@ export async function upsertCarWashMembershipConfig(config: Partial<CarWashMembe
 }
 
 export async function setCarWashMembershipFeature(carWashId: string, isEnabled: boolean): Promise<void> {
-  const flag = isEnabled ? 1 : 0;
-  await runQueryRun('UPDATE car_washes SET membershipEnabled = ? WHERE id = ?', [flag, carWashId]);
+  const cw = (await getCarWashByIdOrSlug(carWashId)) || (await getCarWashById(carWashId));
+  const resolvedCarWashId = cw ? cw.id : carWashId;
+  const flag = isEnabled ? (usePostgres ? true : 1) : (usePostgres ? false : 0);
+  await runQueryRun('UPDATE car_washes SET membershipEnabled = ? WHERE id = ?', [flag, resolvedCarWashId]);
   
-  // Upsert config table
-  const cfg = await getCarWashMembershipConfig(carWashId);
+  // Directly update or insert config row with proper boolean flag
   const now = new Date().toISOString();
-  if (cfg) {
-    await runQueryRun('UPDATE car_wash_memberships_config SET isFeatureEnabled = ?, isProgrammeActive = ?, updatedAt = ? WHERE carWashId = ?', [flag, flag, now, carWashId]);
-  } else {
-    await upsertCarWashMembershipConfig({ carWashId, isFeatureEnabled: isEnabled, isProgrammeActive: isEnabled });
-  }
+  await runQueryRun(`
+    INSERT INTO car_wash_memberships_config (
+      id, carWashId, isFeatureEnabled, isProgrammeActive, programmeName, programmeDescription,
+      pointsExpiryMonths, allowQrJoin, allowCounterJoin, maxRedemptionsPerMemberPerDay, termsConditions, updatedAt
+    ) VALUES (?, ?, ?, ?, 'Rewards Programme', 'Earn loyalty points on every wash.', 0, 1, 1, 0, NULL, ?)
+    ON CONFLICT(carWashId) DO UPDATE SET
+      isFeatureEnabled = excluded.isFeatureEnabled,
+      isProgrammeActive = excluded.isProgrammeActive,
+      updatedAt = excluded.updatedAt
+  `, [`mcfg_${resolvedCarWashId}`, resolvedCarWashId, flag, flag, now]);
 }
 
 // 2. Customer Memberships (Multi-Tenant)
@@ -4315,24 +4889,25 @@ export async function reversePointsForBookingCancellation(
 // 6. Rewards Management
 export async function getMembershipRewards(carWashId: string, activeOnly: boolean = false): Promise<MembershipReward[]> {
   try {
-    const cw = await runQueryOne('SELECT id, membershipEnabled, isActive FROM car_washes WHERE id = ?', [carWashId]);
+    const cw = await getCarWashByIdOrSlug(carWashId);
     if (!cw) return [];
+    const resolvedId = cw.id;
 
     let sql = 'SELECT * FROM membership_rewards WHERE carWashId = ?';
     if (activeOnly) {
-      sql += ' AND isActive = 1';
+      sql += usePostgres ? ' AND is_active = true' : ' AND (isActive = 1 OR isActive = true)';
     }
     sql += ' ORDER BY pointsCost ASC, createdAt DESC';
-    let rows = await runQueryAll(sql, [carWashId]);
+    let rows = await runQueryAll(sql, [resolvedId]);
 
     // If car wash has no rewards configured yet, seed standard rewards so customer can always redeem
     if (rows.length === 0) {
       const initTimestamp = new Date().toISOString();
       const stdRewards = [
-        { id: `mrw_${carWashId}_tyre_shine`, title: 'Free Tyre Shine & Rim Gloss', desc: 'Complimentary high-gloss tyre shine coat and rim cleaning.', pts: 50, type: 'FREE_ADDON', val: 5 },
-        { id: `mrw_${carWashId}_voucher_5`, title: 'BND $5.00 Off Any Wash Service', desc: 'Instant BND $5 cash voucher off your next wash or detailing package.', pts: 100, type: 'DISCOUNT_FIXED', val: 5 },
-        { id: `mrw_${carWashId}_free_express`, title: 'Free Express Jet Wash', desc: '100% complimentary Express Jet Wash & Microfiber Towel Hand Dry.', pts: 150, type: 'FREE_SERVICE', val: 10 },
-        { id: `mrw_${carWashId}_free_deluxe`, title: 'Free Deluxe Foam Wash & Wax', desc: '100% complimentary Deluxe Foam Wash, deep interior vacuum, and wax coat.', pts: 250, type: 'FREE_SERVICE', val: 25 },
+        { id: `mrw_${resolvedId}_tyre_shine`, title: 'Free Tyre Shine & Rim Gloss', desc: 'Complimentary high-gloss tyre shine coat and rim cleaning.', pts: 50, type: 'FREE_ADDON', val: 5 },
+        { id: `mrw_${resolvedId}_voucher_5`, title: 'BND $5.00 Off Any Wash Service', desc: 'Instant BND $5 cash voucher off your next wash or detailing package.', pts: 100, type: 'DISCOUNT_FIXED', val: 5 },
+        { id: `mrw_${resolvedId}_free_express`, title: 'Free Express Jet Wash', desc: '100% complimentary Express Jet Wash & Microfiber Towel Hand Dry.', pts: 150, type: 'FREE_SERVICE', val: 10 },
+        { id: `mrw_${resolvedId}_free_deluxe`, title: 'Free Deluxe Foam Wash & Wax', desc: '100% complimentary Deluxe Foam Wash, deep interior vacuum, and wax coat.', pts: 250, type: 'FREE_SERVICE', val: 25 },
       ];
       for (const sr of stdRewards) {
         await runQueryRun(`
@@ -4340,9 +4915,9 @@ export async function getMembershipRewards(carWashId: string, activeOnly: boolea
             id, carWashId, title, description, pointsCost, rewardType, discountValue,
             isActive, maxRedemptionsPerMember, maxTotalSupply, claimCount, createdAt, updatedAt
           ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 3, 100, 0, ?, ?)
-        `, [sr.id, carWashId, sr.title, sr.desc, sr.pts, sr.type, sr.val, initTimestamp, initTimestamp]);
+        `, [sr.id, resolvedId, sr.title, sr.desc, sr.pts, sr.type, sr.val, initTimestamp, initTimestamp]).catch(() => {});
       }
-      rows = await runQueryAll(sql, [carWashId]);
+      rows = await runQueryAll(sql, [resolvedId]);
     }
 
     return rows.map(mapReward);
@@ -4406,13 +4981,14 @@ export async function updateMembershipReward(rewardId: string, updates: Partial<
   const now = new Date().toISOString();
   const title = updates.title ?? existing.title;
   const description = updates.description !== undefined ? updates.description : existing.description;
-  const pointsCost = updates.pointsCost ?? existing.pointsCost;
+  const pointsCost = updates.pointsCost !== undefined ? Number(updates.pointsCost) : existing.pointsCost;
   const rewardType = updates.rewardType ?? existing.rewardType;
-  const discountValue = updates.discountValue !== undefined ? updates.discountValue : existing.discountValue;
+  const discountValue = updates.discountValue !== undefined && updates.discountValue !== null && (updates.discountValue as any) !== '' ? Number(updates.discountValue) : existing.discountValue;
   const eligibleServiceId = updates.eligibleServiceId !== undefined ? updates.eligibleServiceId : existing.eligibleServiceId;
-  const maxRedemptionsPerMember = updates.maxRedemptionsPerMember !== undefined ? updates.maxRedemptionsPerMember : (existing.maxRedemptionsPerMember || 0);
-  const maxTotalSupply = updates.maxTotalSupply !== undefined ? updates.maxTotalSupply : (existing.maxTotalSupply || 0);
-  const isActive = updates.isActive !== undefined ? updates.isActive : existing.isActive;
+  const maxRedemptionsPerMember = updates.maxRedemptionsPerMember !== undefined ? Number(updates.maxRedemptionsPerMember) : (existing.maxRedemptionsPerMember || 0);
+  const maxTotalSupply = updates.maxTotalSupply !== undefined ? Number(updates.maxTotalSupply) : (existing.maxTotalSupply || 0);
+  const isActive = updates.isActive !== undefined ? !!updates.isActive : existing.isActive;
+  const activeVal = isActive ? (usePostgres ? true : 1) : (usePostgres ? false : 0);
 
   await runQueryRun(`
     UPDATE membership_rewards
@@ -4421,7 +4997,7 @@ export async function updateMembershipReward(rewardId: string, updates: Partial<
     WHERE id = ?
   `, [
     title, description || null, pointsCost, rewardType, discountValue || 0,
-    eligibleServiceId || null, maxRedemptionsPerMember, maxTotalSupply, isActive ? true : false, now, rewardId
+    eligibleServiceId || null, maxRedemptionsPerMember, maxTotalSupply, activeVal, now, rewardId
   ]);
 
   return {
@@ -4437,6 +5013,26 @@ export async function updateMembershipReward(rewardId: string, updates: Partial<
     isActive,
     updatedAt: now,
   };
+}
+
+export async function deleteMembershipReward(carWashId: string, rewardId: string): Promise<boolean> {
+  try {
+    const existing = await getMembershipRewardById(rewardId);
+    if (!existing) return false;
+    if (carWashId) {
+      const cw = (await getCarWashByIdOrSlug(carWashId)) || (await getCarWashById(carWashId));
+      const resolvedCarWashId = cw ? cw.id : carWashId;
+      if (existing.carWashId !== resolvedCarWashId && existing.carWashId !== carWashId) {
+        console.warn(`[Delete Reward] Mismatch carWashId: ${existing.carWashId} vs ${resolvedCarWashId}`);
+      }
+    }
+
+    await runQueryRun('DELETE FROM membership_rewards WHERE id = ?', [rewardId]);
+    return true;
+  } catch (error) {
+    console.error('Database deleteMembershipReward Error:', error);
+    return false;
+  }
 }
 
 // 7. Reward Redemption & Atomic Deductions

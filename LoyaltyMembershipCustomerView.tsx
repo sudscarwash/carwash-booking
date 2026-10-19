@@ -125,11 +125,16 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
     );
   }, [locations, activeValidMemberships]);
 
+  const [viewingCarWashId, setViewingCarWashId] = useState<string>(() => {
+    return locations.length > 0 ? locations[0].id : 'cw_brunei';
+  });
+
   // Keep selectedMembership strictly synchronized with activeValidMemberships
   useEffect(() => {
     if (activeValidMemberships.length > 0) {
       if (!selectedMembership || !activeValidMemberships.some((m) => m.id === selectedMembership.id)) {
         setSelectedMembership(activeValidMemberships[0]);
+        setViewingCarWashId(activeValidMemberships[0].carWashId);
       } else {
         // ALWAYS keep selectedMembership up to date with fresh pointsBalance, name, and status
         const fresh = activeValidMemberships.find((m) => m.id === selectedMembership.id);
@@ -141,9 +146,7 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
       if (selectedMembership !== null) {
         setSelectedMembership(null);
         setConfig(null);
-        setRewards([]);
         setLedger([]);
-        setRedemptions([]);
       }
     }
   }, [activeValidMemberships, selectedMembership]);
@@ -183,86 +186,109 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
     }
   };
 
-  // Fetch details for the selected membership
-  const loadMembershipDetails = useCallback(async () => {
-    if (!selectedMembership || !token) {
-      setConfig(null);
-      setRewards([]);
-      setLedger([]);
-      setRedemptions([]);
-      return;
-    }
-
-    // Verify operator exists
-    const matchedLoc = locations.find((l) => l.id === selectedMembership.carWashId);
-    if (matchedLoc && matchedLoc.isActive === false) {
-      setSelectedMembership(null);
-      setConfig(null);
-      setRewards([]);
-      setLedger([]);
-      setRedemptions([]);
-      return;
-    }
-
+  // Fetch customer vouchers across all car washes
+  const fetchMyVouchers = useCallback(async () => {
+    if (!token) return;
     try {
-      // Fetch config & rules
-      const [configRes, rewardsRes, ledgerRes, redemptionsRes] = await Promise.all([
-        fetch(`/api/membership/programme/${selectedMembership.carWashId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        fetch(`/api/membership/rewards/${selectedMembership.carWashId}?active=true`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        fetch(`/api/membership/ledger/${selectedMembership.id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        fetch('/api/membership/my-redemptions', {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-      ]);
-
-      const cfgData = await safeJsonFetch(configRes);
-      if (cfgData && cfgData.isFeatureEnabled) {
-        setConfig(cfgData);
-      } else {
-        setConfig(null);
+      const res = await fetch('/api/membership/my-redemptions', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await safeJsonFetch(res);
+      if (Array.isArray(data)) {
+        setRedemptions(data);
       }
+    } catch (err) {
+      console.error('Failed to load my-redemptions:', err);
+    }
+  }, [token]);
 
-      const rewardsData = await safeJsonFetch(rewardsRes);
-      if (rewardsData && Array.isArray(rewardsData)) {
-        setRewards(rewardsData);
+  // Fetch catalog rewards for the currently viewed car wash
+  const fetchCatalogRewards = useCallback(async (carWashId: string) => {
+    if (!carWashId) return;
+    try {
+      const res = await fetch(`/api/membership/rewards/${carWashId}?active=true`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const data = await safeJsonFetch(res);
+      if (Array.isArray(data)) {
+        setRewards(data);
       } else {
         setRewards([]);
       }
+    } catch (err) {
+      console.error('Failed to load rewards:', err);
+    }
+  }, [token]);
 
-      const ledgerData = await safeJsonFetch(ledgerRes);
-      if (ledgerData && Array.isArray(ledgerData)) setLedger(ledgerData);
-
-      const redemptionsData = await safeJsonFetch(redemptionsRes);
-      if (redemptionsData && Array.isArray(redemptionsData)) {
-        // Filter to this car wash
-        const filtered = redemptionsData.filter((r: MembershipRedemption) => r.carWashId === selectedMembership.carWashId);
-        setRedemptions(filtered.length > 0 ? filtered : redemptionsData);
+  // Fetch programme config for the currently viewed car wash
+  const fetchProgrammeConfig = useCallback(async (carWashId: string) => {
+    if (!carWashId) return;
+    try {
+      const res = await fetch(`/api/membership/programme/${carWashId}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const data = await safeJsonFetch(res);
+      if (data && data.isFeatureEnabled) {
+        setConfig(data);
+      } else {
+        setConfig(null);
       }
     } catch (err) {
-      console.error('Failed to load membership details:', err);
+      console.error('Failed to load config:', err);
     }
-  }, [selectedMembership?.id, selectedMembership?.carWashId, selectedMembership?.pointsBalance, token, locations]);
+  }, [token]);
 
-  // Fetch details when selectedMembership changes
+  // Fetch points activity ledger for selected membership
+  const fetchLedger = useCallback(async (membershipId: string) => {
+    if (!membershipId || !token) {
+      setLedger([]);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/membership/ledger/${membershipId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await safeJsonFetch(res);
+      if (Array.isArray(data)) {
+        setLedger(data);
+      } else {
+        setLedger([]);
+      }
+    } catch (err) {
+      console.error('Failed to load ledger:', err);
+    }
+  }, [token]);
+
+  const effectiveCarWashId = viewingCarWashId || selectedMembership?.carWashId || (locations.length > 0 ? locations[0].id : 'cw_brunei');
+
+  // Trigger reward and config fetches whenever effectiveCarWashId changes
   useEffect(() => {
-    loadMembershipDetails();
-  }, [loadMembershipDetails]);
+    if (effectiveCarWashId) {
+      fetchCatalogRewards(effectiveCarWashId);
+      fetchProgrammeConfig(effectiveCarWashId);
+    }
+  }, [effectiveCarWashId, fetchCatalogRewards, fetchProgrammeConfig]);
 
-  // Fetch memberships on mount and poll every 5s to catch live wash points awards
+  // Trigger ledger fetch whenever selectedMembership changes
+  useEffect(() => {
+    if (selectedMembership?.id) {
+      fetchLedger(selectedMembership.id);
+    } else {
+      setLedger([]);
+    }
+  }, [selectedMembership?.id, fetchLedger]);
+
+  // Fetch memberships and customer vouchers on mount and poll
   useEffect(() => {
     fetchMemberships();
+    fetchMyVouchers();
     const interval = setInterval(() => {
       fetchMemberships();
+      fetchMyVouchers();
       if (fetchMyMemberships) fetchMyMemberships();
     }, 5000);
     return () => clearInterval(interval);
-  }, [token]);
+  }, [token, fetchMyVouchers]);
 
   // Open QR modal for member card
   const handleShowMemberQR = async (membership: CustomerMembership) => {
@@ -338,8 +364,11 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
 
       // 4. Background re-sync
       fetchMemberships();
-      fetchMyMemberships();
-      loadMembershipDetails();
+      if (fetchMyMemberships) fetchMyMemberships();
+      fetchMyVouchers();
+      if (selectedMembership) {
+        fetchLedger(selectedMembership.id);
+      }
 
       // 5. Switch to vouchers tab
       setActiveSubTab('vouchers');
@@ -549,7 +578,10 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
                           onClick={() => {
                             fetchMemberships();
                             if (fetchMyMemberships) fetchMyMemberships();
-                            loadMembershipDetails();
+                            fetchMyVouchers();
+                            if (selectedMembership) {
+                              fetchLedger(selectedMembership.id);
+                            }
                           }}
                           className="text-[10px] bg-white/10 hover:bg-white/20 text-indigo-200 px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors cursor-pointer"
                           title="Refresh points live"

@@ -5,3 +5,9 @@ dist
 .github
 *.log
 uploads
+*.db-wal
+*.db-shm
+*.corrupt*
+data/*.db-wal
+data/*.db-shm
+data/*.corrupt*
