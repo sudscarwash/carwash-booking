@@ -804,13 +804,12 @@ function convertQueryToPg(sql: string): string {
     result = result.replace(regex, replacements[key]);
   });
 
-  // Convert integer boolean comparisons to PostgreSQL boolean literals
-  result = result.replace(/\bis_active\s*=\s*1\b/gi, 'is_active = true');
-  result = result.replace(/\bis_active\s*=\s*0\b/gi, 'is_active = false');
-  result = result.replace(/\bis_email_verified\s*=\s*1\b/gi, 'is_email_verified = true');
-  result = result.replace(/\bis_email_verified\s*=\s*0\b/gi, 'is_email_verified = false');
-  result = result.replace(/\bmembership_enabled\s*=\s*1\b/gi, 'membership_enabled = true');
-  result = result.replace(/\bmembership_enabled\s*=\s*0\b/gi, 'membership_enabled = false');
+  // Ensure boolean comparisons and assignments against PostgreSQL INTEGER columns use 1/0 integers
+  result = result.replace(/\b(is_active|is_email_verified|membership_enabled|is_feature_enabled|is_programme_active|allow_qr_join|allow_counter_join|is_custom|is_read|owner_navigation_enabled|owner_qr_code_enabled|bibd_enabled|baiduri_enabled|consent_given|admin_otp_required)\s*=\s*true\b/gi, '$1 = 1');
+  result = result.replace(/\b(is_active|is_email_verified|membership_enabled|is_feature_enabled|is_programme_active|allow_qr_join|allow_counter_join|is_custom|is_read|owner_navigation_enabled|owner_qr_code_enabled|bibd_enabled|baiduri_enabled|consent_given|admin_otp_required)\s*=\s*false\b/gi, '$1 = 0');
+
+  // Convert ADD COLUMN to ADD COLUMN IF NOT EXISTS for PostgreSQL
+  result = result.replace(/ADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?/gi, 'ADD COLUMN IF NOT EXISTS ');
 
   // Map SQLite-specific "INSERT OR IGNORE" to PostgreSQL's "INSERT INTO ... ON CONFLICT (id) DO NOTHING"
   if (/INSERT\s+OR\s+IGNORE\s+INTO\s+(\w+)/i.test(result)) {
@@ -1550,6 +1549,17 @@ async function executeSeedFirestore() {
     'ALTER TABLE users ADD COLUMN businessId TEXT',
     'ALTER TABLE users ADD COLUMN passwordHash TEXT',
     'ALTER TABLE users ADD COLUMN createdAt TEXT',
+    'ALTER TABLE users ADD COLUMN created_at TEXT',
+    'ALTER TABLE car_washes ADD COLUMN createdAt TEXT',
+    'ALTER TABLE car_washes ADD COLUMN created_at TEXT',
+    'ALTER TABLE reviews ADD COLUMN createdAt TEXT',
+    'ALTER TABLE reviews ADD COLUMN created_at TEXT',
+    'ALTER TABLE reviews ADD COLUMN updatedAt TEXT',
+    'ALTER TABLE reviews ADD COLUMN updated_at TEXT',
+    'ALTER TABLE map_presets ADD COLUMN createdAt TEXT',
+    'ALTER TABLE map_presets ADD COLUMN created_at TEXT',
+    'ALTER TABLE notifications ADD COLUMN createdAt TEXT',
+    'ALTER TABLE notifications ADD COLUMN created_at TEXT',
     'ALTER TABLE car_washes ADD COLUMN isActive INTEGER DEFAULT 1',
     'ALTER TABLE car_washes ADD COLUMN slug TEXT',
     'ALTER TABLE car_washes ADD COLUMN description TEXT',
@@ -2550,28 +2560,51 @@ export async function getUserById(id: string): Promise<UserWithPassword | null> 
 }
 
 export async function createUser(user: UserWithPassword): Promise<void> {
+  let assignedRole = user.role;
+  const insertSql = `
+    INSERT INTO users (id, email, name, role, isActive, businessId, passwordHash, createdAt, dateOfBirth, gender, profileImageUrl, address, phone, isEmailVerified)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `;
+  const insertParams = [
+    user.id,
+    user.email,
+    user.name,
+    assignedRole,
+    user.isActive ? 1 : 0,
+    user.businessId || null,
+    user.passwordHash,
+    user.createdAt,
+    user.dateOfBirth || null,
+    user.gender || null,
+    user.profileImageUrl || null,
+    user.address || null,
+    user.phone || null,
+    user.isEmailVerified === false ? 0 : 1
+  ];
+
   try {
-    let assignedRole = user.role;
-    await runQueryRun(`
-      INSERT INTO users (id, email, name, role, isActive, businessId, passwordHash, createdAt, dateOfBirth, gender, profileImageUrl, address, phone, isEmailVerified)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [
-      user.id,
-      user.email,
-      user.name,
-      assignedRole,
-      user.isActive ? 1 : 0,
-      user.businessId || null,
-      user.passwordHash,
-      user.createdAt,
-      user.dateOfBirth || null,
-      user.gender || null,
-      user.profileImageUrl || null,
-      user.address || null,
-      user.phone || null,
-      user.isEmailVerified === false ? 0 : 1
-    ]);
-  } catch (error) {
+    await runQueryRun(insertSql, insertParams);
+  } catch (error: any) {
+    if (usePostgres && pgPool) {
+      console.warn('Initial createUser insert failed, ensuring columns exist on PostgreSQL and retrying...', error?.message);
+      const fixCols = [
+        'ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TEXT',
+        'ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active INTEGER DEFAULT 1',
+        'ALTER TABLE users ADD COLUMN IF NOT EXISTS is_email_verified INTEGER DEFAULT 1',
+        'ALTER TABLE users ADD COLUMN IF NOT EXISTS business_id TEXT',
+        'ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT',
+        'ALTER TABLE users ADD COLUMN IF NOT EXISTS date_of_birth TEXT',
+        'ALTER TABLE users ADD COLUMN IF NOT EXISTS gender TEXT',
+        'ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image_url TEXT',
+        'ALTER TABLE users ADD COLUMN IF NOT EXISTS address TEXT',
+        'ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT',
+      ];
+      for (const colSql of fixCols) {
+        try { await pgPool.query(colSql); } catch (e) {}
+      }
+      await runQueryRun(insertSql, insertParams);
+      return;
+    }
     console.error('Database createUser Error:', error);
     throw error;
   }
@@ -2737,12 +2770,13 @@ export async function createCarWash(carWash: CarWash): Promise<void> {
     const ownerNavVal = carWash.ownerNavigationEnabled !== undefined ? (carWash.ownerNavigationEnabled ? 1 : 0) : 1;
     const ownerQrVal = carWash.ownerQrCodeEnabled !== undefined ? (carWash.ownerQrCodeEnabled ? 1 : 0) : 0;
     const membershipVal = carWash.membershipEnabled !== undefined ? (carWash.membershipEnabled ? 1 : 0) : 0;
-    await runQueryRun(`
+    const insertSql = `
       INSERT INTO car_washes (
         id, name, slug, description, locationLat, locationLng, address, openingHours, slotDuration, capacityPerSlot, ownerId, isActive, createdAt, phone, instagram, paymentPolicy, logoUrl, bibdAccountName, bibdAccountNo, bibdEnabled, baiduriAccountName, baiduriAccountNo, baiduriEnabled, bibdQrImageUrl, baiduriQrImageUrl, customPaymentsJson, servicesJson, ownerNavigationEnabled, ownerQrCodeEnabled, membershipEnabled
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [
+    `;
+    const insertParams = [
       carWash.id,
       carWash.name,
       slug,
@@ -2773,7 +2807,40 @@ export async function createCarWash(carWash: CarWash): Promise<void> {
       ownerNavVal ? 1 : 0,
       ownerQrVal ? 1 : 0,
       membershipVal ? 1 : 0,
-    ]);
+    ];
+
+    try {
+      await runQueryRun(insertSql, insertParams);
+    } catch (insertErr: any) {
+      if (usePostgres && pgPool) {
+        console.warn('Initial createCarWash insert failed, ensuring all columns exist on PostgreSQL and retrying...', insertErr?.message);
+        const fixCols = [
+          'ALTER TABLE car_washes ADD COLUMN IF NOT EXISTS created_at TEXT',
+          'ALTER TABLE car_washes ADD COLUMN IF NOT EXISTS location_lat REAL DEFAULT 4.8917',
+          'ALTER TABLE car_washes ADD COLUMN IF NOT EXISTS location_lng REAL DEFAULT 114.9401',
+          'ALTER TABLE car_washes ADD COLUMN IF NOT EXISTS address TEXT',
+          'ALTER TABLE car_washes ADD COLUMN IF NOT EXISTS description TEXT',
+          'ALTER TABLE car_washes ADD COLUMN IF NOT EXISTS opening_hours TEXT',
+          'ALTER TABLE car_washes ADD COLUMN IF NOT EXISTS slot_duration INTEGER DEFAULT 30',
+          'ALTER TABLE car_washes ADD COLUMN IF NOT EXISTS capacity_per_slot INTEGER DEFAULT 2',
+          'ALTER TABLE car_washes ADD COLUMN IF NOT EXISTS owner_id TEXT',
+          'ALTER TABLE car_washes ADD COLUMN IF NOT EXISTS services_json TEXT',
+          'ALTER TABLE car_washes ADD COLUMN IF NOT EXISTS custom_payments_json TEXT',
+          'ALTER TABLE car_washes ADD COLUMN IF NOT EXISTS logo_url TEXT',
+          'ALTER TABLE car_washes ADD COLUMN IF NOT EXISTS phone TEXT',
+          'ALTER TABLE car_washes ADD COLUMN IF NOT EXISTS instagram TEXT',
+          'ALTER TABLE car_washes ADD COLUMN IF NOT EXISTS owner_navigation_enabled INTEGER DEFAULT 1',
+          'ALTER TABLE car_washes ADD COLUMN IF NOT EXISTS owner_qr_code_enabled INTEGER DEFAULT 0',
+          'ALTER TABLE car_washes ADD COLUMN IF NOT EXISTS membership_enabled INTEGER DEFAULT 0',
+        ];
+        for (const colSql of fixCols) {
+          try { await pgPool.query(colSql); } catch (e) {}
+        }
+        await runQueryRun(insertSql, insertParams);
+      } else {
+        throw insertErr;
+      }
+    }
   } catch (error) {
     console.error('Database createCarWash Error:', error);
     throw error;
@@ -2819,8 +2886,18 @@ export async function updateCarWash(id: string, data: Partial<CarWash>): Promise
         columnMap.set('scheduleOverridesJson', typeof val === 'string' ? val : JSON.stringify(val));
         return;
       }
-      if (key === 'isActive' || key === 'bibdEnabled' || key === 'baiduriEnabled' || key === 'ownerNavigationEnabled' || key === 'ownerQrCodeEnabled' || key === 'membershipEnabled' || typeof val === 'boolean') {
-        columnMap.set(key, val ? 1 : 0);
+      const booleanKeys = new Set([
+        'isActive', 'is_active', 'isactive',
+        'isEmailVerified', 'is_email_verified', 'isemailverified',
+        'bibdEnabled', 'bibd_enabled', 'bibdenabled',
+        'baiduriEnabled', 'baiduri_enabled', 'baidurienabled',
+        'ownerNavigationEnabled', 'owner_navigation_enabled', 'ownernavigationenabled',
+        'ownerQrCodeEnabled', 'owner_qr_code_enabled', 'ownerqrcodeenabled',
+        'membershipEnabled', 'membership_enabled', 'membershipenabled'
+      ]);
+      if (booleanKeys.has(key) || typeof val === 'boolean') {
+        const isTrue = val === true || val === 1 || val === '1' || String(val).toLowerCase() === 'true';
+        columnMap.set(key, isTrue ? 1 : 0);
         return;
       }
       columnMap.set(key, val);

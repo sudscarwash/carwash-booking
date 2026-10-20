@@ -1011,7 +1011,8 @@ async function startServer() {
             }
 
             // Determine true role (check metadata first, then car wash ownership, then initial admin env)
-            let restoredRole: Role = (authSuccess.user_metadata?.role as Role) || Role.CUSTOMER;
+            const rawRole = String(authSuccess.user_metadata?.role || '').trim().toUpperCase();
+            let restoredRole: Role = (Object.values(Role).includes(rawRole as Role)) ? (rawRole as Role) : Role.CUSTOMER;
             const allWashes = await getCarWashes();
             const matchingWash = allWashes.find(w => 
               w.ownerId === supabaseId || 
@@ -1019,6 +1020,8 @@ async function startServer() {
               ((w as any).owner_email && (w as any).owner_email.toLowerCase() === email.toLowerCase())
             );
             if (matchingWash) {
+              restoredRole = Role.OWNER;
+            } else if (rawRole === 'OWNER') {
               restoredRole = Role.OWNER;
             } else if (initialAdminEnv && email.toLowerCase() === initialAdminEnv) {
               restoredRole = Role.ADMIN;
@@ -4027,7 +4030,70 @@ async function startServer() {
     requireRoles([Role.ADMIN, Role.SPECIAL]),
     async (req: AuthenticatedRequest, res) => {
       try {
-        const users = await getUsers();
+        let users = await getUsers();
+        const allWashes = await getCarWashes();
+
+        // Check and self-heal any owners whose role is currently CUSTOMER
+        for (const u of users) {
+          if (u.role === Role.CUSTOMER) {
+            const owns = allWashes.find(w => 
+              w.ownerId === u.id || 
+              (w.ownerEmail && w.ownerEmail.toLowerCase() === u.email.toLowerCase())
+            );
+            if (owns) {
+              u.role = Role.OWNER;
+              updateUser(u.id, { role: Role.OWNER }).catch(() => {});
+            }
+          }
+        }
+
+        // Cross-check with Supabase Auth users to ensure any users registered there but not yet in database are surfaced and synced
+        if (isSupabaseAuthEnabled && supabaseClient) {
+          try {
+            const { data: supData } = await supabaseClient.auth.admin.listUsers().catch(() => ({ data: null }));
+            if (supData && Array.isArray(supData.users)) {
+              for (const supUser of supData.users) {
+                if (!supUser.email) continue;
+                const emailLower = supUser.email.toLowerCase();
+                const existing = users.find(u => u.email.toLowerCase() === emailLower);
+                if (!existing) {
+                  const rawRole = String(supUser.user_metadata?.role || '').trim().toUpperCase();
+                  const ownsWash = allWashes.some(w => 
+                    w.ownerId === supUser.id || 
+                    (w.ownerEmail && w.ownerEmail.toLowerCase() === emailLower)
+                  );
+                  const role: Role = ownsWash || rawRole === 'OWNER' 
+                    ? Role.OWNER 
+                    : (Object.values(Role).includes(rawRole as Role) ? (rawRole as Role) : Role.CUSTOMER);
+                  const name = supUser.user_metadata?.full_name || supUser.email.split('@')[0];
+                  const salt = bcrypt.genSaltSync(10);
+                  const passwordHash = bcrypt.hashSync('owner123', salt);
+                  const placeholderUser: UserWithPassword = {
+                    id: supUser.id,
+                    email: emailLower,
+                    name,
+                    role,
+                    isActive: true,
+                    isEmailVerified: true,
+                    passwordHash,
+                    createdAt: supUser.created_at || new Date().toISOString(),
+                  };
+                  await createUser(placeholderUser).catch(() => {});
+                  users.push(placeholderUser);
+                } else if (existing.role === Role.CUSTOMER) {
+                  const rawRole = String(supUser.user_metadata?.role || '').trim().toUpperCase();
+                  if (rawRole === 'OWNER') {
+                    existing.role = Role.OWNER;
+                    updateUser(existing.id, { role: Role.OWNER }).catch(() => {});
+                  }
+                }
+              }
+            }
+          } catch (syncErr) {
+            console.warn('[Admin Users Supabase Sync Warning]:', syncErr);
+          }
+        }
+
         const safeUsers = users.map(({ passwordHash: _, ...u }) => u);
         res.json(safeUsers);
       } catch (error: any) {

@@ -337,6 +337,8 @@ export const SpecialUserDashboard: React.FC = () => {
       setBusinessAddress('');
       setBusinessDesc('');
       setSelectedOnboardOwnerId('');
+      await fetchLocations();
+      if (fetchAdminUsers) await fetchAdminUsers();
     }
   };
 
