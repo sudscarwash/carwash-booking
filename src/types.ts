@@ -96,6 +96,7 @@ export interface CarWash {
   capacityPerSlot: number; // max bookings per slot
   ownerId: string;
   ownerEmail?: string;
+  ownerName?: string;
   isActive: boolean;
   ownerNavigationEnabled?: boolean; // Legacy/full navigation access
   ownerQrCodeEnabled?: boolean; // Controls whether QR Code poster & tab are visible to the owner (default: false / hidden)

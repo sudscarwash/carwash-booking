@@ -20,19 +20,21 @@ export const supabaseClient = isSupabaseAuthEnabled
  * Register a user on Supabase Auth
  * Returns the Supabase user ID if successful
  */
-export async function registerSupabaseUser(email: string, password: string, name: string): Promise<string | null> {
+export async function registerSupabaseUser(email: string, password: string, name: string, role?: string): Promise<string | null> {
   if (!supabaseClient) return null;
 
   try {
     const isServiceKey = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const userRole = role || 'CUSTOMER';
     if (isServiceKey) {
-      console.log('[Supabase Auth] Registering user via Admin API (bypassing email confirmation)...');
+      console.log(`[Supabase Auth] Registering user ${email} via Admin API with role "${userRole}"...`);
       const { data, error } = await supabaseClient.auth.admin.createUser({
         email,
         password,
         email_confirm: true,
         user_metadata: {
           full_name: name,
+          role: userRole,
         }
       });
 
@@ -45,6 +47,16 @@ export async function registerSupabaseUser(email: string, password: string, name
           if (!listError && listData?.users) {
             const existingUser = (listData.users as any[]).find((u: any) => u.email?.toLowerCase() === email.toLowerCase());
             if (existingUser) {
+              // Keep role metadata updated
+              if (role) {
+                await supabaseClient.auth.admin.updateUserById(existingUser.id, {
+                  user_metadata: {
+                    ...(existingUser.user_metadata || {}),
+                    role: userRole,
+                    full_name: name,
+                  }
+                }).catch(() => {});
+              }
               return existingUser.id;
             }
           }
@@ -55,13 +67,14 @@ export async function registerSupabaseUser(email: string, password: string, name
 
       return data.user?.id || null;
     } else {
-      console.log('[Supabase Auth] Registering user via standard signUp API (fallback)...');
+      console.log(`[Supabase Auth] Registering user ${email} via standard signUp API (fallback) with role "${userRole}"...`);
       const { data, error } = await supabaseClient.auth.signUp({
         email,
         password,
         options: {
           data: {
             full_name: name,
+            role: userRole,
           }
         }
       });

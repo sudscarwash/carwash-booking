@@ -52,10 +52,17 @@ const BRUNEI_PRESETS = [
 ];
 
 export const SpecialUserDashboard: React.FC = () => {
-  const { locations, adminUsersList, createOwnerWithBusiness, updateLocationConfig, token, fetchLocations } = useApp();
+  const { locations, adminUsersList, createOwnerWithBusiness, updateLocationConfig, token, fetchLocations, fetchAdminUsers } = useApp();
 
   const [activeTab, setActiveTab] = useState<'onboard' | 'edit_existing' | 'reviews'>('onboard');
   useTabBack(activeTab, setActiveTab, 'onboard', 'specialTab');
+
+  useEffect(() => {
+    if (fetchAdminUsers) {
+      fetchAdminUsers();
+    }
+    fetchLocations();
+  }, []);
 
   // Special User Review Moderation State (Structured and ready when reviews are activated)
   const [specialReviews, setSpecialReviews] = useState<Review[]>([]);
@@ -291,6 +298,10 @@ export const SpecialUserDashboard: React.FC = () => {
           })
         });
         success = res.ok;
+        if (success) {
+          await fetchLocations();
+          if (fetchAdminUsers) await fetchAdminUsers();
+        }
       } catch (err) {
         console.error(err);
       }

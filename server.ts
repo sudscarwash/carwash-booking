@@ -983,6 +983,8 @@ async function startServer() {
 
       let user = await getUserByEmail(email);
 
+      const initialAdminEnv = process.env.INITIAL_ADMIN_EMAIL ? process.env.INITIAL_ADMIN_EMAIL.toLowerCase().trim() : null;
+
       // If user does not exist in local database but Supabase Auth is enabled,
       // let's try authenticating with Supabase Auth to see if we can auto-provision/restore them!
       if (!user && isSupabaseAuthEnabled) {
@@ -1007,6 +1009,20 @@ async function startServer() {
                 }
               }
             }
+
+            // Determine true role (check metadata first, then car wash ownership, then initial admin env)
+            let restoredRole: Role = (authSuccess.user_metadata?.role as Role) || Role.CUSTOMER;
+            const allWashes = await getCarWashes();
+            const matchingWash = allWashes.find(w => 
+              w.ownerId === supabaseId || 
+              (w.ownerEmail && w.ownerEmail.toLowerCase() === email.toLowerCase()) || 
+              ((w as any).owner_email && (w as any).owner_email.toLowerCase() === email.toLowerCase())
+            );
+            if (matchingWash) {
+              restoredRole = Role.OWNER;
+            } else if (initialAdminEnv && email.toLowerCase() === initialAdminEnv) {
+              restoredRole = Role.ADMIN;
+            }
             
             const salt = bcrypt.genSaltSync(10);
             const passwordHash = bcrypt.hashSync(password, salt);
@@ -1014,14 +1030,14 @@ async function startServer() {
               id: supabaseId,
               email: email.toLowerCase(),
               name,
-              role: Role.CUSTOMER, // default role
+              role: restoredRole,
               isActive: true,
               passwordHash,
               createdAt: new Date().toISOString(),
             };
             
             await createUser(newUser);
-            await addAuditLog(newUser.id, newUser.email, 'USER_AUTOPROVISION', `Customer account auto-provisioned/restored on login from Supabase Auth`);
+            await addAuditLog(newUser.id, newUser.email, 'USER_AUTOPROVISION', `Account auto-provisioned/restored on login from Supabase Auth with role ${restoredRole}`);
             user = newUser;
           }
         } catch (supabaseError: any) {
@@ -1039,10 +1055,24 @@ async function startServer() {
         return;
       }
 
-      const initialAdminEnv = process.env.INITIAL_ADMIN_EMAIL ? process.env.INITIAL_ADMIN_EMAIL.toLowerCase().trim() : null;
       if (initialAdminEnv && user.email.toLowerCase() === initialAdminEnv && user.role !== Role.ADMIN) {
         user.role = Role.ADMIN;
         updateUser(user.id, { role: Role.ADMIN }).catch(() => {});
+      }
+
+      // Self-heal role: If user is marked as CUSTOMER, but their user ID or email owns a car wash, promote to OWNER!
+      if (user.role === Role.CUSTOMER) {
+        const allWashes = await getCarWashes();
+        const matchingWash = allWashes.find(w => 
+          w.ownerId === user!.id || 
+          (w.ownerEmail && w.ownerEmail.toLowerCase() === user!.email.toLowerCase()) ||
+          ((w as any).owner_email && (w as any).owner_email.toLowerCase() === user!.email.toLowerCase())
+        );
+        if (matchingWash) {
+          console.log(`[Role Self-Healing] User ${user.email} owns car wash "${matchingWash.name}". Self-healing role from CUSTOMER to OWNER.`);
+          user.role = Role.OWNER;
+          await updateUser(user.id, { role: Role.OWNER }).catch(() => {});
+        }
       }
 
       // Authenticate via Supabase Auth if configured (only if we didn't just authenticate them above)
@@ -1052,6 +1082,15 @@ async function startServer() {
           if (!authSuccess) {
             res.status(400).json({ error: 'Invalid email or password.' });
             return;
+          }
+          // Synchronize local passwordHash if user changed password on Supabase
+          if (authSuccess && user) {
+            if (!bcrypt.compareSync(password, user.passwordHash)) {
+              const salt = bcrypt.genSaltSync(10);
+              const passwordHash = bcrypt.hashSync(password, salt);
+              await updateUser(user.id, { passwordHash }).catch(() => {});
+              user.passwordHash = passwordHash;
+            }
           }
         } catch (supabaseError: any) {
           // If the login failed on Supabase Auth, but the credentials entered match the local database's bcrypt hash,
@@ -1063,7 +1102,7 @@ async function startServer() {
             console.log(`[Supabase Auto-Sync] Local password is valid for ${email}. Synchronizing to Supabase Auth...`);
             try {
               // 1. Try to register the user in Supabase Auth to ensure they exist
-              const supabaseId = await registerSupabaseUser(email, password, user.name);
+              const supabaseId = await registerSupabaseUser(email, password, user.name, user.role);
               if (supabaseId) {
                 console.log(`[Supabase Auto-Sync] User ${email} registered/found on Supabase Auth with ID: ${supabaseId}`);
                 
@@ -3773,8 +3812,22 @@ async function startServer() {
         // 1. Create Owner User
         const salt = bcrypt.genSaltSync(10);
         const passwordHash = bcrypt.hashSync(ownerPassword, salt);
+        let ownerUserId = `usr_${Math.random().toString(36).substr(2, 9)}`;
+
+        if (isSupabaseAuthEnabled) {
+          try {
+            console.log(`[Special Onboard] Registering owner ${sanitizedEmail} on Supabase Auth with Role.OWNER...`);
+            const supabaseId = await registerSupabaseUser(sanitizedEmail, ownerPassword, ownerName, Role.OWNER);
+            if (supabaseId) {
+              ownerUserId = supabaseId;
+            }
+          } catch (supErr: any) {
+            console.warn('[Special Onboard] Supabase Auth registration warning:', supErr.message);
+          }
+        }
+
         const newOwner: UserWithPassword = {
-          id: `usr_${Math.random().toString(36).substr(2, 9)}`,
+          id: ownerUserId,
           email: sanitizedEmail,
           name: ownerName,
           role: Role.OWNER,
@@ -3795,12 +3848,13 @@ async function startServer() {
         }).catch((e) => console.error('[Owner Welcome Email Error]:', e));
 
         // 2. Register Business and link to newly created owner
+        const allowMembership = req.body.membershipEnabled !== undefined ? !!req.body.membershipEnabled : true;
         const newCarWash: CarWash = {
           id: `cw_${Math.random().toString(36).substr(2, 9)}`,
           name: businessName,
           description: businessDesc || 'Premium car wash business.',
-          locationLat: parseFloat(businessLat) || 37.7749,
-          locationLng: parseFloat(businessLng) || -122.4194,
+          locationLat: parseFloat(businessLat) || 4.8917,
+          locationLng: parseFloat(businessLng) || 114.9401,
           address: businessAddress,
           openingHours: {
             monday: { open: '08:00', close: '18:00', isOpen: true },
@@ -3817,10 +3871,15 @@ async function startServer() {
           isActive: true,
           ownerNavigationEnabled: true,
           ownerQrCodeEnabled: req.body.ownerQrCodeEnabled !== undefined ? !!req.body.ownerQrCodeEnabled : false,
+          membershipEnabled: allowMembership,
           createdAt: new Date().toISOString(),
         };
 
         await createCarWash(newCarWash);
+
+        if (allowMembership) {
+          await setCarWashMembershipFeature(newCarWash.id, true).catch(() => {});
+        }
 
         await addAuditLog(
           req.user!.id,
@@ -4006,8 +4065,22 @@ async function startServer() {
         const salt = bcrypt.genSaltSync(10);
         const passwordHash = bcrypt.hashSync(password, salt);
 
+        let adminCreatedUserId = `usr_${Math.random().toString(36).substr(2, 9)}`;
+
+        if (isSupabaseAuthEnabled) {
+          try {
+            console.log(`[Admin Create User] Registering user ${sanitizedEmail} on Supabase Auth with role ${role}...`);
+            const supabaseId = await registerSupabaseUser(sanitizedEmail, password, name, role as string);
+            if (supabaseId) {
+              adminCreatedUserId = supabaseId;
+            }
+          } catch (supErr: any) {
+            console.warn('[Admin Create User] Supabase Auth registration warning:', supErr.message);
+          }
+        }
+
         const newUser: UserWithPassword = {
-          id: `usr_${Math.random().toString(36).substr(2, 9)}`,
+          id: adminCreatedUserId,
           email: sanitizedEmail,
           name,
           role: role as Role,
@@ -4068,6 +4141,25 @@ async function startServer() {
         };
 
         await updateUser(req.params.id, updatedData);
+
+        // Synchronize metadata with Supabase Auth
+        if (isSupabaseAuthEnabled && supabaseClient) {
+          try {
+            const { data: listData } = await supabaseClient.auth.admin.listUsers();
+            const found = (listData?.users as any[])?.find((u: any) => u.id === req.params.id || u.email?.toLowerCase() === targetUser.email.toLowerCase());
+            if (found) {
+              await supabaseClient.auth.admin.updateUserById(found.id, {
+                user_metadata: {
+                  ...(found.user_metadata || {}),
+                  role: updatedData.role,
+                  full_name: updatedData.name,
+                }
+              }).catch(() => {});
+            }
+          } catch (supErr: any) {
+            console.warn('[Admin User Update] Supabase Auth sync warning:', supErr?.message || supErr);
+          }
+        }
 
         await addAuditLog(
           req.user!.id,

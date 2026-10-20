@@ -873,6 +873,12 @@ function sanitizeParamsForSqlite(params: any[] = []): any[] {
     if (typeof p === 'boolean') {
       return p ? 1 : 0;
     }
+    if (p === 'true') {
+      return 1;
+    }
+    if (p === 'false') {
+      return 0;
+    }
     if (typeof p === 'number') {
       return Number.isNaN(p) ? null : p;
     }
@@ -899,11 +905,24 @@ function sanitizeParamsForSqlite(params: any[] = []): any[] {
   });
 }
 
-// Sanitize query parameters for PostgreSQL (converts undefined and NaN to null, stringifies objects if needed)
+// Sanitize query parameters for PostgreSQL (converts undefined and NaN to null, stringifies objects, and maps booleans to 1/0 for integer columns)
 function sanitizeParamsForPostgres(params: any[] = []): any[] {
   return params.map((p) => {
-    if (p === undefined) return null;
-    if (typeof p === 'number' && Number.isNaN(p)) return null;
+    if (p === undefined || p === null) return null;
+    if (typeof p === 'boolean') return p ? 1 : 0;
+    if (p === 'true') return 1;
+    if (p === 'false') return 0;
+    if (typeof p === 'number') return Number.isNaN(p) ? null : p;
+    if (typeof p === 'string' || typeof p === 'bigint') return p;
+    if (Buffer.isBuffer(p)) return p;
+    if (p instanceof Date) return p.toISOString();
+    if (typeof p === 'object') {
+      try {
+        return JSON.stringify(p);
+      } catch {
+        return String(p);
+      }
+    }
     return p;
   });
 }
@@ -1160,6 +1179,7 @@ const mapCarWash = (row: any): CarWash => {
     capacityPerSlot: Number(row.capacityPerSlot ?? row.capacity_per_slot ?? row.capacityperslot),
     ownerId: row.ownerId ?? row.owner_id ?? row.ownerid,
     ownerEmail: row.ownerEmail ?? row.owner_email ?? row.owneremail ?? undefined,
+    ownerName: row.ownerName ?? row.owner_name ?? row.ownername ?? undefined,
     isActive: isActiveVal === 1 || isActiveVal === true || isActiveVal === '1',
     ownerNavigationEnabled: ownerNavVal !== undefined ? (ownerNavVal === 1 || ownerNavVal === true || ownerNavVal === '1') : true,
     ownerQrCodeEnabled: ownerQrVal !== undefined ? (ownerQrVal === 1 || ownerQrVal === true || ownerQrVal === '1') : false,
@@ -2540,7 +2560,7 @@ export async function createUser(user: UserWithPassword): Promise<void> {
       user.email,
       user.name,
       assignedRole,
-      user.isActive ? true : false,
+      user.isActive ? 1 : 0,
       user.businessId || null,
       user.passwordHash,
       user.createdAt,
@@ -2549,7 +2569,7 @@ export async function createUser(user: UserWithPassword): Promise<void> {
       user.profileImageUrl || null,
       user.address || null,
       user.phone || null,
-      user.isEmailVerified === false ? false : true
+      user.isEmailVerified === false ? 0 : 1
     ]);
   } catch (error) {
     console.error('Database createUser Error:', error);
@@ -2734,7 +2754,7 @@ export async function createCarWash(carWash: CarWash): Promise<void> {
       carWash.slotDuration,
       carWash.capacityPerSlot,
       carWash.ownerId,
-      carWash.isActive ? true : false,
+      carWash.isActive ? 1 : 0,
       carWash.createdAt,
       carWash.phone || null,
       carWash.instagram || null,
@@ -2742,17 +2762,17 @@ export async function createCarWash(carWash: CarWash): Promise<void> {
       carWash.logoUrl || null,
       carWash.bibdAccountName || null,
       carWash.bibdAccountNo || null,
-      carWash.bibdEnabled ? true : false,
+      carWash.bibdEnabled ? 1 : 0,
       carWash.baiduriAccountName || null,
       carWash.baiduriAccountNo || null,
-      carWash.baiduriEnabled ? true : false,
+      carWash.baiduriEnabled ? 1 : 0,
       carWash.bibdQrImageUrl || null,
       carWash.baiduriQrImageUrl || null,
       customPaymentsStr,
       servicesStr,
-      ownerNavVal ? true : false,
-      ownerQrVal ? true : false,
-      membershipVal ? true : false,
+      ownerNavVal ? 1 : 0,
+      ownerQrVal ? 1 : 0,
+      membershipVal ? 1 : 0,
     ]);
   } catch (error) {
     console.error('Database createCarWash Error:', error);
@@ -2800,7 +2820,7 @@ export async function updateCarWash(id: string, data: Partial<CarWash>): Promise
         return;
       }
       if (key === 'isActive' || key === 'bibdEnabled' || key === 'baiduriEnabled' || key === 'ownerNavigationEnabled' || key === 'ownerQrCodeEnabled' || key === 'membershipEnabled' || typeof val === 'boolean') {
-        columnMap.set(key, val ? (usePostgres ? true : 1) : (usePostgres ? false : 0));
+        columnMap.set(key, val ? 1 : 0);
         return;
       }
       columnMap.set(key, val);
@@ -4376,7 +4396,7 @@ export async function upsertCarWashMembershipConfig(config: Partial<CarWashMembe
 export async function setCarWashMembershipFeature(carWashId: string, isEnabled: boolean): Promise<void> {
   const cw = (await getCarWashByIdOrSlug(carWashId)) || (await getCarWashById(carWashId));
   const resolvedCarWashId = cw ? cw.id : carWashId;
-  const flag = isEnabled ? (usePostgres ? true : 1) : (usePostgres ? false : 0);
+  const flag = isEnabled ? 1 : 0;
   await runQueryRun('UPDATE car_washes SET membershipEnabled = ? WHERE id = ?', [flag, resolvedCarWashId]);
   
   // Directly update or insert config row with proper boolean flag
@@ -4895,7 +4915,7 @@ export async function getMembershipRewards(carWashId: string, activeOnly: boolea
 
     let sql = 'SELECT * FROM membership_rewards WHERE carWashId = ?';
     if (activeOnly) {
-      sql += usePostgres ? ' AND is_active = true' : ' AND (isActive = 1 OR isActive = true)';
+      sql += usePostgres ? " AND (is_active = 1 OR is_active::text = 'true')" : " AND (isActive = 1 OR isActive = true)";
     }
     sql += ' ORDER BY pointsCost ASC, createdAt DESC';
     let rows = await runQueryAll(sql, [resolvedId]);
@@ -4941,7 +4961,7 @@ export async function getMembershipRewardById(rewardId: string): Promise<Members
 export async function createMembershipReward(reward: Omit<MembershipReward, 'id' | 'createdAt' | 'updatedAt'>): Promise<MembershipReward> {
   const id = `rew_${Math.random().toString(36).substring(2, 9)}`;
   const now = new Date().toISOString();
-  const activeVal = reward.isActive ? true : false;
+  const activeVal = reward.isActive ? 1 : 0;
   const maxPerMember = reward.maxRedemptionsPerMember || 0;
   const maxSupply = reward.maxTotalSupply || 0;
 
@@ -4988,7 +5008,7 @@ export async function updateMembershipReward(rewardId: string, updates: Partial<
   const maxRedemptionsPerMember = updates.maxRedemptionsPerMember !== undefined ? Number(updates.maxRedemptionsPerMember) : (existing.maxRedemptionsPerMember || 0);
   const maxTotalSupply = updates.maxTotalSupply !== undefined ? Number(updates.maxTotalSupply) : (existing.maxTotalSupply || 0);
   const isActive = updates.isActive !== undefined ? !!updates.isActive : existing.isActive;
-  const activeVal = isActive ? (usePostgres ? true : 1) : (usePostgres ? false : 0);
+  const activeVal = isActive ? 1 : 0;
 
   await runQueryRun(`
     UPDATE membership_rewards

@@ -1171,9 +1171,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         body: JSON.stringify(data),
       });
       showNotification(`Onboarded Owner & registered business location successfully!`, 'success');
-      fetchLocations();
-      if (user?.role === Role.ADMIN) {
-        fetchAdminUsers();
+      await fetchLocations();
+      if (user?.role === Role.ADMIN || user?.role === Role.SPECIAL) {
+        await fetchAdminUsers();
       }
       return true;
     } catch (err: any) {
