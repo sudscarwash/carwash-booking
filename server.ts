@@ -4841,7 +4841,35 @@ async function startServer() {
           `Adjusted points by ${delta} on membership ${membershipId}. Reason: ${reason}`
         );
 
-        res.json(result);
+        // Notify customer about points adjustment
+        await createNotification({
+          id: `notif_${Math.random().toString(36).substr(2, 9)}`,
+          userId: result.transaction.customerId,
+          title: `Points Balance Adjusted 🌟`,
+          message: `Your loyalty points balance was adjusted by ${delta > 0 ? `+${delta}` : delta} pts (Current: ${result.newBalance} pts). Reason: ${reason}`,
+          type: 'STATUS_CHANGE',
+          isRead: false,
+          createdAt: new Date().toISOString(),
+        }).catch(() => {});
+
+        broadcastRealtimeEvent({
+          type: 'BOOKING_UPDATED',
+          carWashId: result.transaction.carWashId,
+          data: {
+            type: 'POINTS_ADJUSTED',
+            customerId: result.transaction.customerId,
+            membershipId,
+            pointsDelta: delta,
+            newBalance: result.newBalance,
+          },
+        });
+
+        res.json({
+          success: true,
+          newBalance: result.newBalance,
+          balanceAfter: result.newBalance,
+          transaction: result.transaction,
+        });
       } catch (error: any) {
         res.status(400).json({ error: error.message || 'Failed to adjust points' });
       }
@@ -4857,17 +4885,18 @@ async function startServer() {
         return;
       }
 
-      const cw = await getCarWashById(carWashId);
+      const cw = (await getCarWashByIdOrSlug(carWashId)) || (await getCarWashById(carWashId));
       if (!cw) {
         res.status(404).json({ error: 'Car wash operator not found.' });
         return;
       }
 
+      const resolvedCarWashId = cw.id;
       if (!cw.membershipEnabled) {
-        await setCarWashMembershipFeature(carWashId, true);
+        await setCarWashMembershipFeature(resolvedCarWashId, true);
       }
 
-      const result = await createMembershipRedemption(req.user!.id, carWashId, rewardId);
+      const result = await createMembershipRedemption(req.user!.id, resolvedCarWashId, rewardId);
 
       await addAuditLog(
         req.user!.id,
@@ -4876,7 +4905,24 @@ async function startServer() {
         `Redeemed voucher ${result.redemption.redemptionCode} for ${result.redemption.rewardTitle} (-${result.redemption.pointsSpent} pts)`
       );
 
-      res.status(201).json(result);
+      broadcastRealtimeEvent({
+        type: 'BOOKING_UPDATED',
+        carWashId: resolvedCarWashId,
+        data: {
+          type: 'REWARD_REDEEMED',
+          customerId: req.user!.id,
+          carWashId: resolvedCarWashId,
+          redemption: result.redemption,
+          newBalance: result.newBalance,
+        },
+      });
+
+      res.status(201).json({
+        success: true,
+        redemption: result.redemption,
+        newBalance: result.newBalance,
+        balanceAfter: result.newBalance,
+      });
     } catch (error: any) {
       res.status(400).json({ error: error.message || 'Redemption failed' });
     }

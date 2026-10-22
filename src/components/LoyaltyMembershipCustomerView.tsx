@@ -353,9 +353,16 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
         setRedemptions((prev) => [newlyRedeemed, ...prev.filter((r) => r.id !== newlyRedeemed.id)]);
       }
 
-      // 2. Immediately update points balance in selected membership
-      if (typeof data.newBalance === 'number') {
-        setSelectedMembership((prev) => (prev ? { ...prev, pointsBalance: data.newBalance } : null));
+      // 2. Immediately update points balance in selected membership and list
+      const updatedBalance = typeof data.newBalance === 'number' 
+        ? data.newBalance 
+        : (typeof data.balanceAfter === 'number' ? data.balanceAfter : undefined);
+
+      if (updatedBalance !== undefined) {
+        setSelectedMembership((prev) => (prev ? { ...prev, pointsBalance: updatedBalance } : null));
+        setMemberships((prev) =>
+          prev.map((m) => (m.id === selectedMembership.id ? { ...m, pointsBalance: updatedBalance } : m))
+        );
       }
 
       // 3. Open Success Modal
@@ -488,7 +495,7 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
               >
                 {activeValidMemberships.map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.carWashName || 'Car Wash'} ({m.pointsBalance} pts)
+                    {m.carWashName || 'Car Wash'} ({Number(m.pointsBalance ?? 0).toLocaleString()} pts)
                   </option>
                 ))}
               </select>
@@ -592,7 +599,7 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
                       </div>
                       <div className="flex items-baseline gap-2 mt-0.5">
                         <span className="text-3xl sm:text-4xl font-black text-amber-300">
-                          {selectedMembership.pointsBalance.toLocaleString()}
+                          {Number(selectedMembership.pointsBalance || 0).toLocaleString()}
                         </span>
                         <span className="text-xs font-bold text-amber-200 uppercase tracking-wider">PTS</span>
                       </div>
@@ -703,7 +710,7 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
                 <div>
                   <h3 className="text-lg font-bold text-slate-800">Available Rewards</h3>
                   <p className="text-xs text-slate-500">
-                    Your balance: <strong className="text-indigo-600 font-black">{selectedMembership.pointsBalance} PTS</strong>
+                    Your balance: <strong className="text-indigo-600 font-black">{Number(selectedMembership.pointsBalance || 0)} PTS</strong>
                   </p>
                 </div>
               </div>
@@ -717,8 +724,10 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {rewards.map((reward) => {
-                    const canAfford = selectedMembership.pointsBalance >= reward.pointsCost;
-                    const progress = Math.min(100, Math.round((selectedMembership.pointsBalance / reward.pointsCost) * 100));
+                    const userBalance = Number(selectedMembership.pointsBalance || 0);
+                    const cost = Number(reward.pointsCost || 100);
+                    const canAfford = userBalance >= cost;
+                    const progress = Math.min(100, Math.round((userBalance / cost) * 100));
                     const userClaimsForThisReward = redemptions.filter(
                       (r) => r.rewardId === reward.id && r.status !== 'CANCELLED'
                     ).length;
@@ -790,7 +799,7 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
                           <div className="space-y-1 pt-1">
                             <div className="flex justify-between text-[10px] font-bold">
                               <span className={canAfford ? 'text-emerald-600' : 'text-slate-400'}>
-                                {canAfford ? 'Ready to claim!' : `${reward.pointsCost - selectedMembership.pointsBalance} pts needed`}
+                                {canAfford ? 'Ready to claim!' : `${Math.max(0, Number(reward.pointsCost || 0) - Number(selectedMembership?.pointsBalance || 0))} pts needed`}
                               </span>
                               <span className="text-slate-500">{progress}%</span>
                             </div>
@@ -1188,7 +1197,7 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-600 space-y-1.5 text-left">
               <div className="flex justify-between">
                 <span>Current Balance:</span>
-                <strong className="font-mono">{selectedMembership.pointsBalance} pts</strong>
+                <strong className="font-mono">{Number(selectedMembership?.pointsBalance ?? 0).toLocaleString()} pts</strong>
               </div>
               <div className="flex justify-between text-rose-600">
                 <span>Points Deducted:</span>
@@ -1196,7 +1205,7 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
               </div>
               <div className="flex justify-between border-t border-slate-200 pt-1 font-bold text-slate-800">
                 <span>Remaining Balance:</span>
-                <strong className="font-mono">{selectedMembership.pointsBalance - redeemingReward.pointsCost} pts</strong>
+                <strong className="font-mono">{Math.max(0, Number(selectedMembership?.pointsBalance ?? 0) - Number(redeemingReward.pointsCost || 0)).toLocaleString()} pts</strong>
               </div>
             </div>
 

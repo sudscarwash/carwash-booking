@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, X, Settings2, Check } from 'lucide-react';
 import {
   getTransferPresets,
@@ -30,7 +30,7 @@ export const TransferProviderSelector: React.FC<TransferProviderSelectorProps> =
   const [newPresetInput, setNewPresetInput] = useState('');
 
   // Re-sync savedPresets when businessId changes (e.g. switching between different car wash locations)
-  React.useEffect(() => {
+  useEffect(() => {
     setSavedPresets(getTransferPresets(businessId));
   }, [businessId]);
 

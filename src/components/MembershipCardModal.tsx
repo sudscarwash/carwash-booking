@@ -245,7 +245,7 @@ export const MembershipCardModal: React.FC<MembershipCardModalProps> = ({
                     </span>
                     <div className="flex items-baseline gap-1.5">
                       <span className="text-4xl font-black text-white tracking-tight">
-                        {membership.pointsBalance.toLocaleString()}
+                        {Number(membership?.pointsBalance ?? 0).toLocaleString()}
                       </span>
                       <span className="text-xs font-bold uppercase text-amber-300">Points</span>
                     </div>
@@ -333,7 +333,7 @@ export const MembershipCardModal: React.FC<MembershipCardModalProps> = ({
                 <div>
                   <h3 className="text-sm font-extrabold text-slate-900">Available Rewards</h3>
                   <p className="text-xs text-slate-500">
-                    Your balance: <strong className="text-indigo-600">{membership.pointsBalance} pts</strong>
+                    Your balance: <strong className="text-indigo-600">{Number(membership?.pointsBalance ?? 0).toLocaleString()} pts</strong>
                   </p>
                 </div>
                 <button
@@ -394,7 +394,7 @@ export const MembershipCardModal: React.FC<MembershipCardModalProps> = ({
               ) : (
                 <div className="space-y-3">
                   {rewards.map((reward) => {
-                    const canAfford = membership.pointsBalance >= reward.pointsCost;
+                    const canAfford = Number(membership?.pointsBalance ?? 0) >= Number(reward?.pointsCost ?? 0);
                     return (
                       <div
                         key={reward.id}
@@ -455,15 +455,15 @@ export const MembershipCardModal: React.FC<MembershipCardModalProps> = ({
                     <div className="bg-slate-50 rounded-2xl p-3.5 space-y-2 text-xs border border-slate-200">
                       <div className="flex justify-between text-slate-600">
                         <span>Current Points:</span>
-                        <span className="font-bold">{membership.pointsBalance} pts</span>
+                        <span className="font-bold">{Number(membership?.pointsBalance ?? 0).toLocaleString()} pts</span>
                       </div>
                       <div className="flex justify-between text-rose-600">
                         <span>Points Cost:</span>
-                        <span className="font-bold">-{selectedReward.pointsCost} pts</span>
+                        <span className="font-bold">-{Number(selectedReward?.pointsCost ?? 0).toLocaleString()} pts</span>
                       </div>
                       <div className="border-t border-slate-200 pt-2 flex justify-between text-slate-900 font-extrabold">
                         <span>Remaining Points:</span>
-                        <span className="text-indigo-600">{membership.pointsBalance - selectedReward.pointsCost} pts</span>
+                        <span className="text-indigo-600">{Math.max(0, Number(membership?.pointsBalance ?? 0) - Number(selectedReward?.pointsCost ?? 0)).toLocaleString()} pts</span>
                       </div>
                     </div>
 

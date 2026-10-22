@@ -1621,6 +1621,8 @@ async function executeSeedFirestore() {
     'ALTER TABLE platform_info ADD COLUMN emailSettingsJson TEXT',
     'ALTER TABLE audit_logs ADD COLUMN user_id TEXT',
     'ALTER TABLE audit_logs ADD COLUMN user_email TEXT',
+    'ALTER TABLE customer_memberships ADD COLUMN IF NOT EXISTS points_balance INTEGER DEFAULT 0',
+    'ALTER TABLE customer_memberships ADD COLUMN IF NOT EXISTS pointsBalance INTEGER DEFAULT 0',
   ];
 
   // Try renaming un-underscored Postgres columns if present from legacy schemas
@@ -1710,6 +1712,15 @@ async function executeSeedFirestore() {
   } catch (e) {
     // ignore
   }
+
+  // Proactively heal null points_balance in customer_memberships
+  try {
+    if (usePostgres) {
+      await pgPool!.query('UPDATE customer_memberships SET points_balance = 0 WHERE points_balance IS NULL');
+    } else {
+      sqliteDb!.exec('UPDATE customer_memberships SET pointsBalance = 0 WHERE pointsBalance IS NULL');
+    }
+  } catch (e) {}
 
   // 🔒 Enable Row-Level Security (RLS) on all public PostgreSQL tables for Supabase Security compliance
   if (usePostgres && pgPool) {
@@ -4268,6 +4279,14 @@ const mapCustomerMembership = (row: any): CustomerMembership => {
   if (!row) return row;
   const consent = row.consentGiven !== undefined ? row.consentGiven : (row.consent_given !== undefined ? row.consent_given : row.consentgiven);
 
+  const rawPts = row.pointsBalance !== undefined && row.pointsBalance !== null
+    ? row.pointsBalance
+    : (row.points_balance !== undefined && row.points_balance !== null
+        ? row.points_balance
+        : (row.pointsbalance !== undefined && row.pointsbalance !== null ? row.pointsbalance : 0));
+  const numPts = Number(rawPts);
+  const safeBalance = !isNaN(numPts) && isFinite(numPts) ? Math.max(0, Math.round(numPts)) : 0;
+
   return {
     id: row.id,
     customerId: row.customerId ?? row.customer_id ?? row.customerid,
@@ -4279,7 +4298,7 @@ const mapCustomerMembership = (row: any): CustomerMembership => {
     carWashLogo: row.carWashLogo ?? row.car_wash_logo ?? row.carwashlogo ?? row.logo_url ?? undefined,
     membershipNumber: row.membershipNumber ?? row.membership_number ?? row.membershipnumber,
     status: (row.status ?? 'ACTIVE') as any,
-    pointsBalance: Number(row.pointsBalance ?? row.points_balance ?? row.pointsbalance ?? 0),
+    pointsBalance: safeBalance,
     joinedAt: row.joinedAt ?? row.joined_at ?? row.joinedat,
     joinMethod: (row.joinMethod ?? row.join_method ?? row.joinmethod ?? 'ONLINE_OPT_IN') as any,
     consentGiven: consent === 1 || consent === true || consent === '1',
@@ -4494,9 +4513,11 @@ export async function setCarWashMembershipFeature(carWashId: string, isEnabled: 
 export async function getCustomerMemberships(customerId: string): Promise<CustomerMembership[]> {
   try {
     const rows = await runQueryAll(`
-      SELECT cm.*, cw.name AS car_wash_name, cw.logoUrl AS car_wash_logo
+      SELECT cm.*, cw.name AS car_wash_name, cw.logoUrl AS car_wash_logo,
+             u.name AS user_name, u.email AS user_email, u.phone AS user_phone
       FROM customer_memberships cm
       LEFT JOIN car_washes cw ON cm.carWashId = cw.id
+      LEFT JOIN users u ON cm.customerId = u.id
       WHERE cm.customerId = ?
       ORDER BY cm.joinedAt DESC
     `, [customerId]);
@@ -4510,9 +4531,11 @@ export async function getCustomerMemberships(customerId: string): Promise<Custom
 export async function getCustomerMembership(customerId: string, carWashId: string): Promise<CustomerMembership | null> {
   try {
     const row = await runQueryOne(`
-      SELECT cm.*, cw.name AS car_wash_name, cw.logoUrl AS car_wash_logo
+      SELECT cm.*, cw.name AS car_wash_name, cw.logoUrl AS car_wash_logo,
+             u.name AS user_name, u.email AS user_email, u.phone AS user_phone
       FROM customer_memberships cm
       LEFT JOIN car_washes cw ON cm.carWashId = cw.id
+      LEFT JOIN users u ON cm.customerId = u.id
       WHERE cm.customerId = ? AND cm.carWashId = ?
     `, [customerId, carWashId]);
     if (!row) return null;
@@ -4747,7 +4770,7 @@ export async function recordPointsTransaction(params: {
   redemptionId?: string;
   performedById: string;
   performedByRole: string;
-}): Promise<{ newBalance: number; transaction: MembershipPointsLedger }> {
+}): Promise<{ newBalance: number; balanceAfter: number; transaction: MembershipPointsLedger }> {
   const membership = await runQueryOne('SELECT id, pointsBalance, status FROM customer_memberships WHERE id = ?', [params.membershipId]);
   if (!membership) {
     throw new Error('Membership not found.');
@@ -4756,18 +4779,32 @@ export async function recordPointsTransaction(params: {
     throw new Error('Membership is not currently active.');
   }
 
-  const currentBalance = Number(membership.pointsBalance ?? membership.points_balance ?? 0);
-  const newBalance = currentBalance + params.points;
+  const rawBalance = membership.pointsBalance !== undefined && membership.pointsBalance !== null
+    ? membership.pointsBalance
+    : (membership.points_balance !== undefined && membership.points_balance !== null
+        ? membership.points_balance
+        : (membership.pointsbalance !== undefined && membership.pointsbalance !== null ? membership.pointsbalance : 0));
+  const currentBalance = !isNaN(Number(rawBalance)) && isFinite(Number(rawBalance)) ? Math.max(0, Number(rawBalance)) : 0;
+  const delta = !isNaN(Number(params.points)) && isFinite(Number(params.points)) ? Number(params.points) : 0;
+  const newBalance = Math.max(0, Math.round(currentBalance + delta));
 
-  if (newBalance < 0) {
-    throw new Error(`Insufficient points balance. Current: ${currentBalance}, Required deduction: ${Math.abs(params.points)}`);
+  if (delta < 0 && currentBalance + delta < 0) {
+    throw new Error(`Insufficient points balance. Current: ${currentBalance}, Required deduction: ${Math.abs(delta)}`);
   }
 
   const now = new Date().toISOString();
   const txId = `tx_${Math.random().toString(36).substring(2, 9)}`;
 
-  // Atomic update to pointsBalance
-  await runQueryRun('UPDATE customer_memberships SET pointsBalance = ?, updatedAt = ? WHERE id = ?', [newBalance, now, params.membershipId]);
+  // Atomic update to pointsBalance (support SQLite pointsBalance and PostgreSQL points_balance / pointsbalance)
+  if (usePostgres) {
+    try {
+      await runQueryRun('UPDATE customer_memberships SET points_balance = ?, pointsbalance = ?, updated_at = ? WHERE id = ?', [newBalance, newBalance, now, params.membershipId]);
+    } catch {
+      await runQueryRun('UPDATE customer_memberships SET points_balance = ?, updated_at = ? WHERE id = ?', [newBalance, now, params.membershipId]);
+    }
+  } else {
+    await runQueryRun('UPDATE customer_memberships SET pointsBalance = ?, updatedAt = ? WHERE id = ?', [newBalance, now, params.membershipId]);
+  }
 
   // Insert ledger entry
   await runQueryRun(`
@@ -4776,7 +4813,7 @@ export async function recordPointsTransaction(params: {
       description, bookingId, redemptionId, performedById, performedByRole, createdAt
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `, [
-    txId, params.membershipId, params.customerId, params.carWashId, params.points, params.transactionType,
+    txId, params.membershipId, params.customerId, params.carWashId, delta, params.transactionType,
     params.description, params.bookingId || null, params.redemptionId || null,
     params.performedById, params.performedByRole, now
   ]);
@@ -4786,8 +4823,8 @@ export async function recordPointsTransaction(params: {
     membershipId: params.membershipId,
     customerId: params.customerId,
     carWashId: params.carWashId,
-    points: params.points,
-    pointsDelta: params.points,
+    points: delta,
+    pointsDelta: delta,
     balanceAfter: newBalance,
     transactionType: params.transactionType,
     description: params.description,
@@ -4798,7 +4835,7 @@ export async function recordPointsTransaction(params: {
     createdAt: now,
   };
 
-  return { newBalance, transaction: tx };
+  return { newBalance, balanceAfter: newBalance, transaction: tx };
 }
 
 export async function adjustCustomerPoints(params: {
@@ -4807,21 +4844,28 @@ export async function adjustCustomerPoints(params: {
   reason: string;
   performedById: string;
   performedByRole: string;
-}): Promise<{ newBalance: number; transaction: MembershipPointsLedger }> {
+}): Promise<{ newBalance: number; balanceAfter: number; transaction: MembershipPointsLedger }> {
   if (!params.reason || params.reason.trim().length === 0) {
     throw new Error('A specific reason is required for manual point adjustments.');
   }
-  const membership = await runQueryOne('SELECT customerId, carWashId FROM customer_memberships WHERE id = ?', [params.membershipId]);
+
+  // Resilient membership lookup: check id, customerId, qrToken, or membershipNumber
+  let membership = await runQueryOne('SELECT id, customerId, carWashId FROM customer_memberships WHERE id = ?', [params.membershipId]);
+  if (!membership) {
+    membership = await runQueryOne('SELECT id, customerId, carWashId FROM customer_memberships WHERE customerId = ? OR qrToken = ? OR LOWER(membershipNumber) = LOWER(?)', [params.membershipId, params.membershipId, params.membershipId]);
+  }
   if (!membership) throw new Error('Membership not found.');
 
+  const targetMembershipId = membership.id;
   const customerId = membership.customerId ?? membership.customer_id;
   const carWashId = membership.carWashId ?? membership.car_wash_id;
+  const delta = Number(params.pointsDelta);
 
   return recordPointsTransaction({
-    membershipId: params.membershipId,
+    membershipId: targetMembershipId,
     customerId,
     carWashId,
-    points: params.pointsDelta,
+    points: delta,
     transactionType: 'ADJUSTMENT',
     description: `Manual adjustment: ${params.reason.trim()}`,
     performedById: params.performedById,
@@ -5137,22 +5181,32 @@ export async function createMembershipRedemption(
   customerId: string,
   carWashId: string,
   rewardId: string
-): Promise<{ redemption: MembershipRedemption; newBalance: number }> {
+): Promise<{ redemption: MembershipRedemption; newBalance: number; balanceAfter: number }> {
+  // Resolve car wash ID or slug to canonical ID
+  const cw = (await getCarWashByIdOrSlug(carWashId)) || (await getCarWashById(carWashId));
+  const resolvedCarWashId = cw ? cw.id : carWashId;
+
   // Verify membership
-  const membership = await getCustomerMembership(customerId, carWashId);
+  let membership = await getCustomerMembership(customerId, resolvedCarWashId);
+  if (!membership && carWashId !== resolvedCarWashId) {
+    membership = await getCustomerMembership(customerId, carWashId);
+  }
   if (!membership || membership.status !== 'ACTIVE') {
     throw new Error('You do not have an active membership with this car wash.');
   }
 
   // Verify reward
   const reward = await getMembershipRewardById(rewardId);
-  if (!reward || reward.carWashId !== carWashId || !reward.isActive) {
+  if (!reward || (reward.carWashId !== resolvedCarWashId && reward.carWashId !== carWashId) || !reward.isActive) {
     throw new Error('Reward is not available or inactive.');
   }
 
+  const currentPts = Number(membership.pointsBalance || 0);
+  const cost = Number(reward.pointsCost || 0);
+
   // Verify points balance
-  if (membership.pointsBalance < reward.pointsCost) {
-    throw new Error(`Insufficient points. You need ${reward.pointsCost} points, but have ${membership.pointsBalance} points.`);
+  if (currentPts < cost) {
+    throw new Error(`Insufficient points. You need ${cost} points, but have ${currentPts} points.`);
   }
 
   // 1. Enforce max claims per member (if configured by owner)
@@ -5201,8 +5255,8 @@ export async function createMembershipRedemption(
   const { newBalance } = await recordPointsTransaction({
     membershipId: membership.id,
     customerId,
-    carWashId,
-    points: -reward.pointsCost,
+    carWashId: resolvedCarWashId,
+    points: -cost,
     transactionType: 'REDEEM',
     description: `Redeemed reward: ${reward.title} (${redemptionCode})`,
     redemptionId,
@@ -5217,8 +5271,8 @@ export async function createMembershipRedemption(
       pointsSpent, status, redemptionToken, expiresAt, createdAt
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, ?)
   `, [
-    redemptionId, redemptionCode, membership.id, customerId, carWashId, reward.id, reward.title,
-    reward.pointsCost, redemptionToken, expiresAt, now
+    redemptionId, redemptionCode, membership.id, customerId, resolvedCarWashId, reward.id, reward.title,
+    cost, redemptionToken, expiresAt, now
   ]);
 
   // Increment claimCount on reward
@@ -5228,7 +5282,7 @@ export async function createMembershipRedemption(
     console.warn('Could not increment reward claimCount:', err);
   }
 
-  const carWash = await runQueryOne('SELECT name FROM car_washes WHERE id = ?', [carWashId]);
+  const carWash = await runQueryOne('SELECT name FROM car_washes WHERE id = ?', [resolvedCarWashId]);
   const user = await runQueryOne('SELECT name, email, phone FROM users WHERE id = ?', [customerId]);
 
   const redemption: MembershipRedemption = {
@@ -5239,18 +5293,18 @@ export async function createMembershipRedemption(
     customerName: user?.name,
     customerEmail: user?.email,
     customerPhone: user?.phone,
-    carWashId,
+    carWashId: resolvedCarWashId,
     carWashName: carWash?.name,
     rewardId: reward.id,
     rewardTitle: reward.title,
-    pointsSpent: reward.pointsCost,
+    pointsSpent: cost,
     status: 'PENDING',
     redemptionToken,
     expiresAt,
     createdAt: now,
   };
 
-  return { redemption, newBalance };
+  return { redemption, newBalance, balanceAfter: newBalance };
 }
 
 export async function getRedemptionByToken(tokenOrCode: string): Promise<MembershipRedemption | null> {

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Upload, CheckCircle2, AlertCircle, Sparkles, Receipt, Landmark, Info } from 'lucide-react';
 import { CarWash } from '../types.js';
 
@@ -108,7 +108,7 @@ export const LocalPaymentForm: React.FC<LocalPaymentFormProps> = ({
   }
 
   // Auto-select option if only one total is available
-  React.useEffect(() => {
+  useEffect(() => {
     if (paymentOptions.length === 1) {
       setPaymentBank(paymentOptions[0].id);
     }

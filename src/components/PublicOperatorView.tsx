@@ -615,7 +615,7 @@ export const PublicOperatorView: React.FC<PublicOperatorViewProps> = ({
               </h3>
               <p className="text-xs sm:text-sm text-slate-300 max-w-xl">
                 {memberPass
-                  ? `Member #${memberPass.membershipNumber} • Current Balance: ${memberPass.pointsBalance} pts. Points are automatically credited upon wash completion.`
+                  ? `Member #${memberPass.membershipNumber} • Current Balance: ${Number(memberPass.pointsBalance ?? 0).toLocaleString()} pts. Points are automatically credited upon wash completion.`
                   : 'Join our exclusive Rewards Club in 1-click. Accumulate points with every wash you book or walk-in, and redeem for complimentary detailing and discounts.'}
               </p>
 

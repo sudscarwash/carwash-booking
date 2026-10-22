@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext.js';
 import { MapSimulation } from '../components/MapSimulation.js';
 import {
@@ -175,7 +175,7 @@ export const OwnerDashboard: React.FC = () => {
   } = useApp();
 
   // Filter locations to strictly those owned by the logged-in user
-  const ownerLocations = React.useMemo(() => {
+  const ownerLocations = useMemo(() => {
     if (!user) return [];
     if (user.role === Role.ADMIN) return locations;
     return locations.filter((loc) => 
@@ -187,7 +187,7 @@ export const OwnerDashboard: React.FC = () => {
   // Selected owned business
   const [selectedBusiness, setSelectedBusiness] = useState<CarWash | null>(null);
 
-  const selectedBusinessPaymentMethods = React.useMemo(() => {
+  const selectedBusinessPaymentMethods = useMemo(() => {
     if (!selectedBusiness) return [];
     const methods: string[] = [];
     if (selectedBusiness.bibdEnabled) methods.push('BIBD');
@@ -509,7 +509,7 @@ export const OwnerDashboard: React.FC = () => {
   });
 
   // Compute analytics dynamically from current state for zero-latency presentation
-  const computedAnalytics = React.useMemo(() => {
+  const computedAnalytics = useMemo(() => {
     let relevantBookings = bookings;
     if (selectedBusiness) {
       relevantBookings = bookings.filter((b) => b.carWashId === selectedBusiness.id);
@@ -7131,3 +7131,5 @@ export const OwnerDashboard: React.FC = () => {
     </div>
   );
 };
+
+export default OwnerDashboard;

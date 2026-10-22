@@ -126,7 +126,7 @@ export const CustomerMembershipSection: React.FC<CustomerMembershipSectionProps>
               <div className="text-right">
                 <span className="text-[10px] text-indigo-200 uppercase font-semibold">Balance</span>
                 <p className="text-lg font-black text-amber-300">
-                  {matchedMembership.pointsBalance.toLocaleString()} <span className="text-xs font-bold text-white">pts</span>
+                  {Number(matchedMembership?.pointsBalance ?? 0).toLocaleString()} <span className="text-xs font-bold text-white">pts</span>
                 </p>
               </div>
             </div>
@@ -319,7 +319,7 @@ export const CustomerMembershipSection: React.FC<CustomerMembershipSectionProps>
                 <div className="text-right">
                   <span className="text-[10px] text-slate-400 uppercase font-semibold">Points</span>
                   <p className="text-xl font-black text-indigo-600">
-                    {membership.pointsBalance.toLocaleString()}
+                    {Number(membership?.pointsBalance ?? 0).toLocaleString()}
                   </p>
                 </div>
               </div>

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { AppProvider, useApp } from './context/AppContext.js';
 import { Navbar } from './components/Navbar.js';
 import { ErrorBoundary } from './components/ErrorBoundary.js';
@@ -86,7 +86,7 @@ const MainAppContent: React.FC = () => {
   const [preselectedServiceId, setPreselectedServiceId] = useState<string | null>(null);
 
   // Matched Car Wash for direct booking
-  const publicCarWash = React.useMemo(() => {
+  const publicCarWash = useMemo(() => {
     if (!publicOperatorSlug || !locations || locations.length === 0) return null;
     const clean = publicOperatorSlug.toLowerCase().trim();
     return (
@@ -100,7 +100,7 @@ const MainAppContent: React.FC = () => {
   }, [publicOperatorSlug, locations]);
 
   // If station not yet in locations state, fetch directly from API endpoint
-  React.useEffect(() => {
+  useEffect(() => {
     if (!publicOperatorSlug) {
       setFetchedOperatorCarWash(null);
       return;
@@ -146,7 +146,7 @@ const MainAppContent: React.FC = () => {
   const isPublicWashAllowed = Boolean(activeCarWash && activeCarWash.ownerQrCodeEnabled === true && activeCarWash.isActive !== false);
 
   // If visitor arrives via direct /wash/ URL but QR booking access is disabled or inactive, redirect to login / dashboard
-  React.useEffect(() => {
+  useEffect(() => {
     if (!publicOperatorSlug) return;
 
     if (activeCarWash) {
@@ -166,11 +166,11 @@ const MainAppContent: React.FC = () => {
   }, [publicOperatorSlug, activeCarWash, user]);
 
   // Track if we are navigating back from an auth sub-view
-  const currentAuthModeRef = React.useRef<'login' | 'register' | 'forgot' | 'reset'>('login');
-  const isExitingRef = React.useRef(false);
+  const currentAuthModeRef = useRef<'login' | 'register' | 'forgot' | 'reset'>('login');
+  const isExitingRef = useRef(false);
 
   // Sync ref with current auth state
-  React.useEffect(() => {
+  useEffect(() => {
     if (isRegisterMode) currentAuthModeRef.current = 'register';
     else if (isForgotMode) currentAuthModeRef.current = 'forgot';
     else if (isResetMode) currentAuthModeRef.current = 'reset';
@@ -189,7 +189,7 @@ const MainAppContent: React.FC = () => {
   };
 
   // Sync route on login / role change / auth mode change
-  React.useEffect(() => {
+  useEffect(() => {
     const path = window.location.pathname;
     const isOperatorPath = /^\/(?:wash|book|operator)\//i.test(path);
 
@@ -240,7 +240,7 @@ const MainAppContent: React.FC = () => {
   }, [user, publicOperatorSlug]);
 
   // Mobile Back button / browser popstate listener
-  React.useEffect(() => {
+  useEffect(() => {
     const handlePopState = () => {
       if (isExitingRef.current) return;
 
@@ -318,7 +318,7 @@ const MainAppContent: React.FC = () => {
   const [showResetPassword, setShowResetPassword] = useState(false);
 
   // If visitor logs in while showAuthModalForOperator was open, return to operator view and open booking flow
-  React.useEffect(() => {
+  useEffect(() => {
     if (user && showAuthModalForOperator) {
       setShowAuthModalForOperator(false);
       const pendingSvc = sessionStorage.getItem('pending_service_id');

@@ -457,13 +457,20 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
       });
 
       const updated = await safeJsonOrError(res, 'Failed to adjust points');
+      const finalBalance = typeof updated.balanceAfter === 'number'
+        ? updated.balanceAfter
+        : (typeof updated.newBalance === 'number'
+            ? updated.newBalance
+            : (typeof updated.transaction?.balanceAfter === 'number' ? updated.transaction.balanceAfter : 0));
+
       setMembers((prev) =>
-        prev.map((m) => (m.id === adjustingMember.id ? { ...m, pointsBalance: updated.balanceAfter } : m))
+        prev.map((m) => (m.id === adjustingMember.id ? { ...m, pointsBalance: finalBalance } : m))
       );
       setAdjustingMember(null);
       setAdjustPointsDelta('');
       setAdjustReason('');
-      showBanner(`Points successfully adjusted! New balance: ${updated.balanceAfter} pts.`, 'success');
+      showBanner(`Points successfully adjusted! New balance: ${finalBalance} pts.`, 'success');
+      await fetchData();
     } catch (err: any) {
       showBanner(err.message || 'Error adjusting points', 'error');
     } finally {
@@ -897,7 +904,7 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
                         {m.customerName || 'Customer'}
                         {m.customerEmail && <span className="block text-[10px] text-slate-400 font-normal">{m.customerEmail}</span>}
                       </td>
-                      <td className="px-4 py-3 font-mono font-black text-indigo-700 text-sm">{m.pointsBalance} pts</td>
+                      <td className="px-4 py-3 font-mono font-black text-indigo-700 text-sm">{Number(m.pointsBalance ?? 0).toLocaleString()} pts</td>
                       <td className="px-4 py-3 text-slate-400">{new Date(m.joinedAt).toLocaleDateString()}</td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
@@ -1458,7 +1465,7 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
                 Member: <strong className="text-slate-900">{adjustingMember.customerName || adjustingMember.membershipNumber}</strong>
               </p>
               <p className="text-slate-600">
-                Current Balance: <strong className="font-mono text-indigo-700">{adjustingMember.pointsBalance} pts</strong>
+                Current Balance: <strong className="font-mono text-indigo-700">{Number(adjustingMember?.pointsBalance ?? 0).toLocaleString()} pts</strong>
               </p>
             </div>
 

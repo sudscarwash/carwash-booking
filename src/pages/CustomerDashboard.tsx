@@ -1273,7 +1273,7 @@ export const CustomerDashboard: React.FC = () => {
                                     title="View VIP Rewards Club & Points"
                                   >
                                     <Award className={`w-3 h-3 ${userMembership ? 'text-amber-600' : 'text-indigo-600'}`} />
-                                    <span>{userMembership ? `VIP Member (${userMembership.pointsBalance} pts)` : 'VIP Rewards Club'}</span>
+                                    <span>{userMembership ? `VIP Member (${Number(userMembership.pointsBalance ?? 0).toLocaleString()} pts)` : 'VIP Rewards Club'}</span>
                                   </button>
                                 );
                               })()}

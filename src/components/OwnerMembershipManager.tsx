@@ -454,7 +454,7 @@ export const OwnerMembershipManager: React.FC<OwnerMembershipManagerProps> = ({
             <div className="bg-white p-4 rounded-3xl border border-slate-200/90 shadow-2xs space-y-1">
               <span className="text-[10px] uppercase font-bold text-slate-400">Points In Circulation</span>
               <p className="text-2xl font-black text-indigo-600">
-                {members.reduce((acc, m) => acc + (m.pointsBalance || 0), 0).toLocaleString()}
+                {members.reduce((acc, m) => acc + (Number(m.pointsBalance) || 0), 0).toLocaleString()}
               </p>
               <p className="text-[10px] text-slate-500">Unredeemed balance</p>
             </div>
@@ -916,7 +916,7 @@ export const OwnerMembershipManager: React.FC<OwnerMembershipManagerProps> = ({
                         {m.membershipNumber}
                       </td>
                       <td className="py-3 font-mono font-black text-indigo-600">
-                        {m.pointsBalance.toLocaleString()} pts
+                        {Number(m.pointsBalance ?? 0).toLocaleString()} pts
                       </td>
                       <td className="py-3 text-slate-500">
                         {new Date(m.joinedAt).toLocaleDateString()}

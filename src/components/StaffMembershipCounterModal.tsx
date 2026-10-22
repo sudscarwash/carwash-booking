@@ -285,7 +285,7 @@ export const StaffMembershipCounterModal: React.FC<StaffMembershipCounterModalPr
                     <div className="text-right">
                       <span className="text-[10px] text-slate-400 uppercase font-bold">Balance</span>
                       <p className="text-xl font-black text-indigo-600">
-                        {foundMember.pointsBalance} pts
+                        {Number(foundMember?.pointsBalance ?? 0).toLocaleString()} pts
                       </p>
                     </div>
                   </div>

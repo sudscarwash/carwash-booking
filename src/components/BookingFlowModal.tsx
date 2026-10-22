@@ -822,7 +822,7 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                             {customerMembership ? (
                               <div className="flex items-center gap-2">
                                 <span className="text-[9px] bg-emerald-100 text-emerald-800 font-extrabold px-1.5 py-0.5 rounded-full uppercase tracking-wider">
-                                  ✓ Member #{customerMembership.membershipNumber} ({customerMembership.pointsBalance} pts)
+                                  ✓ Member #{customerMembership.membershipNumber} ({Number(customerMembership.pointsBalance ?? 0).toLocaleString()} pts)
                                 </span>
                                 <button
                                   type="button"
@@ -1664,7 +1664,7 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                         <div>
                           <span className="font-extrabold text-indigo-900 block text-xs">
                             {customerMembership 
-                              ? `VIP Member Active • #${customerMembership.membershipNumber} (${customerMembership.pointsBalance} pts)` 
+                              ? `VIP Member Active • #${customerMembership.membershipNumber} (${Number(customerMembership.pointsBalance ?? 0).toLocaleString()} pts)` 
                               : 'VIP Loyalty Reward Points Available'}
                           </span>
                           <span className="text-slate-500 text-[11px] block">
