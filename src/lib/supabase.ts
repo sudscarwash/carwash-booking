@@ -14,9 +14,33 @@ function cleanEnvString(val?: string): string | undefined {
   }
   return cleaned;
 }
+function cleanSupabaseUrl(val?: string): string | undefined {
+  let cleaned = cleanEnvString(val);
+  if (!cleaned) return undefined;
+  // If user accidentally included /rest/v1 or trailing slashes, normalize to root domain
+  cleaned = cleaned.replace(/\/rest\/v1\/?$/, '');
+  cleaned = cleaned.replace(/\/+$/, '');
+  return cleaned;
+}
 
-const supabaseUrl = cleanEnvString(env.VITE_SUPABASE_URL);
+const supabaseUrl = cleanSupabaseUrl(env.VITE_SUPABASE_URL);
 const supabaseAnonKey = cleanEnvString(env.VITE_SUPABASE_ANON_KEY);
+
+export const configuredSupabaseUrl = supabaseUrl;
+export const configuredSupabaseAnonKey = supabaseAnonKey;
+
+export function clearSupabaseStoredSession() {
+  try {
+    Object.keys(localStorage).forEach(key => {
+      if (key.startsWith('sb-') || key.includes('supabase')) {
+        localStorage.removeItem(key);
+      }
+    });
+    if (supabase) {
+      supabase.auth.signOut().catch(() => {});
+    }
+  } catch {}
+}
 
 // Check if credentials are valid and not placeholders
 export const isSupabaseConfigured = Boolean(

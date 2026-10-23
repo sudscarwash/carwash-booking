@@ -53,7 +53,13 @@ import {
   Database,
 } from 'lucide-react';
 import { getWhatsAppUrl, getPhoneCallUrl } from '../../utils/phoneUtils';
-import { testSupabaseConnection, SupabaseConnectionStatus } from '../../lib/supabase';
+import { 
+  testSupabaseConnection, 
+  SupabaseConnectionStatus,
+  configuredSupabaseUrl,
+  configuredSupabaseAnonKey,
+  clearSupabaseStoredSession,
+} from '../../lib/supabase';
 
 export const AdminDashboard: React.FC = () => {
   const { 
@@ -803,24 +809,45 @@ export const AdminDashboard: React.FC = () => {
             </div>
 
             {/* Connection Diagnostics Bar */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-4 border-t border-white/10 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-4 border-t border-white/10 text-xs">
               <div className="bg-white/5 rounded-2xl p-3 border border-white/5">
-                <span className="text-white/50 block text-[10px] uppercase font-bold tracking-wider">Configured Endpoint</span>
+                <span className="text-white/50 block text-[10px] uppercase font-bold tracking-wider">Browser Endpoint</span>
+                <span className="font-mono text-white/90 truncate block mt-0.5" title={configuredSupabaseUrl || ''}>
+                  {configuredSupabaseUrl ? configuredSupabaseUrl.replace('https://', '') : 'Not detected'}
+                </span>
+              </div>
+              <div className="bg-white/5 rounded-2xl p-3 border border-white/5">
+                <span className="text-white/50 block text-[10px] uppercase font-bold tracking-wider">Anon Key Loaded</span>
                 <span className="font-mono text-white/90 truncate block mt-0.5">
-                  {isSupabaseConfigured ? 'Connected via VITE_SUPABASE_URL' : 'No credentials in .env (Using LocalStorage)'}
+                  {configuredSupabaseAnonKey 
+                    ? `${configuredSupabaseAnonKey.slice(0, 8)}...${configuredSupabaseAnonKey.slice(-6)} (${configuredSupabaseAnonKey.length} chars)` 
+                    : 'Missing / Empty'}
                 </span>
               </div>
               <div className="bg-white/5 rounded-2xl p-3 border border-white/5">
-                <span className="text-white/50 block text-[10px] uppercase font-bold tracking-wider">Restaurants In Memory</span>
+                <span className="text-white/50 block text-[10px] uppercase font-bold tracking-wider">Live In-Memory Cache</span>
                 <span className="font-bold text-white block mt-0.5">
-                  {restaurants.length} establishments loaded (Browser Cached)
+                  {restaurants.length} establishments loaded
                 </span>
               </div>
-              <div className="bg-white/5 rounded-2xl p-3 border border-white/5">
-                <span className="text-white/50 block text-[10px] uppercase font-bold tracking-wider">Last DB Sync</span>
-                <span className="font-mono text-white/90 block mt-0.5">
-                  {lastSyncedAt ? `${lastSyncedAt} (Success)` : 'Never synced (Local cache active)'}
-                </span>
+              <div className="bg-white/5 rounded-2xl p-3 border border-white/5 flex flex-col justify-between">
+                <div>
+                  <span className="text-white/50 block text-[10px] uppercase font-bold tracking-wider">Last DB Sync</span>
+                  <span className="font-mono text-white/90 block mt-0.5">
+                    {lastSyncedAt ? `${lastSyncedAt}` : 'Never'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearSupabaseStoredSession();
+                    setAdminPingToast('Cleared local auth session tokens. Retrying connection...');
+                    setTimeout(() => setAdminPingToast(null), 3000);
+                  }}
+                  className="mt-2 text-[10px] text-amber-300 hover:text-amber-200 underline text-left cursor-pointer"
+                >
+                  Reset Stored Auth Tokens
+                </button>
               </div>
             </div>
 
@@ -848,7 +875,7 @@ export const AdminDashboard: React.FC = () => {
                     )}
                     {!supabaseTestStatus.isConnected && (
                       <p className="mt-2 text-white/70 text-[11px]">
-                        Tip: Make sure you ran the SQL Schema script in your Supabase SQL Editor and added <code className="bg-white/10 px-1 py-0.5 rounded">VITE_SUPABASE_URL</code> and <code className="bg-white/10 px-1 py-0.5 rounded">VITE_SUPABASE_ANON_KEY</code> to your environment variables on Render.
+                        Tip: Make sure you ran the SQL Schema script in your Supabase SQL Editor. On Render, remember to trigger <strong>Manual Deploy &gt; Clear build cache &amp; deploy</strong> whenever you update environment variables.
                       </p>
                     )}
                   </div>
@@ -860,7 +887,7 @@ export const AdminDashboard: React.FC = () => {
             <div className="bg-[#1C2C22] p-3.5 rounded-2xl border border-white/5 flex items-start gap-2.5 text-[11px] text-white/70">
               <span className="text-amber-400 text-sm">💡</span>
               <p>
-                <strong>Zero Data Loss Protection:</strong> Any restaurant, category, or menu item you add is now automatically cached in browser <code className="text-white font-mono">localStorage</code>. It will <strong>never disappear when you refresh</strong>, even in offline or local demo mode! Once your Supabase credentials are configured, it also writes directly to your remote PostgreSQL database.
+                <strong>Zero Data Loss Protection:</strong> Any restaurant, category, or menu item you add is automatically cached in browser <code className="text-white font-mono">localStorage</code>. It will <strong>never disappear when you refresh</strong>, even in offline or local demo mode! Once your Supabase credentials are configured, it also writes directly to your remote PostgreSQL database.
               </p>
             </div>
           </div>
