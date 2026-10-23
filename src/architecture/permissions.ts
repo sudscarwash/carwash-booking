@@ -1,0 +1,141 @@
+import { UserRole } from '../types';
+
+export const PERMISSIONS = {
+  // Restaurant Profile & Onboarding
+  RESTAURANT_CREATE: 'restaurant:create',
+  RESTAURANT_UPDATE: 'restaurant:update',
+  RESTAURANT_DELETE: 'restaurant:delete',
+  RESTAURANT_TOGGLE_MODE: 'restaurant:toggle_mode',
+  RESTAURANT_ASSIST_ONBOARDING: 'restaurant:assist_onboarding',
+
+  // Menu Management
+  MENU_READ: 'menu:read',
+  MENU_CREATE: 'menu:create',
+  MENU_UPDATE: 'menu:update',
+  MENU_DELETE: 'menu:delete',
+
+  // Order Lifecycle
+  ORDER_BROWSE_LISTINGS: 'order:browse_listings',
+  ORDER_CREATE: 'order:create',
+  ORDER_CANCEL_OWN: 'order:cancel_own',
+  ORDER_VIEW_TENANT: 'order:view_tenant',
+  ORDER_UPDATE_KITCHEN: 'order:update_kitchen',
+  ORDER_VIEW_ALL: 'order:view_all',
+
+  // Delivery & Runner
+  DELIVERY_VIEW_AVAILABLE: 'delivery:view_available',
+  DELIVERY_CLAIM: 'delivery:claim',
+  DELIVERY_UPDATE_STATUS: 'delivery:update_status',
+  DELIVERY_UPLOAD_POD: 'delivery:upload_pod',
+
+  // Employee & Staff
+  STAFF_MANAGE: 'staff:manage',
+  STAFF_VIEW_KDS: 'staff:view_kds',
+
+  // System Administration & Reports
+  ADMIN_VIEW_DASHBOARD: 'admin:view_dashboard',
+  ADMIN_MANAGE_USERS: 'admin:manage_users',
+  ADMIN_SYSTEM_CONFIG: 'admin:system_config',
+  ADMIN_AUDIT_LOGS: 'admin:audit_logs',
+  ADMIN_ANALYTICS: 'admin:analytics',
+} as const;
+
+export type PermissionKey = typeof PERMISSIONS[keyof typeof PERMISSIONS];
+
+// Role to default permissions mapping
+export const ROLE_PERMISSIONS: Record<UserRole, PermissionKey[]> = {
+  SUPER_ADMIN: [
+    PERMISSIONS.RESTAURANT_CREATE,
+    PERMISSIONS.RESTAURANT_UPDATE,
+    PERMISSIONS.RESTAURANT_DELETE,
+    PERMISSIONS.RESTAURANT_TOGGLE_MODE,
+    PERMISSIONS.RESTAURANT_ASSIST_ONBOARDING,
+    PERMISSIONS.MENU_READ,
+    PERMISSIONS.MENU_CREATE,
+    PERMISSIONS.MENU_UPDATE,
+    PERMISSIONS.MENU_DELETE,
+    PERMISSIONS.ORDER_BROWSE_LISTINGS,
+    PERMISSIONS.ORDER_CREATE,
+    PERMISSIONS.ORDER_VIEW_TENANT,
+    PERMISSIONS.ORDER_UPDATE_KITCHEN,
+    PERMISSIONS.ORDER_VIEW_ALL,
+    PERMISSIONS.DELIVERY_VIEW_AVAILABLE,
+    PERMISSIONS.DELIVERY_CLAIM,
+    PERMISSIONS.DELIVERY_UPDATE_STATUS,
+    PERMISSIONS.STAFF_MANAGE,
+    PERMISSIONS.STAFF_VIEW_KDS,
+    PERMISSIONS.ADMIN_VIEW_DASHBOARD,
+    PERMISSIONS.ADMIN_MANAGE_USERS,
+    PERMISSIONS.ADMIN_SYSTEM_CONFIG,
+    PERMISSIONS.ADMIN_AUDIT_LOGS,
+    PERMISSIONS.ADMIN_ANALYTICS,
+  ],
+
+  SPECIAL_USER: [
+    PERMISSIONS.RESTAURANT_CREATE,
+    PERMISSIONS.RESTAURANT_UPDATE,
+    PERMISSIONS.RESTAURANT_TOGGLE_MODE,
+    PERMISSIONS.RESTAURANT_ASSIST_ONBOARDING,
+    PERMISSIONS.MENU_READ,
+    PERMISSIONS.MENU_CREATE,
+    PERMISSIONS.MENU_UPDATE,
+    PERMISSIONS.ORDER_BROWSE_LISTINGS,
+    PERMISSIONS.ORDER_VIEW_ALL,
+    PERMISSIONS.ADMIN_SYSTEM_CONFIG, // Allows modifying Brunei 4-district rates, restaurant commission, and delivery tables
+  ],
+
+  RESTAURANT_OWNER: [
+    PERMISSIONS.RESTAURANT_UPDATE,
+    PERMISSIONS.RESTAURANT_TOGGLE_MODE,
+    PERMISSIONS.MENU_READ,
+    PERMISSIONS.MENU_CREATE,
+    PERMISSIONS.MENU_UPDATE,
+    PERMISSIONS.MENU_DELETE,
+    PERMISSIONS.ORDER_VIEW_TENANT,
+    PERMISSIONS.ORDER_UPDATE_KITCHEN,
+    PERMISSIONS.STAFF_MANAGE,
+    PERMISSIONS.STAFF_VIEW_KDS,
+  ],
+
+  EMPLOYEE: [
+    PERMISSIONS.MENU_READ,
+    PERMISSIONS.ORDER_CREATE,
+    PERMISSIONS.ORDER_VIEW_TENANT,
+    PERMISSIONS.ORDER_UPDATE_KITCHEN,
+    PERMISSIONS.STAFF_VIEW_KDS,
+  ],
+
+  RUNNER: [
+    PERMISSIONS.DELIVERY_VIEW_AVAILABLE,
+    PERMISSIONS.DELIVERY_CLAIM,
+    PERMISSIONS.DELIVERY_UPDATE_STATUS,
+    PERMISSIONS.DELIVERY_UPLOAD_POD,
+  ],
+
+  CUSTOMER: [
+    PERMISSIONS.ORDER_BROWSE_LISTINGS,
+    PERMISSIONS.ORDER_CREATE,
+    PERMISSIONS.ORDER_CANCEL_OWN,
+    PERMISSIONS.MENU_READ,
+  ],
+
+  COMMUNITY_SCOUT: [
+    PERMISSIONS.ORDER_BROWSE_LISTINGS,
+    PERMISSIONS.MENU_READ,
+    PERMISSIONS.ORDER_CREATE,
+    PERMISSIONS.RESTAURANT_CREATE,
+    PERMISSIONS.MENU_CREATE,
+  ],
+};
+
+export function hasPermission(
+  userRole: UserRole, 
+  permission: PermissionKey, 
+  customPermissions?: string[]
+): boolean {
+  if (customPermissions && customPermissions.includes(permission)) {
+    return true;
+  }
+  const defaultPerms = ROLE_PERMISSIONS[userRole] || [];
+  return defaultPerms.includes(permission);
+}
