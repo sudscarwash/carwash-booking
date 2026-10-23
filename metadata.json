@@ -1,6 +1,6 @@
 {
-  "name": "Remix FOODFINDR",
-  "description": "Production-ready multi-tenant restaurant marketplace and delivery management platform.",
+  "name": "Remix (membership system) Production Car Wash Booking system (for supabase) - September",
+  "description": "",
   "requestFramePermissions": [
     "geolocation"
   ],

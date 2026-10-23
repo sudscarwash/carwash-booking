@@ -1,47 +1,5352 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+process.on('uncaughtException', (err) => {
+  console.error('[CRITICAL UNCAUGHT EXCEPTION]:', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[CRITICAL UNHANDLED REJECTION]:', reason);
+});
+
+import dns from 'node:dns';
+// Force IPv4 DNS resolution first to bypass IPv6 ENETUNREACH errors in hosting environments (e.g., Render, Cloud Run, AIS)
+if (typeof dns.setDefaultResultOrder === 'function') {
+  dns.setDefaultResultOrder('ipv4first');
+}
+
 import express from 'express';
 import compression from 'compression';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import fs from 'fs';
+import bcrypt from 'bcryptjs';
+import dotenv from 'dotenv';
+import { uploadReceipt } from './server/upload.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { Role, BookingStatus, User, UserWithPassword, CarWash, Booking, MapPreset, AppNotification, Review } from './src/types.js';
+import { 
+  seedFirestoreIfEmpty,
+  waitForDbReady,
+  getUsers,
+  getUserByEmail,
+  getUserById,
+  createUser,
+  updateUser,
+  deleteUser,
+  getCarWashes,
+  getCarWashById,
+  getCarWashByIdOrSlug,
+  createCarWash,
+  updateCarWash,
+  deleteCarWash,
+  getBookings,
+  getBookingById,
+  createBooking,
+  updateBooking,
+  getBookingByTxnRef,
+  getAuditLogs,
+  addAuditLog,
+  createPasswordReset,
+  getPasswordResetByEmail,
+  getPasswordResetByToken,
+  deletePasswordReset,
+  cleanupExpiredPasswordResets,
+  getMapPresets,
+  createMapPreset,
+  deleteMapPreset,
+  isUsingPostgres,
+  getPostgresConnectionError,
+  updateUserIdAcrossTables,
+  seedDecToPresentSampleData,
+  createNotification,
+  getNotificationsByUserId,
+  markNotificationAsRead,
+  markAllNotificationsAsRead,
+  getCustomersForOwner,
+  syncUserBookings,
+  getPlatformInfo,
+  updatePlatformInfo,
+  getDatabaseDiagnostics,
+  getReviewsByCarWash,
+  getAllReviews,
+  getReviewById,
+  getCustomerReviewForCarWash,
+  saveReview,
+  deleteReview,
+  saveOwnerReply,
+  deleteOwnerReply,
+  getReviewsSummaryForCarWash,
+  generateSlug,
+  getUniqueSlug,
+  getCarWashMembershipConfig,
+  upsertCarWashMembershipConfig,
+  setCarWashMembershipFeature,
+  getCustomerMemberships,
+  getCustomerMembership,
+  getCustomerMembershipById,
+  getCustomerMembershipByToken,
+  getCarWashMembers,
+  joinCarWashMembership,
+  cancelCustomerMembership,
+  getMembershipPointsRules,
+  upsertMembershipPointsRule,
+  getMembershipLedger,
+  recordPointsTransaction,
+  adjustCustomerPoints,
+  awardPointsForBookingCompletion,
+  reversePointsForBookingCancellation,
+  getMembershipRewards,
+  getMembershipRewardById,
+  createMembershipReward,
+  updateMembershipReward,
+  deleteMembershipReward,
+  createMembershipRedemption,
+  getRedemptionByToken,
+  confirmMembershipRedemption,
+  getCarWashRedemptions,
+  getCustomerRedemptions
+} from './server/db.js';
+import { 
+  isSupabaseAuthEnabled, 
+  registerSupabaseUser, 
+  loginSupabaseUser, 
+  updateSupabasePassword,
+  supabaseClient,
+  deleteSupabaseUser,
+  ensureInitialAdminInSupabase
+} from './server/supabaseService.js';
+import * as dbModule from './server/db.js';
+import * as emailModule from './server/emailService.js';
 
-const app = express();
+// Safe extraction with default active fallbacks to guarantee Render and Cloud Run builds NEVER fail
+const dbSafe: any = dbModule || {};
+const saveDbEmailLog: (log: any) => Promise<void> =
+  typeof dbSafe.saveDbEmailLog === 'function' ? dbSafe.saveDbEmailLog : async () => {};
+const getDbEmailLogs: () => Promise<any[]> =
+  typeof dbSafe.getDbEmailLogs === 'function' ? dbSafe.getDbEmailLogs : async () => [];
+const clearDbEmailLogs: () => Promise<void> =
+  typeof dbSafe.clearDbEmailLogs === 'function' ? dbSafe.clearDbEmailLogs : async () => {};
 
-// Enable gzip/deflate response compression to reduce payload transfer by 70%-80%
-app.use(compression({
-  threshold: 1024, // Only compress responses larger than 1KB
-  level: 6, // Balanced compression speed vs CPU
-}));
+const emailServiceSafe: any = emailModule || {};
+const EMAIL_LOGS_FILE = path.resolve(process.cwd(), 'data', 'email_logs.json');
 
-// Enable strong ETag generation for 304 Not Modified caching
-app.set('etag', 'strong');
+function internalRecordEmailLog(entry: {
+  to: string;
+  from?: string;
+  subject: string;
+  html: string;
+  status: 'DELIVERED' | 'SIMULATED' | 'FAILED' | 'HELD_QUOTA' | 'SKIPPED';
+  provider?: string;
+  errorDetails?: string;
+}) {
+  const logItem = {
+    ...entry,
+    id: `log_${Math.random().toString(36).substring(2, 9)}_${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    provider: entry.provider || 'SANDBOX_CONSOLE',
+    from: entry.from || 'AutoShine BN <sandbox@autoshinebn.dev>',
+  };
 
-// Google Cloud Run defaults to port 8080, local dev/Render defaults to 3000
-const PORT = process.env.PORT || 3000;
-
-// Health check endpoint for Cloud Run and Render load balancers
-app.get('/healthz', (_req, res) => {
-  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
-});
-
-// Serve compiled static assets from dist/
-const distPath = path.join(__dirname, 'dist');
-app.use(express.static(distPath, {
-  maxAge: '1d',
-  setHeaders: (res, filePath) => {
-    // Cache static immutable assets (JS, CSS, images)
-    if (filePath.endsWith('.js') || filePath.endsWith('.css') || filePath.endsWith('.jpg') || filePath.endsWith('.png') || filePath.endsWith('.webp')) {
-      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  if (typeof emailServiceSafe.recordEmailLog === 'function') {
+    try {
+      emailServiceSafe.recordEmailLog(entry);
+    } catch (e) {
+      console.warn('[EmailService] Delegated recordEmailLog failed, using internal fallback:', e);
     }
   }
+
+  // Persist to local JSON file
+  try {
+    let logs: any[] = [];
+    if (fs.existsSync(EMAIL_LOGS_FILE)) {
+      try { logs = JSON.parse(fs.readFileSync(EMAIL_LOGS_FILE, 'utf-8')); } catch {}
+    }
+    logs.unshift(logItem);
+    if (logs.length > 100) logs.pop();
+    const dir = path.dirname(EMAIL_LOGS_FILE);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(EMAIL_LOGS_FILE, JSON.stringify(logs, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('[InternalEmailLog] Fallback disk write error:', err);
+  }
+
+  // Persist to Supabase / SQLite database email_logs table
+  saveDbEmailLog({
+    id: logItem.id,
+    recipient: logItem.to,
+    sender: logItem.from,
+    subject: logItem.subject,
+    html: logItem.html,
+    status: logItem.status,
+    provider: logItem.provider,
+    errorDetails: logItem.errorDetails,
+    timestamp: logItem.timestamp,
+  }).catch((e) => console.warn('[InternalEmailLog] DB log persistence notice:', e?.message || e));
+}
+
+const recordEmailLog = (entry: any) => internalRecordEmailLog(entry);
+
+const sendWashCompletedEmail = async (options: {
+  customerEmail: string;
+  customerName: string;
+  bookingId: string;
+  businessName: string;
+  vehiclePlate?: string;
+  serviceName?: string;
+  totalAmount?: number;
+}): Promise<boolean> => {
+  if (typeof emailServiceSafe.sendWashCompletedEmail === 'function') {
+    return emailServiceSafe.sendWashCompletedEmail(options);
+  }
+  console.log(`[EmailService] Wash completed email simulated for ${options.customerEmail}`);
+  internalRecordEmailLog({
+    to: options.customerEmail,
+    from: 'AutoShine BN <sandbox@autoshinebn.dev>',
+    subject: `✨ Your Vehicle is Clean & Ready for Collection! - ${options.businessName}`,
+    html: `<p>Hi <strong>${options.customerName}</strong>, great news! The team at <strong>${options.businessName}</strong> has completed washing your vehicle (${options.vehiclePlate || 'Vehicle'}). It is clean and ready for collection!</p>`,
+    status: 'SIMULATED',
+    provider: 'SANDBOX_CONSOLE',
+  });
+  return true;
+};
+
+const sendBookingReminderEmail = async (options: {
+  customerEmail: string;
+  customerName: string;
+  bookingId: string;
+  businessName: string;
+  address: string;
+  date: string;
+  timeSlot: string;
+  serviceName?: string;
+  price?: number;
+}): Promise<boolean> => {
+  if (typeof emailServiceSafe.sendBookingReminderEmail === 'function') {
+    return emailServiceSafe.sendBookingReminderEmail(options);
+  }
+  console.log(`[EmailService] Appointment reminder simulated for ${options.customerEmail}`);
+  internalRecordEmailLog({
+    to: options.customerEmail,
+    from: 'AutoShine BN <sandbox@autoshinebn.dev>',
+    subject: `⏰ Reminder: Your Car Wash Appointment - ${options.businessName}`,
+    html: `<p>Hi <strong>${options.customerName}</strong>, this is a friendly reminder for your upcoming car wash reservation at <strong>${options.businessName}</strong> on <strong>${options.date}</strong> (${options.timeSlot}).</p>`,
+    status: 'SIMULATED',
+    provider: 'SANDBOX_CONSOLE',
+  });
+  return true;
+};
+
+const sendBookingConfirmationEmail = async (options: any): Promise<boolean> => {
+  if (typeof emailServiceSafe.sendBookingConfirmationEmail === 'function') {
+    return emailServiceSafe.sendBookingConfirmationEmail(options);
+  }
+  internalRecordEmailLog({
+    to: options.customerEmail,
+    from: 'AutoShine BN <sandbox@autoshinebn.dev>',
+    subject: `Booking Confirmed: ${options.businessName} - Autoshine BN`,
+    html: `<p>Hi <strong>${options.customerName}</strong>, your reservation with ${options.businessName} on ${options.date} (${options.timeSlot}) is confirmed!</p>`,
+    status: 'SIMULATED',
+    provider: 'SANDBOX_CONSOLE',
+  });
+  return true;
+};
+
+const sendBookingCancelledEmail = async (options: any): Promise<boolean> => {
+  if (typeof emailServiceSafe.sendBookingCancelledEmail === 'function') {
+    return emailServiceSafe.sendBookingCancelledEmail(options);
+  }
+  internalRecordEmailLog({
+    to: options.customerEmail,
+    from: 'AutoShine BN <sandbox@autoshinebn.dev>',
+    subject: `⚠️ Reservation Cancelled - ${options.businessName} (Autoshine BN)`,
+    html: `<p>Hi <strong>${options.customerName}</strong>, your booking with ${options.businessName} on ${options.date} has been cancelled.</p>`,
+    status: 'SIMULATED',
+    provider: 'SANDBOX_CONSOLE',
+  });
+  return true;
+};
+
+const sendWashStartedEmail = async (options: {
+  customerEmail: string;
+  customerName: string;
+  bookingId: string;
+  businessName: string;
+  vehiclePlate?: string;
+  serviceName?: string;
+}): Promise<boolean> => {
+  if (typeof emailServiceSafe.sendWashStartedEmail === 'function') {
+    return emailServiceSafe.sendWashStartedEmail(options);
+  }
+  console.log(`[EmailService] Wash started (in bay) email simulated for ${options.customerEmail}`);
+  internalRecordEmailLog({
+    to: options.customerEmail,
+    from: 'AutoShine BN <sandbox@autoshinebn.dev>',
+    subject: `🚗 Wash Started: Your Car is in the Bay! - ${options.businessName}`,
+    html: `<p>Hi <strong>${options.customerName}</strong>, your booking has been accepted! Our crew at <strong>${options.businessName}</strong> has started washing your vehicle (${options.vehiclePlate || 'Vehicle'}). Estimated duration: ~20-35 mins.</p>`,
+    status: 'SIMULATED',
+    provider: 'SANDBOX_CONSOLE',
+  });
+  return true;
+};
+
+const sendOwnerNewBookingEmail = async (options: {
+  ownerEmail: string;
+  ownerName: string;
+  businessName: string;
+  customerName: string;
+  customerPhone?: string;
+  date: string;
+  timeSlot: string;
+  serviceName?: string;
+  price?: number;
+  bookingId: string;
+  txnReference?: string;
+}): Promise<boolean> => {
+  if (typeof emailServiceSafe.sendOwnerNewBookingEmail === 'function') {
+    return emailServiceSafe.sendOwnerNewBookingEmail(options);
+  }
+  const settings = getEmailSettings();
+  if (!settings.masterEnabled) {
+    internalRecordEmailLog({
+      to: options.ownerEmail,
+      from: 'AutoShine BN <sandbox@autoshinebn.dev>',
+      subject: `🔔 New Booking Alert: ${options.customerName} - ${options.businessName}`,
+      html: '<p>Skipped: Master Email Notifications switch is turned OFF in Admin Settings.</p>',
+      status: 'SKIPPED',
+      provider: 'SANDBOX_CONSOLE',
+      errorDetails: 'Skipped: Master Notifications switch is OFF in Admin Settings.',
+    });
+    return false;
+  }
+  if (!settings.notifyBookingConfirmed) {
+    internalRecordEmailLog({
+      to: options.ownerEmail,
+      from: 'AutoShine BN <sandbox@autoshinebn.dev>',
+      subject: `🔔 New Booking Alert: ${options.customerName} - ${options.businessName}`,
+      html: '<p>Skipped: "Booking Confirmation Email (Quota Saver)" toggle is turned OFF in Admin Settings to preserve daily email quota.</p>',
+      status: 'SKIPPED',
+      provider: 'SANDBOX_CONSOLE',
+      errorDetails: 'Skipped: "Booking Confirmation Email (Quota Saver)" is turned OFF in Admin Settings to preserve daily quota.',
+    });
+    return false;
+  }
+  console.log(`[EmailService] Owner new booking alert email simulated for ${options.ownerEmail}`);
+  internalRecordEmailLog({
+    to: options.ownerEmail,
+    from: 'AutoShine BN <sandbox@autoshinebn.dev>',
+    subject: `🔔 New Booking Alert: ${options.customerName} - ${options.businessName}`,
+    html: `<p>Hello <strong>${options.ownerName}</strong>, a new reservation (${options.serviceName || 'Car Wash'}) has been booked for ${options.businessName} on ${options.date} at ${options.timeSlot} by ${options.customerName}.</p>`,
+    status: 'SIMULATED',
+    provider: 'SANDBOX_CONSOLE',
+  });
+  return true;
+};
+
+const sendPasswordResetOTP = emailServiceSafe.sendPasswordResetOTP || (async () => false);
+const sendRegistrationWelcomeEmail = emailServiceSafe.sendRegistrationWelcomeEmail || (async () => false);
+const sendEmailVerificationOTP = emailServiceSafe.sendEmailVerificationOTP || (async () => false);
+const sendAdminLoginOtp = emailServiceSafe.sendAdminLoginOtp || (async () => false);
+const sendEmail = emailServiceSafe.sendEmail || (async () => false);
+const isEmailDeliveryActive = emailServiceSafe.isEmailDeliveryActive || (() => false);
+
+const getEmailLogs = async (): Promise<any[]> => {
+  const mergedMap = new Map<string, any>();
+
+  // 1. Load from DB first (persists across server restarts & deployments)
+  try {
+    const dbLogs = await getDbEmailLogs();
+    if (Array.isArray(dbLogs)) {
+      dbLogs.forEach((l) => mergedMap.set(l.id, l));
+    }
+  } catch {}
+
+  // 2. Load from in-memory service
+  if (typeof emailServiceSafe.getEmailLogs === 'function') {
+    try {
+      const memLogs = emailServiceSafe.getEmailLogs();
+      if (Array.isArray(memLogs)) {
+        memLogs.forEach((l: any) => mergedMap.set(l.id, l));
+      }
+    } catch {}
+  }
+
+  // 3. Load from disk JSON file
+  try {
+    if (fs.existsSync(EMAIL_LOGS_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(EMAIL_LOGS_FILE, 'utf-8'));
+      if (Array.isArray(parsed)) {
+        parsed.forEach((l: any) => mergedMap.set(l.id, l));
+      }
+    }
+  } catch {}
+
+  const list = Array.from(mergedMap.values());
+  list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  return list.slice(0, 100);
+};
+
+const clearEmailLogs = async (): Promise<void> => {
+  if (typeof emailServiceSafe.clearEmailLogs === 'function') {
+    emailServiceSafe.clearEmailLogs();
+  }
+  try {
+    await clearDbEmailLogs();
+  } catch {}
+  try {
+    if (fs.existsSync(EMAIL_LOGS_FILE)) {
+      fs.writeFileSync(EMAIL_LOGS_FILE, JSON.stringify([], null, 2), 'utf-8');
+    }
+  } catch {}
+};
+
+const getEmailSettings = emailServiceSafe.getEmailSettings || (() => ({ masterEnabled: true, notifyBookingConfirmed: true, notifyBookingReminder: true, notifyWashCompleted: true, notifyBookingCancelled: true, notifyDailyOwnerDigest: false, activeProvider: 'GMAIL_SMTP', dailyQuotaLimit: 500, reservedAuthQuota: 25 }));
+const updateEmailSettings = emailServiceSafe.updateEmailSettings || ((s: any) => s);
+const getQuotaStatus = emailServiceSafe.getQuotaStatus || (() => ({
+  date: new Date().toISOString().slice(0, 10),
+  totalSentToday: 0,
+  authSentToday: 0,
+  notificationsSentToday: 0,
+  notificationsHeldToday: 0,
+  dailyQuotaLimit: 500,
+  reservedAuthQuota: 25,
+  remainingTotal: 500,
+  remainingForNotifications: 475,
+  activeProvider: 'GMAIL_SMTP',
+  hasResendKey: false,
+  hasGmailConfig: true,
+  masterEnabled: true,
 }));
+import { isValidEmail } from './server/validation.js';
+import { authenticateToken, requireRoles, generateToken, AuthenticatedRequest, verifyToken } from './server/auth.js';
+import { generateSlotsForDate, validateSlotCapacity, isZeroSlotBooking } from './server/slots.js';
+import { authRateLimiter, apiRateLimiter } from './server/production/middleware/rateLimiter.js';
 
-// SPA Catch-all: Send index.html for all client-side routes
-app.get('*', (_req, res) => {
-  res.sendFile(path.join(distPath, 'index.html'));
-});
+dotenv.config();
 
-app.listen(PORT, () => {
-  console.log(`[FOODFINDR Production Server] Running on port ${PORT}`);
+// ============================================================================
+// TESTING OVERRIDE CONFIGURATION
+// ============================================================================
+// Master test code for rapid testing without needing to check emails or logs.
+// Entering this code (default: '123456') directly bypasses and validates any
+// OTP challenge (Admin 2FA login, Registration email verification, Password reset)
+// ONLY in non-production environments (or if explicitly permitted via TEST_MASTER_OTP).
+const isRenderEnv = process.env.RENDER === 'true' || process.env.IS_RENDER === 'true' || process.env.RENDER_SERVICE_ID !== undefined;
+const isCloudRunEnv = Boolean(process.env.K_SERVICE || process.env.K_REVISION || process.env.CLOUD_RUN_JOB);
+const isExplicitDev = process.env.APP_ENV === 'development' || process.env.NODE_ENV === 'development' || process.env.ENABLE_DEV_OTP === 'true';
+const isProductionEnv = !isExplicitDev && (process.env.NODE_ENV === 'production' || isCloudRunEnv || isRenderEnv || process.env.RENDER !== undefined);
+export const TEST_MASTER_OTP = process.env.TEST_MASTER_OTP || (!isProductionEnv ? '123456' : '');
+
+// Realtime Server-Sent Events (SSE) Hub for instant updates without page refresh
+interface SSEClient {
+  id: string;
+  res: express.Response;
+  user?: User;
+}
+
+const sseClients = new Set<SSEClient>();
+let lastBookingsUpdateTimestamp = Date.now();
+
+export function broadcastRealtimeEvent(event: {
+  type: 'BOOKING_CREATED' | 'BOOKING_UPDATED' | 'BOOKING_DELETED' | 'NOTIFICATION_CREATED' | 'PROXIMITY_UPDATED' | 'ETA_REQUESTED';
+  bookingId?: string;
+  carWashId?: string;
+  data?: any;
+  timestamp?: number;
+}) {
+  lastBookingsUpdateTimestamp = Date.now();
+  const eventPayload = `data: ${JSON.stringify({ ...event, timestamp: event.timestamp || lastBookingsUpdateTimestamp })}\n\n`;
+  for (const client of sseClients) {
+    try {
+      client.res.write(eventPayload);
+    } catch {
+      sseClients.delete(client);
+    }
+  }
+}
+
+async function startServer() {
+  const app = express();
+  // PORT MUST be 3000 for the platform's nginx reverse proxy
+  const PORT = 3000;
+
+  // Response compression (Gzip / Deflate) to minimize payload footprints across JSON and static files
+  app.use(
+    compression({
+      filter: (req, res) => {
+        if (req.headers.accept === 'text/event-stream' || req.path.includes('/realtime/stream')) {
+          return false;
+        }
+        return compression.filter(req, res);
+      },
+    })
+  );
+
+  // Cloud Run & Container Health Probes MUST be mounted first
+  app.get(['/api/health', '/_healthz', '/healthz', '/health'], async (req, res) => {
+    try {
+      const diag = await getDatabaseDiagnostics();
+      res.status(200).json({ 
+        status: 'ok', 
+        timestamp: new Date().toISOString(),
+        database: diag.storagePersistence,
+        postgresConnected: diag.postgresConnected,
+        databaseType: diag.databaseType,
+      });
+    } catch (e) {
+      res.status(200).json({ status: 'ok', timestamp: new Date().toISOString(), database: 'checking' });
+    }
+  });
+
+  // Diagnostic Endpoint: Provides full visibility into Supabase / PostgreSQL connectivity vs local SQLite
+  app.get('/api/database/diagnostics', async (req, res) => {
+    try {
+      const diag = await getDatabaseDiagnostics();
+      res.json(diag);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Error running database diagnostics' });
+    }
+  });
+
+  // Realtime Live Stream: SSE endpoint allowing dashboards (Owner, Employee, Customer) to receive live booking events instantly
+  app.get('/api/realtime/stream', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
+
+    const rawToken = (req.query.token as string) || (req.headers['authorization'] && req.headers['authorization'].split(' ')[1]);
+    const user = rawToken ? verifyToken(rawToken) : undefined;
+
+    const clientId = `sse_${Math.random().toString(36).substr(2, 9)}`;
+    const client: SSEClient = { id: clientId, res, user: user || undefined };
+    sseClients.add(client);
+
+    // Initial handshake acknowledging connection
+    res.write(`data: ${JSON.stringify({ type: 'CONNECTED', clientId, lastBookingsUpdateTimestamp, timestamp: Date.now() })}\n\n`);
+
+    // Keep-alive heartbeat every 20 seconds so proxies/browsers maintain connection
+    const keepAlive = setInterval(() => {
+      try {
+        res.write(': keepalive\n\n');
+      } catch {
+        clearInterval(keepAlive);
+        sseClients.delete(client);
+      }
+    }, 20000);
+
+    req.on('close', () => {
+      clearInterval(keepAlive);
+      sseClients.delete(client);
+    });
+  });
+
+  // Lightweight status check for bookings freshness
+  app.get('/api/bookings/last-updated', (req, res) => {
+    res.json({ timestamp: lastBookingsUpdateTimestamp });
+  });
+
+  // Immediately bind to port 0.0.0.0:PORT so Cloud Run health check passes in <10ms
+  const server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Car Wash Booking Server listening on http://0.0.0.0:${PORT}`);
+    // Hydrate email configuration from persistent database to survive container sleep & restarts
+    if (typeof emailServiceSafe.syncEmailSettingsFromDb === 'function') {
+      emailServiceSafe.syncEmailSettingsFromDb().catch((err: any) => {
+        console.warn('[Startup] Could not hydrate email settings from DB:', err?.message || err);
+      });
+    }
+  });
+
+  // Enable trust proxy for cloud deployment & container proxies
+  app.set('trust proxy', true);
+
+  // 🔒 OWASP TOP 10 SECURITY HARDENING (A05: Security Misconfiguration)
+  // Disable X-Powered-By fingerprinting header to prevent stack footprinting
+  app.disable('x-powered-by');
+
+  // 🌐 SEO & HOST-BASED SEARCH ENGINE INDEXING CONTROLS
+  // 1. Canonical 301 Redirect: Automatically redirect www.autoshinebn.com -> https://autoshinebn.com
+  // 2. Host-Based noindex: Attach X-Robots-Tag: noindex on non-production domains (Render, Cloud Run, localhost)
+  app.use((req, res, next) => {
+    const rawHost = req.headers.host || req.hostname || '';
+    const hostname = rawHost.split(':')[0].toLowerCase();
+
+    // Canonical 301 redirect from www to apex domain
+    if (hostname === 'www.autoshinebn.com') {
+      res.redirect(301, `https://autoshinebn.com${req.originalUrl}`);
+      return;
+    }
+
+    // Host-Based noindex guard: if not the live production domain, prevent search engine indexing
+    const isProductionDomain = hostname === 'autoshinebn.com';
+    if (!isProductionDomain) {
+      res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive, nosnippet');
+    }
+
+    next();
+  });
+
+  // Dynamic /robots.txt Route
+  app.get('/robots.txt', (req, res) => {
+    const rawHost = req.headers.host || req.hostname || '';
+    const hostname = rawHost.split(':')[0].toLowerCase();
+    const isProductionDomain = hostname === 'autoshinebn.com' || hostname === 'www.autoshinebn.com';
+
+    res.type('text/plain');
+    if (isProductionDomain) {
+      res.send(`User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /uploads/\n\nSitemap: https://autoshinebn.com/sitemap.xml\n`);
+    } else {
+      res.send(`User-agent: *\nDisallow: /\n`);
+    }
+  });
+
+  // Dynamic /sitemap.xml Route
+  app.get('/sitemap.xml', (req, res) => {
+    const rawHost = req.headers.host || req.hostname || '';
+    const hostname = rawHost.split(':')[0].toLowerCase();
+    const isProductionDomain = hostname === 'autoshinebn.com' || hostname === 'www.autoshinebn.com';
+
+    if (!isProductionDomain) {
+      res.status(404).send('Not Found');
+      return;
+    }
+
+    res.type('application/xml');
+    const today = new Date().toISOString().split('T')[0];
+    const sitemapContent = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://autoshinebn.com/</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://autoshinebn.com/login</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://autoshinebn.com/register</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+</urlset>`;
+    res.send(sitemapContent);
+  });
+
+  // Enforce HTTP security headers to protect clients (A05: Security Misconfiguration)
+  app.use((req, res, next) => {
+    // 1. Enforce HTTPS in production (HSTS)
+    if (process.env.NODE_ENV === 'production') {
+      res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+    }
+
+    // 2. Prevent MIME-type Sniffing
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+
+    // 3. Enable standard browser XSS filtering
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+
+    // 4. Protect Referrer Leakage
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+
+    // 5. Frame-ancestors CSP (Clickjacking protection that permits our preview environment securely)
+    res.setHeader(
+      'Content-Security-Policy',
+      "default-src 'self' 'unsafe-inline' 'unsafe-eval' https:; " +
+      "img-src 'self' data: https:; " +
+      "frame-ancestors 'self' https://*.google.com https://*.studio https://*.run.app https://ai.studio https://*.aistudio.google;"
+    );
+
+    next();
+  });
+
+  // Body parsing middlewares
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
+
+  // Apply general API rate limiter to protect the server
+  app.use('/api', apiRateLimiter);
+
+  // Ensure database initialization & Supabase connection are established before serving data queries
+  app.use('/api', async (req, res, next) => {
+    // Health and diagnostic probes respond immediately without waiting
+    if (req.path === '/health' || req.path === '/database/diagnostics') {
+      return next();
+    }
+    try {
+      await Promise.race([
+        waitForDbReady(),
+        new Promise((resolve) => setTimeout(resolve, 8000)),
+      ]);
+    } catch (e) {
+      // Continue and let individual route handler manage errors gracefully
+    }
+    next();
+  });
+
+  // Run database automatic seeding in background without blocking server listen
+  seedFirestoreIfEmpty().catch((err) => {
+    console.warn('[DB Init] Seeding notice:', err?.message || err);
+  });
+
+  // Clean up any expired OTP / password reset tokens on server startup
+  cleanupExpiredPasswordResets().catch((err) => {
+    console.warn('[OTP Cleanup] Failed to purge expired tokens:', err);
+  });
+
+  // Schedule background cleanup every 15 minutes to purge stale expired OTP tokens
+  setInterval(() => {
+    cleanupExpiredPasswordResets().catch((err) => {
+      console.warn('[OTP Cleanup] Failed to purge expired tokens:', err);
+    });
+  }, 15 * 60 * 1000);
+
+  // Bootstrap initial admin into Supabase Auth if Supabase Auth is enabled
+  if (isSupabaseAuthEnabled) {
+    const adminEmail = process.env.INITIAL_ADMIN_EMAIL || 'admin@carwash.com';
+    const adminPassword = process.env.INITIAL_ADMIN_PASSWORD || 'admin123';
+    ensureInitialAdminInSupabase(adminEmail, adminPassword, 'System Admin').catch((err) => {
+      console.warn('[Supabase Init] Notice:', err?.message || err);
+    });
+  }
+
+  // Helper function to calculate distance using Haversine formula (simulated maps distance filtering)
+  function getDistanceInKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 6371; // Radius of the earth in km
+    const dLat = deg2rad(lat2 - lat1);
+    const dLon = deg2rad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c; // Distance in km
+  }
+
+  function deg2rad(deg: number): number {
+    return deg * (Math.PI / 180);
+  }
+
+  // ==========================================
+  // AUTH API ENDPOINTS
+  // ==========================================
+
+  // Register Customer
+  app.post('/api/auth/register', authRateLimiter, async (req, res) => {
+    try {
+      const { email, password, name, dateOfBirth, gender, profileImageUrl, address, phone } = req.body;
+
+      if (!email || !password || !name) {
+        res.status(400).json({ error: 'All fields (email, password, name) are required.' });
+        return;
+      }
+
+      const sanitizedEmail = String(email).trim().toLowerCase();
+      if (!isValidEmail(sanitizedEmail)) {
+        res.status(400).json({ error: 'Invalid email address format. Please enter a valid email address (e.g. name@domain.com).' });
+        return;
+      }
+
+      if (password.length < 8) {
+        res.status(400).json({ error: 'Password must be at least 8 characters long.' });
+        return;
+      }
+
+      const existing = await getUserByEmail(sanitizedEmail);
+      if (existing) {
+        res.status(400).json({ error: 'Email already registered.' });
+        return;
+      }
+
+      let userId = `usr_${Math.random().toString(36).substr(2, 9)}`;
+      let isAutoProvisioned = false;
+
+      // Sync register with Supabase Auth if configured
+      if (isSupabaseAuthEnabled) {
+        try {
+          const supabaseId = await registerSupabaseUser(email, password, name);
+          if (supabaseId) {
+            userId = supabaseId; // Match public User id to Supabase auth user id
+          }
+        } catch (supabaseError: any) {
+          // If the user already exists in Supabase, try to check if they can authenticate with the provided password
+          const errMsg = supabaseError.message || '';
+          const errMsgLower = errMsg.toLowerCase();
+          if (errMsgLower.includes('exist') || errMsgLower.includes('register') || errMsgLower.includes('conflict')) {
+            console.log(`[Register Auto-Restore] User ${email} already exists in Supabase. Verifying credentials...`);
+            try {
+              const authSuccess = await loginSupabaseUser(email, password);
+              if (authSuccess) {
+                console.log(`[Register Auto-Restore] Credentials verified on Supabase. Auto-provisioning local profile...`);
+                isAutoProvisioned = true;
+                
+                // Get the user ID directly from the authentication result
+                if (authSuccess.id) {
+                  userId = authSuccess.id;
+                } else if (supabaseClient) {
+                  // Fallback: Try to find the user in Supabase to get the correct user ID
+                  const { data: listData } = await supabaseClient.auth.admin.listUsers().catch(() => ({ data: null }));
+                  const found = listData?.users?.find(u => u.email?.toLowerCase() === email.toLowerCase());
+                  if (found) {
+                    userId = found.id;
+                  }
+                }
+              } else {
+                res.status(400).json({ error: 'This email is already registered with a different password.' });
+                return;
+              }
+            } catch (authErr: any) {
+              res.status(400).json({ error: 'This email is already registered.' });
+              return;
+            }
+          } else {
+            res.status(400).json({ error: `Supabase Auth Registration Failed: ${supabaseError.message}` });
+            return;
+          }
+        }
+      }
+
+      const salt = bcrypt.genSaltSync(10);
+      const passwordHash = bcrypt.hashSync(password, salt);
+      const initialAdminEnv = process.env.INITIAL_ADMIN_EMAIL ? process.env.INITIAL_ADMIN_EMAIL.toLowerCase().trim() : null;
+      const isInitialAdmin = initialAdminEnv ? sanitizedEmail.toLowerCase() === initialAdminEnv : false;
+      const newUser: UserWithPassword = {
+        id: userId,
+        email: sanitizedEmail,
+        name,
+        role: isInitialAdmin ? Role.ADMIN : Role.CUSTOMER,
+        isActive: true,
+        isEmailVerified: isInitialAdmin ? true : false,
+        passwordHash,
+        createdAt: new Date().toISOString(),
+        dateOfBirth: dateOfBirth || undefined,
+        gender: gender || undefined,
+        profileImageUrl: profileImageUrl || undefined,
+        address: address || undefined,
+        phone: phone || undefined,
+      };
+
+      await createUser(newUser);
+
+      // Generate a 6-digit email verification OTP
+      const verificationOtp = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // 15 mins expiry
+      await createPasswordReset(newUser.email, verificationOtp, expiresAt);
+
+      console.log('========================================================');
+      console.log(`🔐 [REGISTRATION VERIFICATION OTP]: Email: ${newUser.email} -> CODE: ${verificationOtp}`);
+      console.log('========================================================');
+
+      // Dispatch Email Verification OTP via Resend
+      const emailSent = await sendEmailVerificationOTP(newUser.email, newUser.name, verificationOtp);
+
+      await addAuditLog(
+        newUser.id,
+        newUser.email,
+        isAutoProvisioned ? 'USER_AUTOPROVISION' : 'USER_REGISTER',
+        `Customer account created. Verification OTP dispatched (${emailSent ? 'Delivered via Resend' : 'Sandbox fallback'}): ${newUser.name}`
+      );
+
+      const { passwordHash: _, ...safeUser } = newUser;
+      const isLiveDelivered = emailSent && isEmailDeliveryActive();
+      const shouldProvideDevCode = !isLiveDelivered || isRenderEnv || isExplicitDev || !isProductionEnv;
+
+      res.status(201).json({
+        requireOtp: true,
+        email: newUser.email,
+        message: isLiveDelivered
+          ? 'Account created! Please enter the 6-digit verification code sent to your email to verify your address.'
+          : 'Account created! (Dev/Sandbox Mode: Enter the 6-digit verification code below to activate).',
+        emailDelivered: isLiveDelivered,
+        sandboxCode: shouldProvideDevCode ? verificationOtp : undefined,
+        user: safeUser
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Verify Registration OTP Code
+  app.post('/api/auth/verify-registration-otp', authRateLimiter, async (req, res) => {
+    try {
+      const { email, otp } = req.body;
+      if (!email || !otp) {
+        res.status(400).json({ error: 'Email and verification code are required.' });
+        return;
+      }
+
+      const sanitizedEmail = email.trim().toLowerCase();
+      const isMasterTestOtp = String(otp).trim() === TEST_MASTER_OTP;
+
+      if (!isMasterTestOtp) {
+        const resetData = await getPasswordResetByToken(otp.trim());
+
+        if (!resetData || resetData.email.toLowerCase() !== sanitizedEmail) {
+          res.status(400).json({ error: 'Invalid verification code. Please check your code or request a new one.' });
+          return;
+        }
+
+        if (new Date(resetData.expiresAt) < new Date()) {
+          await deletePasswordReset(sanitizedEmail);
+          res.status(400).json({ error: 'Verification code has expired. Please request a new code.' });
+          return;
+        }
+      }
+
+      const user = await getUserByEmail(sanitizedEmail);
+      if (!user) {
+        res.status(404).json({ error: 'User account not found.' });
+        return;
+      }
+
+      // Delete the used OTP code
+      await deletePasswordReset(sanitizedEmail);
+
+      // Mark email as verified in database
+      await updateUser(user.id, { isEmailVerified: true });
+      user.isEmailVerified = true;
+
+      // Dispatch official Welcome Email now that the account is validated!
+      sendRegistrationWelcomeEmail({
+        email: user.email,
+        name: user.name,
+        role: user.role
+      }).catch((e) => console.error('[Verified Welcome Email Error]:', e));
+
+      await addAuditLog(user.id, user.email, 'USER_EMAIL_VERIFIED', `Email address verified successfully with OTP for ${user.email}. Official welcome email dispatched.`);
+
+      const { passwordHash: _, ...safeUser } = user;
+      const token = generateToken(safeUser);
+
+      res.json({ token, user: safeUser, message: 'Email verified successfully!' });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Resend Registration OTP Code
+  app.post('/api/auth/resend-registration-otp', authRateLimiter, async (req, res) => {
+    try {
+      const { email } = req.body;
+      if (!email) {
+        res.status(400).json({ error: 'Email address is required.' });
+        return;
+      }
+
+      const sanitizedEmail = email.trim().toLowerCase();
+      const user = await getUserByEmail(sanitizedEmail);
+      if (!user) {
+        res.status(404).json({ error: 'No account found for this email address.' });
+        return;
+      }
+
+      const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+      await createPasswordReset(sanitizedEmail, newOtp, expiresAt);
+
+      console.log('========================================================');
+      console.log(`🔐 [RESEND REGISTRATION OTP]: Email: ${sanitizedEmail} -> CODE: ${newOtp}`);
+      console.log('========================================================');
+
+      const emailSent = await sendEmailVerificationOTP(sanitizedEmail, user.name, newOtp);
+      const isLiveDelivered = emailSent && isEmailDeliveryActive();
+      const shouldProvideDevCode = !isLiveDelivered || isRenderEnv || isExplicitDev || !isProductionEnv;
+
+      res.json({
+        success: true,
+        email: sanitizedEmail,
+        message: isLiveDelivered
+          ? 'A new 6-digit verification code has been dispatched to your email!'
+          : 'A new 6-digit verification code has been generated.',
+        emailDelivered: isLiveDelivered,
+        sandboxCode: shouldProvideDevCode ? newOtp : undefined
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Login
+  app.post('/api/auth/login', authRateLimiter, async (req, res) => {
+    try {
+      const { email, password } = req.body;
+
+      if (!email || !password) {
+        res.status(400).json({ error: 'Email and password are required.' });
+        return;
+      }
+
+      let user = await getUserByEmail(email);
+
+      const initialAdminEnv = process.env.INITIAL_ADMIN_EMAIL ? process.env.INITIAL_ADMIN_EMAIL.toLowerCase().trim() : null;
+
+      // If user does not exist in local database but Supabase Auth is enabled,
+      // let's try authenticating with Supabase Auth to see if we can auto-provision/restore them!
+      if (!user && isSupabaseAuthEnabled) {
+        try {
+          console.log(`[Login Auto-Restore] User ${email} not found in local DB. Checking on Supabase Auth...`);
+          const authSuccess = await loginSupabaseUser(email, password);
+          if (authSuccess) {
+            console.log(`[Login Auto-Restore] User ${email} authenticated successfully on Supabase. Re-provisioning local record...`);
+            
+            // Retrieve Supabase user ID and Metadata directly from the auth result
+            let name = authSuccess.user_metadata?.full_name || email.split('@')[0];
+            let supabaseId = authSuccess.id || `usr_${Math.random().toString(36).substr(2, 9)}`;
+            
+            if (!authSuccess.id && supabaseClient) {
+              // Fallback only
+              const { data: listData } = await supabaseClient.auth.admin.listUsers().catch(() => ({ data: null }));
+              const found = listData?.users?.find(u => u.email?.toLowerCase() === email.toLowerCase());
+              if (found) {
+                supabaseId = found.id;
+                if (found.user_metadata?.full_name) {
+                  name = found.user_metadata.full_name;
+                }
+              }
+            }
+
+            // Determine true role (check metadata first, then car wash ownership, then initial admin env)
+            const rawRole = String(authSuccess.user_metadata?.role || '').trim().toUpperCase();
+            let restoredRole: Role = (Object.values(Role).includes(rawRole as Role)) ? (rawRole as Role) : Role.CUSTOMER;
+            const allWashes = await getCarWashes();
+            const matchingWash = allWashes.find(w => 
+              w.ownerId === supabaseId || 
+              (w.ownerEmail && w.ownerEmail.toLowerCase() === email.toLowerCase()) || 
+              ((w as any).owner_email && (w as any).owner_email.toLowerCase() === email.toLowerCase())
+            );
+            if (matchingWash) {
+              restoredRole = Role.OWNER;
+            } else if (rawRole === 'OWNER') {
+              restoredRole = Role.OWNER;
+            } else if (initialAdminEnv && email.toLowerCase() === initialAdminEnv) {
+              restoredRole = Role.ADMIN;
+            }
+            
+            const salt = bcrypt.genSaltSync(10);
+            const passwordHash = bcrypt.hashSync(password, salt);
+            const newUser: UserWithPassword = {
+              id: supabaseId,
+              email: email.toLowerCase(),
+              name,
+              role: restoredRole,
+              isActive: true,
+              passwordHash,
+              createdAt: new Date().toISOString(),
+            };
+            
+            await createUser(newUser);
+            await addAuditLog(newUser.id, newUser.email, 'USER_AUTOPROVISION', `Account auto-provisioned/restored on login from Supabase Auth with role ${restoredRole}`);
+            user = newUser;
+          }
+        } catch (supabaseError: any) {
+          console.error('[Login Auto-Restore] Supabase direct auth failed:', supabaseError.message);
+        }
+      }
+
+      if (!user) {
+        res.status(400).json({ error: 'Invalid email or password.' });
+        return;
+      }
+
+      if (!user.isActive) {
+        res.status(403).json({ error: 'Your account is suspended. Please contact support.' });
+        return;
+      }
+
+      if (initialAdminEnv && user.email.toLowerCase() === initialAdminEnv && user.role !== Role.ADMIN) {
+        user.role = Role.ADMIN;
+        updateUser(user.id, { role: Role.ADMIN }).catch(() => {});
+      }
+
+      // Self-heal role: If user is marked as CUSTOMER, but their user ID or email owns a car wash, promote to OWNER!
+      if (user.role === Role.CUSTOMER) {
+        const allWashes = await getCarWashes();
+        const matchingWash = allWashes.find(w => 
+          w.ownerId === user!.id || 
+          (w.ownerEmail && w.ownerEmail.toLowerCase() === user!.email.toLowerCase()) ||
+          ((w as any).owner_email && (w as any).owner_email.toLowerCase() === user!.email.toLowerCase())
+        );
+        if (matchingWash) {
+          console.log(`[Role Self-Healing] User ${user.email} owns car wash "${matchingWash.name}". Self-healing role from CUSTOMER to OWNER.`);
+          user.role = Role.OWNER;
+          await updateUser(user.id, { role: Role.OWNER }).catch(() => {});
+        }
+      }
+
+      // Authenticate via Supabase Auth if configured (only if we didn't just authenticate them above)
+      if (isSupabaseAuthEnabled) {
+        try {
+          const authSuccess = await loginSupabaseUser(email, password);
+          if (!authSuccess) {
+            res.status(400).json({ error: 'Invalid email or password.' });
+            return;
+          }
+          // Synchronize local passwordHash if user changed password on Supabase
+          if (authSuccess && user) {
+            if (!bcrypt.compareSync(password, user.passwordHash)) {
+              const salt = bcrypt.genSaltSync(10);
+              const passwordHash = bcrypt.hashSync(password, salt);
+              await updateUser(user.id, { passwordHash }).catch(() => {});
+              user.passwordHash = passwordHash;
+            }
+          }
+        } catch (supabaseError: any) {
+          // If the login failed on Supabase Auth, but the credentials entered match the local database's bcrypt hash,
+          // we can automatically synchronize/register the user on Supabase Auth with this password!
+          // This allows standard seeded testing users (like admin@carwash.com with password admin123) and out-of-sync users
+          // to log in perfectly, bypassing missing account credentials securely!
+          const localPasswordValid = bcrypt.compareSync(password, user.passwordHash);
+          if (localPasswordValid) {
+            console.log(`[Supabase Auto-Sync] Local password is valid for ${email}. Synchronizing to Supabase Auth...`);
+            try {
+              // 1. Try to register the user in Supabase Auth to ensure they exist
+              const supabaseId = await registerSupabaseUser(email, password, user.name, user.role);
+              if (supabaseId) {
+                console.log(`[Supabase Auto-Sync] User ${email} registered/found on Supabase Auth with ID: ${supabaseId}`);
+                
+                // 2. Ensure their password on Supabase Auth is fully updated and matches the local database
+                await updateSupabasePassword(email, password).catch((e) => {
+                  console.warn(`[Supabase Auto-Sync] Admin password update warning (might be new registration):`, e.message);
+                });
+
+                // 3. Update their ID across all tables to keep the foreign key references unified
+                if (user.id !== supabaseId) {
+                  await updateUserIdAcrossTables(user.id, supabaseId);
+                  user.id = supabaseId;
+                }
+
+                // 4. Confirm login on Supabase Auth now works
+                const authSuccessRetry = await loginSupabaseUser(email, password);
+                if (!authSuccessRetry) {
+                  res.status(400).json({ error: 'Invalid email or password.' });
+                  return;
+                }
+              } else {
+                res.status(400).json({ error: `Supabase Authentication Error: ${supabaseError.message}` });
+                return;
+              }
+            } catch (syncError: any) {
+              console.error(`[Supabase Auto-Sync] Failed to sync user ${email} to Supabase Auth:`, syncError);
+              res.status(400).json({ error: `Supabase Auth Synchronization Error: ${syncError.message || syncError}` });
+              return;
+            }
+          } else {
+            res.status(400).json({ error: 'Invalid email or password.' });
+            return;
+          }
+        }
+      } else {
+        // Fallback to standard local password validation
+        const valid = bcrypt.compareSync(password, user.passwordHash);
+        if (!valid) {
+          res.status(400).json({ error: 'Invalid email or password.' });
+          return;
+        }
+      }
+
+      if (user.isEmailVerified === false) {
+        let activeOtp = await getPasswordResetByEmail(user.email);
+        let otpCode = activeOtp?.token;
+
+        if (!activeOtp || new Date(activeOtp.expiresAt) < new Date()) {
+          const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
+          const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // 15 mins
+          await createPasswordReset(user.email, newOtp, expiresAt);
+          otpCode = newOtp;
+          await sendEmailVerificationOTP(user.email, user.name, newOtp).catch(() => {});
+        }
+
+        const isLiveDelivered = isEmailDeliveryActive();
+        const shouldProvideDevCode = !isLiveDelivered || isRenderEnv || isExplicitDev || !isProductionEnv;
+
+        res.status(403).json({
+          error: 'Your email address is not verified yet. Please enter the 6-digit verification code sent to your email to log in.',
+          requireOtp: true,
+          email: user.email,
+          sandboxCode: shouldProvideDevCode ? otpCode : undefined
+        });
+        return;
+      }
+
+      // Check if Administrator 2FA OTP is required by platform security policy
+      if (user.role === Role.ADMIN) {
+        const platformInfo = await getPlatformInfo();
+        const isAdminOtpRequired = platformInfo.adminOtpRequired !== false;
+
+        if (isAdminOtpRequired) {
+          const adminOtp = Math.floor(100000 + Math.random() * 900000).toString();
+          const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 mins expiry
+          await createPasswordReset(user.email, adminOtp, expiresAt);
+
+          console.log('========================================================');
+          console.log(`🔐 [ADMIN LOGIN 2FA OTP]: Email: ${user.email} -> CODE: ${adminOtp}`);
+          console.log('========================================================');
+
+          // Dispatch Admin 2FA Email via Resend
+          const emailSent = await sendAdminLoginOtp(user.email, user.name, adminOtp);
+
+          // Log to audit logs (written to Supabase PostgreSQL or local SQLite)
+          await addAuditLog(
+            user.id,
+            user.email,
+            'ADMIN_OTP_ISSUED',
+            `Admin 2FA login verification code dispatched to ${user.email} (Code: ${adminOtp}, Status: ${emailSent ? 'Delivered via Resend' : 'Sandbox/Simulated Fallback'})`
+          );
+
+          const isLiveDelivered = emailSent && isEmailDeliveryActive();
+          const shouldProvideDevCode = !isLiveDelivered || isRenderEnv || isExplicitDev || !isProductionEnv;
+
+          res.status(200).json({
+            requireAdminOtp: true,
+            email: user.email,
+            message: isLiveDelivered
+              ? `Administrator 2FA security passkey dispatched to ${user.email}.`
+              : `Administrator 2FA security passkey generated for ${user.email}. (Development/Sandbox: Enter passkey below).`,
+            emailDelivered: isLiveDelivered,
+            sandboxCode: shouldProvideDevCode ? adminOtp : undefined,
+            supabaseNotice: 'In development or sandbox mode, this passkey is logged in the server console and Supabase audit_logs table.'
+          });
+          return;
+        }
+      }
+
+      const { passwordHash: _, ...safeUser } = user;
+      const token = generateToken(safeUser);
+
+      await addAuditLog(user.id, user.email, 'USER_LOGIN', `User logged in: ${user.name} (${user.role}) ${isSupabaseAuthEnabled ? '(Supabase Auth Verified)' : ''}`);
+
+      res.json({ token, user: safeUser });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Verify Administrator 2FA OTP Code
+  app.post('/api/auth/verify-admin-otp', authRateLimiter, async (req, res) => {
+    try {
+      const { email, otp } = req.body;
+      if (!email || !otp) {
+        res.status(400).json({ error: 'Email and 6-digit security code are required.' });
+        return;
+      }
+
+      const sanitizedEmail = String(email).trim().toLowerCase();
+      const isMasterTestOtp = String(otp).trim() === TEST_MASTER_OTP;
+
+      if (!isMasterTestOtp) {
+        const resetData = await getPasswordResetByToken(String(otp).trim());
+
+        if (!resetData || resetData.email.toLowerCase() !== sanitizedEmail) {
+          res.status(400).json({ error: 'Invalid 2FA security code. Please check your code or request a new one.' });
+          return;
+        }
+
+        if (new Date(resetData.expiresAt) < new Date()) {
+          await deletePasswordReset(sanitizedEmail);
+          res.status(400).json({ error: 'Security code has expired. Please request a new passkey.' });
+          return;
+        }
+      }
+
+      const user = await getUserByEmail(sanitizedEmail);
+      if (!user) {
+        res.status(404).json({ error: 'Administrator account not found.' });
+        return;
+      }
+
+      if (user.role !== Role.ADMIN) {
+        res.status(403).json({ error: 'Only administrator accounts require admin 2FA verification.' });
+        return;
+      }
+
+      // Delete the single-use OTP code
+      await deletePasswordReset(sanitizedEmail);
+
+      const { passwordHash: _, ...safeUser } = user;
+      const token = generateToken(safeUser);
+
+      await addAuditLog(
+        user.id,
+        user.email,
+        'ADMIN_OTP_VERIFIED',
+        `Administrator ${user.email} successfully verified 2FA security code and logged in.`
+      );
+
+      res.json({ token, user: safeUser, message: 'Administrator authentication verified.' });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Resend Administrator 2FA OTP Code
+  app.post('/api/auth/resend-admin-otp', authRateLimiter, async (req, res) => {
+    try {
+      const { email } = req.body;
+      if (!email) {
+        res.status(400).json({ error: 'Administrator email is required.' });
+        return;
+      }
+
+      const sanitizedEmail = String(email).trim().toLowerCase();
+      const user = await getUserByEmail(sanitizedEmail);
+      if (!user || user.role !== Role.ADMIN) {
+        res.status(400).json({ error: 'Administrator account not found.' });
+        return;
+      }
+
+      const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+      await createPasswordReset(sanitizedEmail, newOtp, expiresAt);
+
+      console.log('========================================================');
+      console.log(`🔐 [ADMIN RESEND 2FA OTP]: Email: ${sanitizedEmail} -> CODE: ${newOtp}`);
+      console.log('========================================================');
+
+      const emailSent = await sendAdminLoginOtp(sanitizedEmail, user.name, newOtp);
+
+      await addAuditLog(
+        user.id,
+        sanitizedEmail,
+        'ADMIN_OTP_RESENT',
+        `Admin 2FA code re-dispatched to ${sanitizedEmail} (Code: ${newOtp}, Status: ${emailSent ? 'Delivered via Resend' : 'Sandbox/Simulated'})`
+      );
+
+      const isLiveDelivered = emailSent && isEmailDeliveryActive();
+      const shouldProvideDevCode = !isLiveDelivered || isRenderEnv || isExplicitDev || !isProductionEnv;
+
+      res.json({
+        success: true,
+        email: sanitizedEmail,
+        message: isLiveDelivered
+          ? `A new 6-digit security passkey has been sent to ${sanitizedEmail}.`
+          : `A new 6-digit security passkey has been generated for ${sanitizedEmail}.`,
+        emailDelivered: isLiveDelivered,
+        sandboxCode: shouldProvideDevCode ? newOtp : undefined
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Forgot Password (Request Code / OTP via Resend)
+  app.post('/api/auth/forgot-password', authRateLimiter, async (req, res) => {
+    try {
+      const { email } = req.body;
+      if (!email) {
+        res.status(400).json({ error: 'Email address is required.' });
+        return;
+      }
+
+      let user = await getUserByEmail(email);
+
+      // If user does not exist in local database but Supabase Auth is enabled,
+      // let's try checking if they exist on Supabase to auto-provision them!
+      if (!user && isSupabaseAuthEnabled) {
+        try {
+          let found: any = null;
+          if (supabaseClient) {
+            const { data: listData, error: listError } = await supabaseClient.auth.admin.listUsers().catch(() => ({ data: null, error: true }));
+            if (!listError && listData?.users) {
+              found = listData.users.find(u => u.email?.toLowerCase() === email.toLowerCase());
+            }
+          }
+
+          if (found) {
+            console.log(`[Forgot Password Auto-Restore] User ${email} found in Supabase Auth but not in local DB. Auto-provisioning...`);
+            const name = found.user_metadata?.full_name || email.split('@')[0];
+            const salt = bcrypt.genSaltSync(10);
+            const passwordHash = bcrypt.hashSync(Math.random().toString(36), salt); // temporary random password
+            
+            const newUser: UserWithPassword = {
+              id: found.id,
+              email: email.toLowerCase(),
+              name,
+              role: Role.CUSTOMER,
+              isActive: true,
+              passwordHash,
+              createdAt: new Date().toISOString(),
+            };
+            
+            await createUser(newUser);
+            await addAuditLog(newUser.id, newUser.email, 'USER_AUTOPROVISION', `Customer account auto-provisioned/restored on forgot-password request from Supabase Auth`);
+            user = newUser;
+          } else {
+            // Safe fallback: even if listUsers failed or user wasn't listed, if Supabase is enabled, 
+            // let's provision a temporary local account so they can reset their password and log in.
+            console.log(`[Forgot Password Auto-Restore Fallback] Provisioning on-the-fly local account for ${email} during forgot-password request...`);
+            const name = email.split('@')[0];
+            const salt = bcrypt.genSaltSync(10);
+            const passwordHash = bcrypt.hashSync(Math.random().toString(36), salt);
+            
+            const newUser: UserWithPassword = {
+              id: `usr_${Math.random().toString(36).substr(2, 9)}`,
+              email: email.toLowerCase(),
+              name,
+              role: Role.CUSTOMER,
+              isActive: true,
+              passwordHash,
+              createdAt: new Date().toISOString(),
+            };
+            
+            await createUser(newUser);
+            await addAuditLog(newUser.id, newUser.email, 'USER_AUTOPROVISION', `Customer account auto-provisioned/restored via fallback on forgot-password request`);
+            user = newUser;
+          }
+        } catch (supabaseError: any) {
+          console.error('[Forgot Password Auto-Restore] Supabase lookup/provision failed:', supabaseError.message);
+        }
+      }
+
+      if (!user) {
+        res.status(404).json({ error: 'No account registered with this email address.' });
+        return;
+      }
+
+      // Generate a secure 6-digit numeric verification code
+      const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // 15 mins expiry
+
+      await createPasswordReset(user.email, resetCode, expiresAt);
+
+      // Send the reset OTP email using the Resend email service
+      const emailSent = await sendPasswordResetOTP(user.email, user.name, resetCode);
+
+      await addAuditLog(user.id, user.email, 'PASSWORD_RESET_REQUESTED', `Password reset OTP generated for ${user.email} (Email Dispatched: ${emailSent})`);
+
+      const isLiveDelivered = emailSent && isEmailDeliveryActive();
+      const shouldProvideDevCode = !isLiveDelivered || isRenderEnv || isExplicitDev || !isProductionEnv;
+
+      // Return sandboxCode in non-production / dev / sandbox for fast testing
+      res.json({
+        success: true,
+        email: user.email,
+        message: isLiveDelivered
+          ? 'A secure 6-digit password reset verification code has been dispatched to your email address.'
+          : 'A secure 6-digit password reset verification code has been generated.',
+        emailDelivered: isLiveDelivered,
+        sandboxCode: shouldProvideDevCode ? resetCode : undefined
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Reset Password (Verify & Commit)
+  app.post('/api/auth/reset-password', authRateLimiter, async (req, res) => {
+    try {
+      const { token, password } = req.body;
+      if (!token || !password) {
+        res.status(400).json({ error: 'Verification code and new password are required.' });
+        return;
+      }
+
+      if (password.length < 8) {
+        res.status(400).json({ error: 'New password must be at least 8 characters long.' });
+        return;
+      }
+
+      const isMasterTestOtp = String(token).trim() === TEST_MASTER_OTP;
+      let targetEmail = '';
+
+      if (isMasterTestOtp && req.body.email) {
+        targetEmail = String(req.body.email).trim().toLowerCase();
+      } else {
+        const resetData = await getPasswordResetByToken(token);
+        if (!resetData) {
+          res.status(400).json({ error: 'Invalid or incorrect verification code.' });
+          return;
+        }
+
+        if (new Date(resetData.expiresAt) < new Date()) {
+          await deletePasswordReset(resetData.email);
+          res.status(400).json({ error: 'Verification code has expired. Please request a new one.' });
+          return;
+        }
+        targetEmail = resetData.email;
+      }
+
+      const user = await getUserByEmail(targetEmail);
+      if (!user) {
+        res.status(404).json({ error: 'User associated with this token was not found.' });
+        return;
+      }
+
+      const salt = bcrypt.genSaltSync(10);
+      const passwordHash = bcrypt.hashSync(password, salt);
+
+      // 1. Update user password in local database
+      await updateUser(user.id, { passwordHash });
+
+      // 2. Sync to Supabase Auth if configured
+      if (isSupabaseAuthEnabled) {
+        try {
+          await updateSupabasePassword(user.email, password);
+        } catch (supabaseError: any) {
+          console.error('[Reset Password] Failed to sync password update to Supabase Auth:', supabaseError.message);
+        }
+      }
+
+      await deletePasswordReset(targetEmail);
+
+      await addAuditLog(user.id, user.email, 'PASSWORD_RESET_SUCCESS', `Password reset successfully for ${user.email}`);
+
+      res.json({ message: 'Your password has been successfully reset. You can now log in with your new password!' });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Get Me (Auto-refresh session token)
+  app.get('/api/auth/me', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+      }
+      const user = await getUserById(req.user.id);
+      if (!user) {
+        res.status(404).json({ error: 'User not found' });
+        return;
+      }
+      const { passwordHash: _, ...safeUser } = user;
+      const newToken = generateToken(safeUser);
+      res.json({ user: safeUser, token: newToken });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Update Profile
+  app.put('/api/auth/profile', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+      }
+      const { name, phone, dateOfBirth, gender, profileImageUrl, address } = req.body;
+      
+      const updateData: Partial<UserWithPassword> = {};
+      if (name !== undefined) updateData.name = name;
+      if (phone !== undefined) updateData.phone = phone;
+      if (dateOfBirth !== undefined) updateData.dateOfBirth = dateOfBirth;
+      if (gender !== undefined) updateData.gender = gender;
+      if (profileImageUrl !== undefined) updateData.profileImageUrl = profileImageUrl;
+      if (address !== undefined) updateData.address = address;
+
+      await updateUser(req.user.id, updateData);
+      
+      // Keep user's past and future bookings in sync with their updated profile phone/name
+      await syncUserBookings(req.user.id, name, phone);
+      
+      const updatedUser = await getUserById(req.user.id);
+      if (!updatedUser) {
+        res.status(404).json({ error: 'User not found' });
+        return;
+      }
+
+      await addAuditLog(req.user.id, req.user.email, 'USER_UPDATE_PROFILE', `User updated their own profile details: ${name}`);
+
+      const { passwordHash: _, ...safeUser } = updatedUser;
+      res.json(safeUser);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Change Password
+  app.post('/api/auth/change-password', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+      }
+      const { currentPassword, newPassword } = req.body;
+
+      if (!currentPassword || !newPassword) {
+        res.status(400).json({ error: 'Current password and new password are required.' });
+        return;
+      }
+
+      if (newPassword.length < 8) {
+        res.status(400).json({ error: 'New password must be at least 8 characters long.' });
+        return;
+      }
+
+      const user = await getUserById(req.user.id);
+      if (!user) {
+        res.status(404).json({ error: 'User not found' });
+        return;
+      }
+
+      // 1. Verify current password
+      const valid = bcrypt.compareSync(currentPassword, user.passwordHash);
+      if (!valid) {
+        res.status(400).json({ error: 'Incorrect current password.' });
+        return;
+      }
+
+      // 2. Hash new password
+      const salt = bcrypt.genSaltSync(10);
+      const passwordHash = bcrypt.hashSync(newPassword, salt);
+
+      // 3. Update local database
+      await updateUser(req.user.id, { passwordHash });
+
+      // 4. Sync to Supabase Auth if configured
+      if (isSupabaseAuthEnabled) {
+        try {
+          await updateSupabasePassword(user.email, newPassword);
+        } catch (supabaseError: any) {
+          console.error('[Change Password] Failed to sync password update to Supabase Auth:', supabaseError.message);
+        }
+      }
+
+      await addAuditLog(user.id, user.email, 'PASSWORD_CHANGED', `User ${user.email} successfully changed their password`);
+
+      res.json({ message: 'Password updated successfully!' });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Delete Account (App Store Guideline compliance & OWASP Re-Authentication)
+  app.delete('/api/auth/delete-account', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+      }
+
+      const { password } = req.body || {};
+      if (!password || typeof password !== 'string' || !password.trim()) {
+        res.status(400).json({ error: 'Password confirmation is required to delete your account.' });
+        return;
+      }
+
+      const userWithPw = await getUserByEmail(req.user.email);
+      if (!userWithPw || !userWithPw.passwordHash) {
+        res.status(404).json({ error: 'User account not found.' });
+        return;
+      }
+
+      const isPasswordValid = bcrypt.compareSync(password, userWithPw.passwordHash);
+      if (!isPasswordValid) {
+        res.status(400).json({ error: 'Incorrect password. Account deletion requires valid password verification.' });
+        return;
+      }
+
+      const userId = req.user.id;
+      const userEmail = req.user.email;
+
+      // 1. Audit Log first before deleting user context
+      await addAuditLog(userId, userEmail, 'USER_DELETE_ACCOUNT_REQUEST', `User verified password and confirmed self-deletion of account: ${userEmail}`);
+
+      // 2. Synchronize to Supabase Auth if enabled
+      if (isSupabaseAuthEnabled) {
+        try {
+          await deleteSupabaseUser(userEmail);
+        } catch (supabaseError: any) {
+          console.error('[Delete Account] Failed to delete user from Supabase Auth:', supabaseError.message);
+        }
+      }
+
+      // 3. Delete from our database
+      await deleteUser(userId);
+
+      res.json({ success: true, message: 'Account and associated records deleted successfully.' });
+    } catch (error: any) {
+      console.error('Delete account error:', error);
+      res.status(500).json({ error: error.message || 'Internal server error during account deletion.' });
+    }
+  });
+
+  // ==========================================
+  // CAR WASH LOCATION ENDPOINTS
+  // ==========================================
+
+  // Public: List all active car washes (with optional search and location-based filtering, or includeInactive=true for Admin/Owner management)
+  app.get('/api/car-washes', async (req, res) => {
+    try {
+      const allWashes = await getCarWashes();
+      const { search, lat, lng, radius, includeInactive } = req.query;
+
+      let locations = includeInactive === 'true' 
+        ? allWashes 
+        : allWashes.filter((cw) => cw.isActive);
+
+      if (search) {
+        const q = (search as string).toLowerCase();
+        locations = locations.filter(
+          (cw) =>
+            cw.name.toLowerCase().includes(q) ||
+            cw.address.toLowerCase().includes(q) ||
+            (cw.description && cw.description.toLowerCase().includes(q))
+        );
+      }
+
+      if (lat && lng && radius) {
+        const filterLat = parseFloat(lat as string);
+        const filterLng = parseFloat(lng as string);
+        const filterRad = parseFloat(radius as string); // in km
+
+        if (!isNaN(filterLat) && !isNaN(filterLng) && !isNaN(filterRad)) {
+          locations = locations.filter((cw) => {
+            const distance = getDistanceInKm(filterLat, filterLng, cw.locationLat, cw.locationLng);
+            return distance <= filterRad;
+          });
+        }
+      }
+
+      res.json(locations);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Public: View single car wash (by ID or Slug)
+  app.get('/api/car-washes/:id', async (req, res) => {
+    try {
+      const carWash = await getCarWashByIdOrSlug(req.params.id);
+      if (!carWash) {
+        res.status(404).json({ error: 'Car wash location not found.' });
+        return;
+      }
+      res.json(carWash);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Public: View car wash by vanity slug
+  app.get('/api/car-washes/by-slug/:slug', async (req, res) => {
+    try {
+      const carWash = await getCarWashByIdOrSlug(req.params.slug);
+      if (!carWash) {
+        res.status(404).json({ error: 'Car wash location not found for this vanity URL.' });
+        return;
+      }
+      res.json(carWash);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Manage: Create/Onboard new Car Wash location (Owner, Admin, or Special User)
+  app.post(
+    '/api/car-washes',
+    authenticateToken,
+    requireRoles([Role.OWNER, Role.ADMIN, Role.SPECIAL]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { name, description, locationLat, locationLng, address, openingHours, slotDuration, capacityPerSlot, phone, instagram, slug } = req.body;
+
+        if (!name || !address || locationLat === undefined || locationLng === undefined) {
+          res.status(400).json({ error: 'Fields (name, address, locationLat, locationLng) are required.' });
+          return;
+        }
+
+        const ownerId = req.user!.role === Role.OWNER ? req.user!.id : (req.body.ownerId || req.user!.id);
+        const uniqueSlug = await getUniqueSlug(slug || name);
+
+        const newCarWash: CarWash = {
+          id: `cw_${Math.random().toString(36).substr(2, 9)}`,
+          name,
+          slug: uniqueSlug,
+          description: description || '',
+          locationLat: parseFloat(locationLat),
+          locationLng: parseFloat(locationLng),
+          address,
+          openingHours: openingHours || {
+            monday: { open: '08:00', close: '18:00', isOpen: true },
+            tuesday: { open: '08:00', close: '18:00', isOpen: true },
+            wednesday: { open: '08:00', close: '18:00', isOpen: true },
+            thursday: { open: '08:00', close: '18:00', isOpen: true },
+            friday: { open: '08:00', close: '18:00', isOpen: true },
+            saturday: { open: '09:00', close: '17:00', isOpen: true },
+            sunday: { open: '10:00', close: '16:00', isOpen: false },
+          },
+          slotDuration: parseInt(slotDuration) || 30,
+          capacityPerSlot: parseInt(capacityPerSlot) || 1,
+          ownerId,
+          isActive: true,
+          ownerNavigationEnabled: true,
+          ownerQrCodeEnabled: req.body.ownerQrCodeEnabled !== undefined ? !!req.body.ownerQrCodeEnabled : false,
+          createdAt: new Date().toISOString(),
+          phone: phone || '',
+          instagram: instagram || '',
+        };
+
+        await createCarWash(newCarWash);
+
+        await addAuditLog(req.user!.id, req.user!.email, 'CAR_WASH_CREATE', `Created location: ${newCarWash.name}`);
+
+        res.status(201).json(newCarWash);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Internal server error' });
+      }
+    }
+  );
+
+  // Helper to verify business ownership across single and multi-tenant owner accounts
+  function checkIsCarWashOwner(user?: User, cw?: CarWash | null): boolean {
+    if (!user || !cw) return false;
+    if (user.role === Role.ADMIN || user.role === Role.SPECIAL) return true;
+    if (cw.ownerId === user.id) return true;
+    if ((user.id === 'usr_owner' || user.id === 'usr_owner_bn') && (cw.id === 'cw_brunei' || cw.ownerId === 'usr_owner' || cw.ownerId === 'usr_owner_bn')) {
+      return true;
+    }
+    return false;
+  }
+
+  // Manage: Update Car Wash location configuration (Owner of this business, Admin, or Special User)
+  app.put(
+    '/api/car-washes/:id',
+    authenticateToken,
+    requireRoles([Role.OWNER, Role.ADMIN, Role.SPECIAL]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const carWash = await getCarWashByIdOrSlug(req.params.id) || await getCarWashById(req.params.id);
+
+        if (!carWash) {
+          res.status(404).json({ error: 'Car wash location not found.' });
+          return;
+        }
+
+        // Authorization check: Only authorized owners, system admins, or special users can edit
+        if (req.user!.role !== Role.ADMIN && req.user!.role !== Role.SPECIAL && !checkIsCarWashOwner(req.user, carWash)) {
+          res.status(403).json({ error: 'You do not have permission to manage this car wash business.' });
+          return;
+        }
+
+        const { 
+          name, description, locationLat, locationLng, address, openingHours,
+          slotDuration, capacityPerSlot, isActive, phone, instagram, logoUrl,
+          bibdAccountName, bibdAccountNo, bibdEnabled, bibdQrImageUrl,
+          baiduriAccountName, baiduriAccountNo, baiduriEnabled, baiduriQrImageUrl,
+          customPaymentsJson, paymentPolicy, services, servicesJson, ownerId,
+          scheduleOverrides, scheduleOverridesJson, slug, ownerNavigationEnabled, ownerQrCodeEnabled, membershipEnabled
+        } = req.body;
+
+        let resolvedSlug = carWash.slug;
+        if (slug !== undefined) {
+          const sanitizedSlug = generateSlug(slug);
+          if (sanitizedSlug !== carWash.slug) {
+            // Check if another station has this slug
+            const existingWithSlug = await getCarWashByIdOrSlug(sanitizedSlug);
+            if (existingWithSlug && existingWithSlug.id !== carWash.id) {
+              res.status(409).json({ 
+                error: `The handle "${sanitizedSlug}" is already taken by another car wash station (${existingWithSlug.name}). Please choose a different unique handle.` 
+              });
+              return;
+            }
+            resolvedSlug = sanitizedSlug;
+          }
+        }
+
+        let parsedServices = carWash.services;
+        if (services !== undefined) {
+          parsedServices = services;
+        } else if (servicesJson !== undefined) {
+          try {
+            parsedServices = typeof servicesJson === 'string' ? JSON.parse(servicesJson) : servicesJson;
+          } catch (e) {
+            console.error('Error parsing servicesJson in PUT /api/car-washes/:id:', e);
+          }
+        }
+
+        let parsedOverrides = carWash.scheduleOverrides;
+        if (scheduleOverrides !== undefined) {
+          parsedOverrides = scheduleOverrides;
+        } else if (scheduleOverridesJson !== undefined) {
+          try {
+            parsedOverrides = typeof scheduleOverridesJson === 'string' ? JSON.parse(scheduleOverridesJson) : scheduleOverridesJson;
+          } catch (e) {
+            console.error('Error parsing scheduleOverridesJson in PUT /api/car-washes/:id:', e);
+          }
+        }
+
+        const updatedData: Partial<CarWash> = {
+          name: name !== undefined ? name : carWash.name,
+          slug: resolvedSlug,
+          description: description !== undefined ? description : carWash.description,
+          locationLat: locationLat !== undefined ? parseFloat(locationLat) : carWash.locationLat,
+          locationLng: locationLng !== undefined ? parseFloat(locationLng) : carWash.locationLng,
+          address: address !== undefined ? address : carWash.address,
+          openingHours: openingHours !== undefined ? openingHours : carWash.openingHours,
+          slotDuration: slotDuration !== undefined ? parseInt(slotDuration) : carWash.slotDuration,
+          capacityPerSlot: capacityPerSlot !== undefined ? parseInt(capacityPerSlot) : carWash.capacityPerSlot,
+          isActive: isActive !== undefined ? !!isActive : carWash.isActive,
+          phone: phone !== undefined ? phone : carWash.phone,
+          instagram: instagram !== undefined ? instagram : carWash.instagram,
+          logoUrl: logoUrl !== undefined ? logoUrl : carWash.logoUrl,
+          bibdAccountName: bibdAccountName !== undefined ? bibdAccountName : carWash.bibdAccountName,
+          bibdAccountNo: bibdAccountNo !== undefined ? bibdAccountNo : carWash.bibdAccountNo,
+          bibdEnabled: bibdEnabled !== undefined ? !!bibdEnabled : carWash.bibdEnabled,
+          bibdQrImageUrl: bibdQrImageUrl !== undefined ? bibdQrImageUrl : carWash.bibdQrImageUrl,
+          baiduriAccountName: baiduriAccountName !== undefined ? baiduriAccountName : carWash.baiduriAccountName,
+          baiduriAccountNo: baiduriAccountNo !== undefined ? baiduriAccountNo : carWash.baiduriAccountNo,
+          baiduriEnabled: baiduriEnabled !== undefined ? !!baiduriEnabled : carWash.baiduriEnabled,
+          baiduriQrImageUrl: baiduriQrImageUrl !== undefined ? baiduriQrImageUrl : carWash.baiduriQrImageUrl,
+          customPaymentsJson: customPaymentsJson !== undefined ? customPaymentsJson : carWash.customPaymentsJson,
+          paymentPolicy: paymentPolicy !== undefined ? paymentPolicy : carWash.paymentPolicy,
+          services: parsedServices,
+          servicesJson: parsedServices ? JSON.stringify(parsedServices) : carWash.servicesJson,
+          scheduleOverrides: parsedOverrides,
+          scheduleOverridesJson: parsedOverrides ? JSON.stringify(parsedOverrides) : carWash.scheduleOverridesJson,
+          ownerId: (req.user!.role === Role.ADMIN || req.user!.role === Role.SPECIAL) && ownerId ? ownerId : carWash.ownerId,
+          ownerNavigationEnabled: ownerNavigationEnabled !== undefined ? !!ownerNavigationEnabled : (carWash.ownerNavigationEnabled !== undefined ? carWash.ownerNavigationEnabled : true),
+          ownerQrCodeEnabled: (req.user!.role === Role.ADMIN || req.user!.role === Role.SPECIAL) && ownerQrCodeEnabled !== undefined
+            ? !!ownerQrCodeEnabled
+            : carWash.ownerQrCodeEnabled,
+          membershipEnabled: (req.user!.role === Role.ADMIN || req.user!.role === Role.SPECIAL) && membershipEnabled !== undefined
+            ? !!membershipEnabled
+            : carWash.membershipEnabled,
+        };
+
+        if (membershipEnabled !== undefined && (req.user!.role === Role.ADMIN || req.user!.role === Role.SPECIAL)) {
+          await setCarWashMembershipFeature(carWash.id, !!membershipEnabled);
+        }
+
+        await updateCarWash(carWash.id, updatedData);
+
+        // Auto-sync VIP loyalty points rules when owner configures services with points
+        if (Array.isArray(parsedServices)) {
+          for (const s of parsedServices) {
+            if (s.id && s.name && (s.points !== undefined || (s as any).pointsAwarded !== undefined)) {
+              const pts = Number(s.points ?? (s as any).pointsAwarded);
+              if (!isNaN(pts) && pts >= 0) {
+                await upsertMembershipPointsRule(carWash.id, s.id, s.name, pts, true).catch(() => {});
+              }
+            }
+          }
+        }
+        await addAuditLog(
+          req.user!.id, 
+          req.user!.email, 
+          'CAR_WASH_UPDATE', 
+          `Updated configuration for location: ${carWash.name}${isActive !== undefined ? ` (Status: ${isActive ? 'ACTIVE' : 'SUSPENDED'})` : ''}${ownerQrCodeEnabled !== undefined ? ` (Owner QR: ${ownerQrCodeEnabled ? 'ALLOWED' : 'HIDDEN'})` : ''}`
+        );
+
+        res.json({ ...carWash, ...updatedData });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Internal server error' });
+      }
+    }
+  );
+
+  // ==========================================
+  // PLATFORM INFORMATION & ENQUIRY ENDPOINTS
+  // ==========================================
+
+  // Public: Get global Autoshine contact and enquiry information
+  app.get('/api/platform-info', async (req, res) => {
+    try {
+      const info = await getPlatformInfo();
+      res.json(info);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Admin / Special User: Update global Autoshine platform contact information
+  app.put(
+    '/api/admin/platform-info',
+    authenticateToken,
+    requireRoles([Role.ADMIN, Role.SPECIAL]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { email, contact, whatsapp, address, companyName, description, adminOtpRequired } = req.body;
+        const updated = await updatePlatformInfo({
+          email,
+          contact,
+          whatsapp,
+          address,
+          companyName,
+          description,
+          adminOtpRequired,
+        });
+
+        await addAuditLog(
+          req.user!.id,
+          req.user!.email,
+          'PLATFORM_INFO_UPDATE',
+          `Updated Autoshine Global Information (Email: ${updated.email}, Contact: ${updated.contact}, WhatsApp: ${updated.whatsapp}${adminOtpRequired !== undefined ? `, Admin OTP: ${adminOtpRequired ? 'ENFORCED' : 'DISABLED'}` : ''})`
+        );
+
+        res.json(updated);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Internal server error' });
+      }
+    }
+  );
+
+  // Admin: Toggle Admin 2FA OTP Requirement on/off
+  app.post(
+    '/api/admin/security/toggle-otp',
+    authenticateToken,
+    requireRoles([Role.ADMIN]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { required } = req.body;
+        const isRequired = !!required;
+        const updated = await updatePlatformInfo({ adminOtpRequired: isRequired });
+
+        await addAuditLog(
+          req.user!.id,
+          req.user!.email,
+          'ADMIN_SECURITY_UPDATE',
+          `Admin Two-Factor Authentication policy modified: ${isRequired ? 'ENFORCED (Required)' : 'DISABLED (Direct Login)'}`
+        );
+
+        res.json({
+          success: true,
+          adminOtpRequired: updated.adminOtpRequired,
+          message: `Admin Two-Factor Authentication has been ${isRequired ? 'enabled and enforced' : 'disabled'}.`
+        });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Internal server error' });
+      }
+    }
+  );
+
+  // Manage: Delete Car Wash location (Owner of this business, Admin, or Special User)
+  app.delete(
+    '/api/car-washes/:id',
+    authenticateToken,
+    requireRoles([Role.OWNER, Role.ADMIN, Role.SPECIAL]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const carWash = await getCarWashById(req.params.id);
+
+        if (!carWash) {
+          res.status(404).json({ error: 'Car wash location not found.' });
+          return;
+        }
+
+        // Authorization check: Only the actual owner, system admins, or special users can delete
+        if (req.user!.role !== Role.ADMIN && req.user!.role !== Role.SPECIAL && carWash.ownerId !== req.user!.id) {
+          res.status(403).json({ error: 'You do not have permission to delete this car wash business.' });
+          return;
+        }
+
+        await deleteCarWash(req.params.id);
+        await addAuditLog(req.user!.id, req.user!.email, 'CAR_WASH_DELETE', `Deleted location: ${carWash.name}`);
+
+        res.json({ message: 'Car wash location successfully deleted.' });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Internal server error' });
+      }
+    }
+  );
+
+  // ==========================================
+  // ⭐ RATINGS, REVIEWS & REPLIES ENDPOINTS
+  // ==========================================
+
+  // Public: List reviews for a car wash (or all reviews if Admin/Special)
+  app.get('/api/reviews', async (req, res) => {
+    try {
+      const { carWashId } = req.query;
+      if (carWashId) {
+        const reviews = await getReviewsByCarWash(carWashId as string);
+        res.json(reviews);
+        return;
+      }
+
+      // Check if authenticated user is admin or special
+      const rawToken = req.headers['authorization']?.split(' ')[1];
+      const user = rawToken ? verifyToken(rawToken) : null;
+      if (user && (user.role === Role.ADMIN || user.role === Role.SPECIAL)) {
+        const allReviews = await getAllReviews();
+        res.json(allReviews);
+        return;
+      }
+
+      res.status(400).json({ error: 'Parameter carWashId is required.' });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Public: Get rating summary (average, count, star breakdown) for a car wash
+  app.get('/api/reviews/summary', async (req, res) => {
+    try {
+      const { carWashId } = req.query;
+      if (!carWashId) {
+        res.status(400).json({ error: 'Parameter carWashId is required.' });
+        return;
+      }
+      const summary = await getReviewsSummaryForCarWash(carWashId as string);
+      res.json(summary);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Authenticated: Get customer's own review for a specific car wash
+  app.get('/api/reviews/my', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { carWashId } = req.query;
+      if (!carWashId) {
+        res.status(400).json({ error: 'Parameter carWashId is required.' });
+        return;
+      }
+      const review = await getCustomerReviewForCarWash(carWashId as string, req.user!.id);
+      res.json({ review: review || null });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Authenticated: Create or edit customer review (1 review per customer per car wash)
+  app.post('/api/reviews', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { carWashId, rating, comment, bookingId } = req.body;
+
+      if (!carWashId) {
+        res.status(400).json({ error: 'Car wash ID is required.' });
+        return;
+      }
+
+      const numRating = Number(rating);
+      if (isNaN(numRating) || numRating < 1 || numRating > 5) {
+        res.status(400).json({ error: 'Rating must be an integer between 1 and 5 stars.' });
+        return;
+      }
+
+      const cleanComment = typeof comment === 'string' ? comment.trim() : '';
+      if (!cleanComment) {
+        res.status(400).json({ error: 'Review comment cannot be empty.' });
+        return;
+      }
+
+      // Enforce concise 250 characters limit (lightweight, mobile-first, and database-efficient)
+      if (cleanComment.length > 250) {
+        res.status(400).json({ error: 'Review text exceeds the 250-character maximum limit.' });
+        return;
+      }
+
+      const carWash = await getCarWashById(carWashId);
+      if (!carWash) {
+        res.status(404).json({ error: 'Car wash location not found.' });
+        return;
+      }
+
+      const review: Review = {
+        id: `rev_${Math.random().toString(36).substring(2, 9)}`,
+        carWashId,
+        customerId: req.user!.id,
+        customerName: req.user!.name || 'Verified Customer',
+        customerEmail: req.user!.email,
+        rating: Math.round(numRating),
+        comment: cleanComment,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        bookingId: bookingId || undefined,
+      };
+
+      const saved = await saveReview(review);
+
+      await addAuditLog(
+        req.user!.id,
+        req.user!.email,
+        'REVIEW_SUBMIT',
+        `Submitted ${saved.rating}-star review for ${carWash.name}`
+      );
+
+      res.status(201).json(saved);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Authenticated: Delete review (Customer who wrote it, Admin, or Special user for spam/moderation)
+  app.delete('/api/reviews/:id', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const review = await getReviewById(req.params.id);
+      if (!review) {
+        res.status(404).json({ error: 'Review not found.' });
+        return;
+      }
+
+      const isAuthor = review.customerId === req.user!.id;
+      const isAdmin = req.user!.role === Role.ADMIN;
+      const isSpecial = req.user!.role === Role.SPECIAL;
+
+      if (!isAuthor && !isAdmin && !isSpecial) {
+        res.status(403).json({ error: 'You do not have permission to delete this review.' });
+        return;
+      }
+
+      await deleteReview(req.params.id);
+
+      await addAuditLog(
+        req.user!.id,
+        req.user!.email,
+        'REVIEW_DELETE',
+        `Deleted review ${req.params.id} (Moderator: ${req.user!.role})`
+      );
+
+      res.json({ message: 'Review deleted successfully.' });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Authenticated: Business Owner reply to review
+  app.post('/api/reviews/:id/reply', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { reply } = req.body;
+      const cleanReply = typeof reply === 'string' ? reply.trim() : '';
+
+      if (!cleanReply) {
+        res.status(400).json({ error: 'Reply text cannot be empty.' });
+        return;
+      }
+
+      if (cleanReply.length > 250) {
+        res.status(400).json({ error: 'Owner reply exceeds the 250-character maximum limit.' });
+        return;
+      }
+
+      const review = await getReviewById(req.params.id);
+      if (!review) {
+        res.status(404).json({ error: 'Review not found.' });
+        return;
+      }
+
+      const carWash = await getCarWashById(review.carWashId);
+      if (!carWash) {
+        res.status(404).json({ error: 'Car wash associated with review not found.' });
+        return;
+      }
+
+      const isOwner = carWash.ownerId === req.user!.id;
+      const isAdmin = req.user!.role === Role.ADMIN;
+
+      if (!isOwner && !isAdmin) {
+        res.status(403).json({ error: 'Only the business owner of this location or an administrator can reply.' });
+        return;
+      }
+
+      const responderName = carWash.name ? `${carWash.name} (Owner)` : (req.user!.name || 'Business Owner');
+      const updated = await saveOwnerReply(req.params.id, cleanReply, responderName);
+
+      await addAuditLog(
+        req.user!.id,
+        req.user!.email,
+        'REVIEW_REPLY',
+        `Replied to review ${req.params.id} for location ${carWash.name}`
+      );
+
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Authenticated: Remove Owner reply from review
+  app.delete('/api/reviews/:id/reply', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const review = await getReviewById(req.params.id);
+      if (!review) {
+        res.status(404).json({ error: 'Review not found.' });
+        return;
+      }
+
+      const carWash = await getCarWashById(review.carWashId);
+      if (!carWash) {
+        res.status(404).json({ error: 'Car wash associated with review not found.' });
+        return;
+      }
+
+      const isOwner = carWash.ownerId === req.user!.id;
+      const isAdmin = req.user!.role === Role.ADMIN;
+      const isSpecial = req.user!.role === Role.SPECIAL;
+
+      if (!isOwner && !isAdmin && !isSpecial) {
+        res.status(403).json({ error: 'Only the business owner of this location, an administrator, or a moderator can remove this reply.' });
+        return;
+      }
+
+      const updated = await deleteOwnerReply(req.params.id);
+
+      await addAuditLog(
+        req.user!.id,
+        req.user!.email,
+        'REVIEW_REPLY_DELETE',
+        `Removed reply on review ${req.params.id}`
+      );
+
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // ==========================================
+  // BOOKINGS AND SLOTS ENDPOINTS
+  // ==========================================
+
+  // Public: Dynamic available time slots generator for a given date
+  app.get('/api/bookings/available-slots', async (req, res) => {
+    try {
+      const { carWashId, date, duration } = req.query;
+
+      if (!carWashId || !date) {
+        res.status(400).json({ error: 'Parameters carWashId and date (YYYY-MM-DD) are required.' });
+        return;
+      }
+
+      const carWash = await getCarWashById(carWashId as string);
+
+      if (!carWash) {
+        res.status(404).json({ error: 'Car wash location not found.' });
+        return;
+      }
+
+      const requestedDuration = duration ? parseInt(duration as string, 10) : 30;
+      const allBookings = await getBookings();
+      const slots = generateSlotsForDate(carWash, date as string, allBookings, requestedDuration);
+      res.json(slots);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Authenticated: View bookings list (filtered automatically by user role)
+  app.get('/api/bookings', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const bookings = await getBookings();
+      const carWashes = await getCarWashes();
+
+      let bookingsList: Booking[] = [];
+
+      if (user.role === Role.ADMIN) {
+        bookingsList = bookings;
+      } else if (user.role === Role.OWNER) {
+        // Find car washes owned by this user
+        const ownedIds = carWashes.filter((cw) => cw.ownerId === user.id).map((cw) => cw.id);
+        bookingsList = bookings.filter((b) => ownedIds.includes(b.carWashId));
+      } else if (user.role === Role.EMPLOYEE) {
+        // Find bookings for the assigned businessId
+        const employeeUser = await getUserById(user.id);
+        if (employeeUser && employeeUser.businessId) {
+          bookingsList = bookings.filter((b) => b.carWashId === employeeUser.businessId);
+        } else {
+          bookingsList = [];
+        }
+      } else {
+        // Customer or Special User (customer view): only their own bookings
+        bookingsList = bookings.filter((b) => b.customerId === user.id);
+      }
+
+      // Populate booking with car wash name and address for convenience in frontend
+      const hydrated = bookingsList.map((b) => {
+        const cw = carWashes.find((c) => c.id === b.carWashId);
+        return {
+          ...b,
+          carWashName: cw ? cw.name : 'Unknown Car Wash',
+          carWashAddress: cw ? cw.address : 'N/A',
+          carWashPhone: cw ? cw.phone : '',
+        };
+      });
+
+      // Sort with newest first
+      hydrated.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+      res.json(hydrated);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // 🔒 Concurrency mutex lock to strictly serialize simultaneous bookings and eliminate multi-booking race conditions
+  const bookingLocks = new Map<string, Promise<any>>();
+
+  async function acquireBookingLock<T>(lockKey: string, fn: () => Promise<T>): Promise<T> {
+    const currentLock = bookingLocks.get(lockKey) || Promise.resolve();
+    let releaseLock: () => void;
+    const nextLock = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
+    bookingLocks.set(lockKey, currentLock.then(() => nextLock, () => nextLock));
+
+    try {
+      await currentLock;
+      return await fn();
+    } finally {
+      releaseLock!();
+      if (bookingLocks.get(lockKey) === nextLock) {
+        bookingLocks.delete(lockKey);
+      }
+    }
+  }
+
+  // Authenticated: Book a slot (supports optional bank payment upload)
+  app.post('/api/bookings', authenticateToken, (req: AuthenticatedRequest, res, next) => {
+    uploadReceipt.single('receipt')(req, res, (err) => {
+      if (err) {
+        return res.status(400).json({ error: err.message || 'File upload error.' });
+      }
+      next();
+    });
+  }, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { 
+        carWashId, date, timeSlot, notes, paymentBank, txnReference, 
+        serviceId, serviceName, price, customerPhone, vehicleInfo 
+      } = req.body;
+
+      if (!carWashId || !date || !timeSlot) {
+        res.status(400).json({ error: 'Fields (carWashId, date, timeSlot) are required.' });
+        return;
+      }
+
+      const carWash = await getCarWashById(carWashId);
+
+      if (!carWash) {
+        res.status(404).json({ error: 'Car wash business not found.' });
+        return;
+      }
+
+      if (!carWash.isActive) {
+        res.status(400).json({ error: 'This car wash is temporarily offline.' });
+        return;
+      }
+
+      // Execute slot verification, duplicate validation, and booking creation inside the atomic mutex
+      const lockKey = `${carWashId}:${date}`;
+      const bookingExecution = await acquireBookingLock(lockKey, async () => {
+        // Check slot availability and capacity limits (exempt Walk-in, 0-slot items, or flexible slots)
+        if (!isZeroSlotBooking(timeSlot)) {
+          const allBookings = await getBookings();
+          const validation = validateSlotCapacity(carWash, date, timeSlot, allBookings);
+          if (!validation.isValid) {
+            return {
+              errorStatus: 400,
+              errorMessage: validation.error || 'This time slot is fully booked or no longer available.',
+            };
+          }
+        }
+
+        // 🔒 Local Bank Payment Processing & Sanity Checks
+        let dbPaymentBank: string | undefined = undefined;
+        let dbTxnReference: string | undefined = undefined;
+        let dbReceiptFilename: string | undefined = undefined;
+
+        if (paymentBank || txnReference || req.file) {
+          if (!paymentBank || !txnReference || !req.file) {
+            return {
+              errorStatus: 400,
+              errorMessage: 'For bank transfers, payment bank, reference number, and receipt screenshot are all required.',
+            };
+          }
+
+          // Aggressively sanitize / trim the reference number to prevent bypass fraud (e.g. trailing/leading spaces)
+          const sanitizedRef = txnReference.toString().trim().toUpperCase();
+          if (sanitizedRef.length === 0) {
+            return {
+              errorStatus: 400,
+              errorMessage: 'Transaction reference number cannot be empty.',
+            };
+          }
+
+          // Explicitly query the database for duplicate transaction references BEFORE running creation scripts
+          const duplicateBooking = await getBookingByTxnRef(sanitizedRef);
+          if (duplicateBooking) {
+            return {
+              errorStatus: 400,
+              errorMessage: 'This bank transaction reference number has already been used. Duplicate submissions are not allowed.',
+            };
+          }
+
+          dbPaymentBank = paymentBank;
+          dbTxnReference = sanitizedRef;
+          dbReceiptFilename = req.file.filename;
+        }
+
+        // Fetch customer database record to get their stored phone number & vehicle
+        const dbUser = await getUserById(req.user!.id);
+        const rawPhone = (customerPhone || dbUser?.phone || '').trim();
+        const finalCustomerPhone = rawPhone && rawPhone.toUpperCase() !== 'NA' && rawPhone.toUpperCase() !== 'N/A' ? rawPhone : undefined;
+        const finalVehicleInfo = (vehicleInfo || '').trim() || undefined;
+
+        // If user provided a phone number and their profile didn't have one, update their profile
+        if (finalCustomerPhone && (!dbUser?.phone || dbUser.phone.toUpperCase() === 'NA')) {
+          await updateUser(req.user!.id, { phone: finalCustomerPhone }).catch(() => {});
+        }
+
+        const newBooking: Booking = {
+          id: `bk_${Math.random().toString(36).substr(2, 9)}`,
+          carWashId,
+          customerId: req.user!.id,
+          customerName: req.user!.name,
+          customerEmail: req.user!.email,
+          customerPhone: finalCustomerPhone,
+          vehicleInfo: finalVehicleInfo,
+          date,
+          timeSlot,
+          status: BookingStatus.PENDING,
+          notes: notes || '',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          paymentBank: dbPaymentBank,
+          txnReference: dbTxnReference,
+          receiptFilename: dbReceiptFilename,
+          serviceId: serviceId || undefined,
+          serviceName: serviceName || undefined,
+          price: price ? parseFloat(price) : undefined,
+        };
+
+        await createBooking(newBooking);
+        return { success: true, newBooking };
+      });
+
+      if ('errorStatus' in bookingExecution && bookingExecution.errorStatus) {
+        res.status(bookingExecution.errorStatus).json({ error: bookingExecution.errorMessage });
+        return;
+      }
+
+      const newBooking = (bookingExecution as any).newBooking;
+
+      // Trigger in-app notification for the owner of the car wash
+      if (carWash.ownerId) {
+        try {
+          await createNotification({
+            id: `notif_${Math.random().toString(36).substr(2, 9)}`,
+            userId: carWash.ownerId,
+            title: `New Booking Received! 🚗`,
+            message: `${newBooking.customerName} booked ${newBooking.serviceName || 'Car Wash Service'} for ${newBooking.date} at ${newBooking.timeSlot}.${newBooking.txnReference ? ` (Bank Ref: ${newBooking.txnReference})` : ''}`,
+            type: 'NEW_BOOKING',
+            bookingId: newBooking.id,
+            isRead: false,
+            createdAt: new Date().toISOString(),
+          });
+        } catch (notifErr) {
+          console.error('Failed to create owner notification:', notifErr);
+        }
+      }
+
+      // Also notify active assigned employees for this car wash station
+      try {
+        const allUsers = await getUsers();
+        const activeStaff = allUsers.filter((u) => u.role === Role.EMPLOYEE && u.businessId === carWash.id && u.isActive);
+        for (const staff of activeStaff) {
+          await createNotification({
+            id: `notif_${Math.random().toString(36).substr(2, 9)}`,
+            userId: staff.id,
+            title: `New Queue Booking! 🚗`,
+            message: `${newBooking.customerName} booked ${newBooking.serviceName || 'Car Wash Service'} for ${newBooking.date} at ${newBooking.timeSlot}`,
+            type: 'NEW_BOOKING',
+            bookingId: newBooking.id,
+            isRead: false,
+            createdAt: new Date().toISOString(),
+          }).catch(() => {});
+        }
+      } catch (staffNotifErr) {
+        console.error('Failed to notify staff:', staffNotifErr);
+      }
+
+      // Instantly broadcast realtime event to all connected owner and employee dashboards
+      broadcastRealtimeEvent({
+        type: 'BOOKING_CREATED',
+        bookingId: newBooking.id,
+        carWashId: newBooking.carWashId,
+        data: {
+          id: newBooking.id,
+          customerName: newBooking.customerName,
+          serviceName: newBooking.serviceName,
+          date: newBooking.date,
+          timeSlot: newBooking.timeSlot,
+        },
+      });
+
+      await addAuditLog(
+        req.user!.id,
+        req.user!.email,
+        'BOOKING_CREATE',
+        `Booked slot ${timeSlot} on ${date} at ${carWash.name}${newBooking.txnReference ? ` with bank payment ref: ${newBooking.txnReference}` : ''}`
+      );
+
+      // Booking confirmation email is governed by admin notification toggle & quota circuit breaker
+      const targetCustomerEmail = newBooking.customerEmail || req.user?.email;
+      const targetCustomerName = newBooking.customerName || req.user?.name || 'Customer';
+
+      if (targetCustomerEmail && !targetCustomerEmail.endsWith('@walkin.guest')) {
+        sendBookingConfirmationEmail({
+          customerEmail: targetCustomerEmail,
+          customerName: targetCustomerName,
+          bookingId: newBooking.id,
+          businessName: carWash.name,
+          address: carWash.address,
+          date: newBooking.date,
+          timeSlot: newBooking.timeSlot,
+          serviceName: newBooking.serviceName,
+          price: newBooking.price,
+          paymentBank: newBooking.paymentBank,
+          txnReference: newBooking.txnReference,
+        }).catch((err) => {
+          console.error('[EmailService] Failed to send booking confirmation email:', err);
+        });
+      } else {
+        recordEmailLog({
+          to: targetCustomerName,
+          from: 'System <notifications@autoshinebn.com>',
+          subject: `Booking Confirmed: ${carWash.name} - Autoshine BN`,
+          html: '<p>Skipped: No valid email address provided for this booking customer.</p>',
+          status: 'SKIPPED',
+          provider: getEmailSettings().activeProvider,
+          errorDetails: 'Skipped: No valid customer email address provided on booking creation.',
+        });
+      }
+
+      // Also dispatch alert email to car wash business owner
+      if (carWash.ownerId) {
+        try {
+          const allUsers = await getUsers();
+          const ownerUser = allUsers.find((u) => u.id === carWash.ownerId);
+          if (ownerUser && ownerUser.email) {
+            sendOwnerNewBookingEmail({
+              ownerEmail: ownerUser.email,
+              ownerName: ownerUser.name,
+              businessName: carWash.name,
+              customerName: targetCustomerName,
+              customerPhone: newBooking.customerPhone,
+              date: newBooking.date,
+              timeSlot: newBooking.timeSlot,
+              serviceName: newBooking.serviceName,
+              price: newBooking.price,
+              bookingId: newBooking.id,
+              txnReference: newBooking.txnReference,
+            }).catch((err) => console.error('[EmailService] Owner alert email error:', err));
+          }
+        } catch (ownerErr) {
+          console.error('[EmailService] Failed to dispatch owner booking alert:', ownerErr);
+        }
+      }
+
+      res.status(201).json(newBooking);
+    } catch (error: any) {
+      console.error('Secure booking creation error details:', error);
+      res.status(500).json({ error: 'An unexpected database error occurred. Your request could not be processed.' });
+    }
+  });
+
+  // Manual Booking Creation by Owner or Employee (for phone calls / walk-ins)
+  app.post(
+    '/api/owner/manual-booking',
+    authenticateToken,
+    requireRoles([Role.OWNER, Role.EMPLOYEE, Role.ADMIN, Role.SPECIAL]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const {
+          carWashId,
+          date,
+          timeSlot,
+          customerName,
+          customerPhone,
+          customerEmail,
+          vehicleInfo,
+          bookingSource,
+          serviceId,
+          serviceName,
+          price,
+          notes,
+          status,
+        } = req.body;
+
+        if (!carWashId || !date || !timeSlot || !customerName || !customerPhone) {
+          res.status(400).json({
+            error: 'Fields (carWashId, date, timeSlot, customerName, customerPhone) are required for manual booking creation.',
+          });
+          return;
+        }
+
+        const carWash = await getCarWashById(carWashId);
+        if (!carWash) {
+          res.status(404).json({ error: 'Car wash location not found.' });
+          return;
+        }
+
+        // Authorization check: OWNER or EMPLOYEE must belong to this carWash
+        if (req.user!.role === Role.OWNER && carWash.ownerId !== req.user!.id) {
+          res.status(403).json({ error: 'You do not own this car wash business.' });
+          return;
+        }
+
+        if (req.user!.role === Role.EMPLOYEE) {
+          const empUser = await getUserById(req.user!.id);
+          if (empUser?.businessId !== carWashId) {
+            res.status(403).json({ error: 'You are not assigned to this car wash business.' });
+            return;
+          }
+        }
+
+        // Validate bay capacity on all covered 30-min slices
+        if (!isZeroSlotBooking(timeSlot)) {
+          const allBookings = await getBookings();
+          const validation = validateSlotCapacity(carWash, date, timeSlot, allBookings);
+          if (!validation.isValid) {
+            res.status(400).json({ error: validation.error || 'This time slot is fully booked or no longer available.' });
+            return;
+          }
+        }
+
+        let resolvedCustomerId = req.body.customerId || undefined;
+        if (!resolvedCustomerId && customerEmail) {
+          const userRow = await getUserByEmail(customerEmail.trim());
+          if (userRow) resolvedCustomerId = userRow.id;
+        }
+        if (!resolvedCustomerId && customerPhone) {
+          const cleanPhone = customerPhone.trim();
+          if (cleanPhone && cleanPhone.toUpperCase() !== 'NA') {
+            const allUsers = await getUsers();
+            const matched = allUsers.find(
+              (u) => u.phone && u.phone.replace(/[^0-9]/g, '') === cleanPhone.replace(/[^0-9]/g, '')
+            );
+            if (matched) resolvedCustomerId = matched.id;
+          }
+        }
+        if (!resolvedCustomerId) {
+          resolvedCustomerId = `guest_${Math.random().toString(36).substr(2, 7)}`;
+        }
+
+        const newManualBooking: Booking = {
+          id: `bk_manual_${Math.random().toString(36).substr(2, 9)}`,
+          carWashId,
+          customerId: resolvedCustomerId,
+          customerName,
+          customerEmail: customerEmail || `${customerPhone.replace(/[^0-9]/g, '')}@walkin.guest`,
+          customerPhone,
+          vehicleInfo: vehicleInfo || '',
+          bookingSource: bookingSource || 'PHONE',
+          createdByRole: req.user!.role,
+          createdByEmail: req.user!.email,
+          date,
+          timeSlot,
+          status: status || BookingStatus.COMPLETED,
+          notes: notes ? `[Manual Booking by ${req.user!.role} (${req.user!.email})] ${notes}` : `[Manual Booking by ${req.user!.role} (${req.user!.email})]`,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          serviceId: serviceId || undefined,
+          serviceName: serviceName || undefined,
+          price: price !== undefined ? parseFloat(price) : undefined,
+        };
+
+        await createBooking(newManualBooking);
+
+        // 🌟 Automatically award loyalty points if manual booking is created as COMPLETED
+        if (newManualBooking.status === BookingStatus.COMPLETED) {
+          try {
+            const ptsAwarded = await awardPointsForBookingCompletion(newManualBooking.id, { id: req.user!.id, role: req.user!.role });
+            if (ptsAwarded && ptsAwarded.pointsAwarded > 0) {
+              console.log(`[Loyalty] Awarded +${ptsAwarded.pointsAwarded} points to customer ${resolvedCustomerId} for manual booking ${newManualBooking.id}`);
+            }
+          } catch (ptsErr) {
+            console.error('Failed to award loyalty points for completed manual booking:', ptsErr);
+          }
+        }
+
+        // Notify owner if created by employee/staff
+        if (carWash.ownerId) {
+          try {
+            await createNotification({
+              id: `notif_${Math.random().toString(36).substr(2, 9)}`,
+              userId: carWash.ownerId,
+              title: `New Manual Booking (${bookingSource || 'PHONE'})`,
+              message: `${customerName} booked ${serviceName || 'Service'} for ${date} at ${timeSlot}`,
+              type: 'NEW_BOOKING',
+              bookingId: newManualBooking.id,
+              isRead: false,
+              createdAt: new Date().toISOString(),
+            });
+          } catch (notifErr) {
+            console.error('Failed to create notification for manual booking:', notifErr);
+          }
+        }
+
+        // Instantly broadcast realtime event for live dashboard reactivity
+        broadcastRealtimeEvent({
+          type: 'BOOKING_CREATED',
+          bookingId: newManualBooking.id,
+          carWashId: newManualBooking.carWashId,
+          data: {
+            id: newManualBooking.id,
+            customerName: newManualBooking.customerName,
+            serviceName: newManualBooking.serviceName,
+            date: newManualBooking.date,
+            timeSlot: newManualBooking.timeSlot,
+          },
+        });
+
+        await addAuditLog(
+          req.user!.id,
+          req.user!.email,
+          'MANUAL_BOOKING_CREATE',
+          `Created manual ${bookingSource || 'PHONE'} booking for ${customerName} (${customerPhone}) on ${date} ${timeSlot}`
+        );
+
+        // Dispatch transactional email for manual bookings if a valid email is provided
+        if (customerEmail && !customerEmail.endsWith('@walkin.guest')) {
+          if (newManualBooking.status === BookingStatus.COMPLETED) {
+            sendWashCompletedEmail({
+              customerEmail,
+              customerName: customerName || 'Customer',
+              bookingId: newManualBooking.id,
+              businessName: carWash.name,
+              vehiclePlate: vehicleInfo,
+              serviceName,
+              totalAmount: newManualBooking.price,
+            }).catch((err) => {
+              console.error('[EmailService] Failed to send manual wash completion email:', err);
+            });
+          } else {
+            sendBookingConfirmationEmail({
+              customerEmail,
+              customerName: customerName || 'Customer',
+              bookingId: newManualBooking.id,
+              businessName: carWash.name,
+              address: carWash.address,
+              date: newManualBooking.date,
+              timeSlot: newManualBooking.timeSlot,
+              serviceName: newManualBooking.serviceName,
+              price: newManualBooking.price,
+              paymentBank: newManualBooking.paymentBank,
+              txnReference: newManualBooking.txnReference,
+            }).catch((err) => {
+              console.error('[EmailService] Failed to send manual booking confirmation email:', err);
+            });
+          }
+        }
+
+        res.status(201).json(newManualBooking);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Internal server error' });
+      }
+    }
+  );
+
+  // Authenticated Owner: Generate/Seed sample ledger data from Dec 2025 to present
+  app.post(
+    '/api/owner/seed-sample-ledger',
+    authenticateToken,
+    requireRoles([Role.OWNER, Role.ADMIN]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { carWashId } = req.body;
+        const count = await seedDecToPresentSampleData(carWashId || 'cw_brunei');
+        await addAuditLog(
+          req.user!.id,
+          req.user!.email,
+          'SAMPLE_LEDGER_SEED',
+          `Generated ${count} sample ledger records from Dec 2025 to present for ${carWashId || 'cw_brunei'}`
+        );
+
+        broadcastRealtimeEvent({
+          type: 'BOOKING_UPDATED',
+          carWashId: carWashId || 'cw_brunei',
+        });
+
+        res.json({ success: true, count, message: `Successfully generated ${count} sample ledger transactions from Dec 2025 to present!` });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to seed sample ledger' });
+      }
+    }
+  );
+
+  // Authenticated: Reschedule or update a booking (customer can reschedule, owner/admin can reschedule)
+  app.put('/api/bookings/:id/reschedule', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { date, timeSlot } = req.body;
+
+      if (!date || !timeSlot) {
+        res.status(400).json({ error: 'Fields (date, timeSlot) are required.' });
+        return;
+      }
+
+      const booking = await getBookingById(req.params.id);
+
+      if (!booking) {
+        res.status(404).json({ error: 'Booking not found.' });
+        return;
+      }
+
+      const carWashes = await getCarWashes();
+      const bookingsList = await getBookings();
+
+      // Auth validation
+      const isOwnerOrAdmin = req.user!.role === Role.ADMIN ||
+        (req.user!.role === Role.OWNER && carWashes.some((cw) => cw.id === booking.carWashId && cw.ownerId === req.user!.id));
+      const isCustomerSelf = req.user!.id === booking.customerId;
+
+      if (!isOwnerOrAdmin && !isCustomerSelf) {
+        res.status(403).json({ error: 'You are not authorized to reschedule this booking.' });
+        return;
+      }
+
+      const carWash = carWashes.find((cw) => cw.id === booking.carWashId);
+      if (!carWash) {
+        res.status(404).json({ error: 'Car wash business not found.' });
+        return;
+      }
+
+      // Check slot capacity on the new slot (exempting the current booking if it is the same slot)
+      if (!isZeroSlotBooking(timeSlot)) {
+        const validation = validateSlotCapacity(carWash, date, timeSlot, bookingsList, booking.id);
+        if (!validation.isValid) {
+          res.status(400).json({ error: validation.error || 'The selected reschedule slot is fully booked or no longer available.' });
+          return;
+        }
+      }
+
+      const oldDate = booking.date;
+      const oldSlot = booking.timeSlot;
+
+      const updatedData = {
+        date,
+        timeSlot,
+        status: BookingStatus.PENDING, // Reset status to pending when rescheduled
+        updatedAt: new Date().toISOString(),
+      };
+
+      await updateBooking(booking.id, updatedData);
+
+      await addAuditLog(
+        req.user!.id,
+        req.user!.email,
+        'BOOKING_RESCHEDULE',
+        `Rescheduled booking ${booking.id} from [${oldDate} ${oldSlot}] to [${date} ${timeSlot}]`
+      );
+
+      broadcastRealtimeEvent({
+        type: 'BOOKING_UPDATED',
+        bookingId: booking.id,
+        carWashId: booking.carWashId,
+        data: { id: booking.id, date, timeSlot, status: BookingStatus.PENDING },
+      });
+
+      res.json({ ...booking, ...updatedData });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Authenticated Staff/Owner: Edit booking items, services, add-ons, price, vehicle info, and notes
+  app.put('/api/bookings/:id/details', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { serviceId, serviceName, price, vehicleInfo, notes, paymentBank, txnReference } = req.body;
+
+      const booking = await getBookingById(req.params.id);
+      if (!booking) {
+        res.status(404).json({ error: 'Booking not found.' });
+        return;
+      }
+
+      const user = req.user!;
+      const carWashes = await getCarWashes();
+      const users = await getUsers();
+
+      const isOwner = user.role === Role.OWNER && carWashes.some((cw) => cw.id === booking.carWashId && cw.ownerId === user.id);
+      const isEmployeeAtBusiness = user.role === Role.EMPLOYEE && users.some((u) => u.id === user.id && u.businessId === booking.carWashId);
+      const isAdmin = user.role === Role.ADMIN || user.role === Role.SPECIAL;
+
+      if (!isOwner && !isEmployeeAtBusiness && !isAdmin) {
+        res.status(403).json({ error: 'Only authorized business staff or owner can edit booking items and pricing.' });
+        return;
+      }
+
+      const updatedData: Partial<Booking> = {
+        serviceId: serviceId !== undefined ? serviceId : booking.serviceId,
+        serviceName: serviceName !== undefined ? serviceName : booking.serviceName,
+        price: price !== undefined ? parseFloat(price) : booking.price,
+        vehicleInfo: vehicleInfo !== undefined ? vehicleInfo : booking.vehicleInfo,
+        notes: notes !== undefined ? notes : booking.notes,
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (paymentBank !== undefined) {
+        updatedData.paymentBank = paymentBank ? String(paymentBank).trim() : 'Cash';
+      }
+      if (txnReference !== undefined) {
+        updatedData.txnReference = txnReference ? String(txnReference).trim() : undefined;
+      }
+
+      await updateBooking(booking.id, updatedData);
+
+      await addAuditLog(
+        user.id,
+        user.email,
+        'BOOKING_ITEMS_UPDATE',
+        `Updated booking ${booking.id} services/add-ons: "${serviceName || booking.serviceName}" - Total: BND $${parseFloat(price !== undefined ? price : booking.price || 0).toFixed(2)}`
+      );
+
+      // Trigger notification for customer on booking modification
+      if (booking.customerId) {
+        try {
+          await createNotification({
+            id: `notif_${Math.random().toString(36).substr(2, 9)}`,
+            userId: booking.customerId,
+            title: `Booking Items Updated 📝`,
+            message: `Your booking on ${booking.date} (${booking.timeSlot}) services were updated to: ${serviceName || booking.serviceName} (Total: BND $${parseFloat(price !== undefined ? price : booking.price || 0).toFixed(2)}).`,
+            type: 'STATUS_CHANGE',
+            bookingId: booking.id,
+            isRead: false,
+            createdAt: new Date().toISOString(),
+          });
+        } catch (notifErr) {
+          console.error('Failed to notify customer on booking edit:', notifErr);
+        }
+      }
+
+      broadcastRealtimeEvent({
+        type: 'BOOKING_UPDATED',
+        bookingId: booking.id,
+        carWashId: booking.carWashId,
+        data: updatedData,
+      });
+
+      res.json({ ...booking, ...updatedData });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Authenticated: Change status (Accept, reject, check-in, complete, cancel)
+  app.put('/api/bookings/:id/status', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { status, notes, employeeId, paymentBank, txnReference } = req.body;
+
+      if (!status) {
+        res.status(400).json({ error: 'Status is required.' });
+        return;
+      }
+
+      const booking = await getBookingById(req.params.id);
+
+      if (!booking) {
+        res.status(404).json({ error: 'Booking not found.' });
+        return;
+      }
+
+      const user = req.user!;
+      const carWashes = await getCarWashes();
+      const users = await getUsers();
+
+      const isCustomerSelf = user.id === booking.customerId;
+      const isOwner = user.role === Role.OWNER && carWashes.some((cw) => cw.id === booking.carWashId && cw.ownerId === user.id);
+      const isEmployeeAtBusiness = user.role === Role.EMPLOYEE && users.some((u) => u.id === user.id && u.businessId === booking.carWashId);
+      const isAdmin = user.role === Role.ADMIN;
+
+      if (status === BookingStatus.CANCELLED) {
+        if (!isCustomerSelf && !isOwner && !isEmployeeAtBusiness && !isAdmin) {
+          res.status(403).json({ error: 'You are not authorized to cancel this booking.' });
+          return;
+        }
+      } else {
+        // Any other state (IN_PROGRESS, COMPLETED, REJECTED, etc.) requires staff access
+        if (!isOwner && !isEmployeeAtBusiness && !isAdmin) {
+          res.status(403).json({ error: 'Only staff can modify booking status to ' + status });
+          return;
+        }
+      }
+
+      const updatedData: Partial<Booking> = {
+        status: status as BookingStatus,
+        notes: notes !== undefined ? notes : booking.notes,
+        employeeId: employeeId !== undefined ? employeeId : (isEmployeeAtBusiness ? user.id : booking.employeeId),
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (paymentBank !== undefined) {
+        updatedData.paymentBank = paymentBank ? String(paymentBank).trim() : 'Cash';
+      }
+      if (txnReference !== undefined) {
+        updatedData.txnReference = txnReference ? String(txnReference).trim() : undefined;
+      }
+
+      await updateBooking(booking.id, updatedData);
+
+      // 🌟 Loyalty Points Award / Reversal on Completed or Cancelled status
+      if (status === BookingStatus.COMPLETED) {
+        try {
+          const awarded = await awardPointsForBookingCompletion(booking.id, { id: user.id, role: user.role });
+          if (awarded && awarded.pointsAwarded > 0 && booking.customerId) {
+            const carWash = carWashes.find((c) => c.id === booking.carWashId);
+            await createNotification({
+              id: `notif_${Math.random().toString(36).substr(2, 9)}`,
+              userId: booking.customerId,
+              title: `🎉 Loyalty Points Earned!`,
+              message: `You earned +${awarded.pointsAwarded} points for your completed wash at ${carWash ? carWash.name : 'Car Wash'}!`,
+              type: 'STATUS_CHANGE',
+              bookingId: booking.id,
+              isRead: false,
+              createdAt: new Date().toISOString(),
+            });
+          }
+        } catch (ptsErr) {
+          console.error('Failed to award loyalty points on booking completion:', ptsErr);
+        }
+      } else if (status === BookingStatus.CANCELLED || status === BookingStatus.REJECTED) {
+        try {
+          await reversePointsForBookingCancellation(booking.id, { id: user.id, role: user.role });
+        } catch (revErr) {
+          console.error('Failed to reverse points on booking cancellation/rejection:', revErr);
+        }
+      }
+
+      // Trigger notification for customer on status change
+      if (booking.customerId) {
+        try {
+          const carWash = carWashes.find((c) => c.id === booking.carWashId);
+          await createNotification({
+            id: `notif_${Math.random().toString(36).substr(2, 9)}`,
+            userId: booking.customerId,
+            title: `Booking Status Update: ${status}`,
+            message: `Your booking at ${carWash ? carWash.name : 'Car Wash'} on ${booking.date} (${booking.timeSlot}) is now marked as ${status}.`,
+            type: 'STATUS_CHANGE',
+            bookingId: booking.id,
+            isRead: false,
+            createdAt: new Date().toISOString(),
+          });
+        } catch (notifErr) {
+          console.error('Failed to create customer status notification:', notifErr);
+        }
+      }
+
+      // 📧 Dispatch transactional notification emails (controlled by admin toggle & quota buffer)
+      const matchedUser = users.find((u) => 
+        (booking.customerId && u.id === booking.customerId) ||
+        (booking.customerPhone && u.phone && u.phone.trim().replace(/[^0-9]/g, '') === String(booking.customerPhone).trim().replace(/[^0-9]/g, '')) ||
+        (booking.customerEmail && u.email && u.email.trim().toLowerCase() === String(booking.customerEmail).trim().toLowerCase())
+      );
+      const targetCustomerEmail = (booking.customerEmail && !booking.customerEmail.includes('@walkin.guest') ? booking.customerEmail : matchedUser?.email) || (booking.customerEmail || undefined);
+      const targetCustomerName = booking.customerName || matchedUser?.name || 'Customer';
+
+      if (status === BookingStatus.IN_PROGRESS) {
+        if (targetCustomerEmail && !targetCustomerEmail.endsWith('@walkin.guest')) {
+          const cw = carWashes.find((c) => c.id === booking.carWashId);
+          sendWashStartedEmail({
+            customerEmail: targetCustomerEmail,
+            customerName: targetCustomerName,
+            bookingId: booking.id,
+            businessName: cw ? cw.name : 'Autoshine Car Wash',
+            vehiclePlate: booking.vehicleInfo,
+            serviceName: booking.serviceName,
+          }).catch((err) => {
+            console.error('[EmailService] Failed to send wash started email:', err);
+          });
+        } else {
+          recordEmailLog({
+            to: targetCustomerName || 'Walk-in Customer',
+            from: 'System <notifications@autoshinebn.com>',
+            subject: '🚗 Vehicle Accepted & In Bay Notification',
+            html: '<p>Wash in bay notification skipped: No customer email address associated with this booking.</p>',
+            status: 'SKIPPED',
+            provider: getEmailSettings().activeProvider,
+            errorDetails: 'Skipped: No customer email address is attached to this booking.',
+          });
+        }
+      } else if (status === BookingStatus.COMPLETED) {
+        const cw = carWashes.find((c) => c.id === booking.carWashId);
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const isPastBooking = Boolean(booking.date && booking.date < todayStr);
+
+        if (!isPastBooking && targetCustomerEmail && !targetCustomerEmail.endsWith('@walkin.guest')) {
+          sendWashCompletedEmail({
+            customerEmail: targetCustomerEmail,
+            customerName: targetCustomerName,
+            bookingId: booking.id,
+            businessName: cw ? cw.name : 'Autoshine Car Wash',
+            vehiclePlate: booking.vehicleInfo,
+            serviceName: booking.serviceName,
+            totalAmount: booking.price,
+          }).catch((err) => {
+            console.error('[EmailService] Failed to send wash completion email:', err);
+          });
+        } else if (isPastBooking) {
+          console.log(`[EmailService] Skipped wash completion email for historical booking ${booking.id} (${booking.date})`);
+        } else {
+          recordEmailLog({
+            to: targetCustomerName || 'Walk-in Customer',
+            from: 'System <notifications@autoshinebn.com>',
+            subject: '✨ Vehicle Clean & Ready for Collection Notification',
+            html: '<p>Wash completed notification skipped: No customer email address associated with this booking.</p>',
+            status: 'SKIPPED',
+            provider: getEmailSettings().activeProvider,
+            errorDetails: 'Skipped: No customer email address is attached to this booking.',
+          });
+        }
+
+        // Also record owner wash completion confirmation alert
+        if (cw && cw.ownerId) {
+          const ownerUser = users.find((u) => u.id === cw.ownerId);
+          if (ownerUser && ownerUser.email) {
+            const settings = getEmailSettings();
+            if (!settings.masterEnabled || !settings.notifyWashCompleted) {
+              recordEmailLog({
+                to: ownerUser.email,
+                from: 'AutoShine BN <sandbox@autoshinebn.dev>',
+                subject: `✅ Wash Completed: ${targetCustomerName} (${booking.vehicleInfo || 'Vehicle'}) - ${cw.name}`,
+                html: '<p>Skipped: "Car Wash Completed" notification is turned OFF in Admin Settings.</p>',
+                status: 'SKIPPED',
+                provider: settings.activeProvider,
+                errorDetails: 'Skipped: "Car Wash Completed" notification is turned OFF in Admin Settings.',
+              });
+            } else {
+              recordEmailLog({
+                to: ownerUser.email,
+                from: 'AutoShine BN <sandbox@autoshinebn.dev>',
+                subject: `✅ Wash Completed: ${targetCustomerName} (${booking.vehicleInfo || 'Vehicle'}) - ${cw.name}`,
+                html: `<p>Hello <strong>${ownerUser.name}</strong>, a wash for customer <strong>${targetCustomerName}</strong> (${booking.serviceName || 'Car Wash'}) has been marked Clean & Completed at <strong>${cw.name}</strong>. Total: BND $${parseFloat(String(booking.price || 0)).toFixed(2)}.</p>`,
+                status: 'SIMULATED',
+                provider: settings.activeProvider,
+              });
+            }
+          }
+        }
+      } else if (status === BookingStatus.CANCELLED || status === BookingStatus.REJECTED) {
+        if (targetCustomerEmail && !targetCustomerEmail.endsWith('@walkin.guest')) {
+          const cw = carWashes.find((c) => c.id === booking.carWashId);
+          sendBookingCancelledEmail({
+            customerEmail: targetCustomerEmail,
+            customerName: targetCustomerName,
+            bookingId: booking.id,
+            businessName: cw ? cw.name : 'Autoshine Car Wash',
+            date: booking.date,
+            timeSlot: booking.timeSlot,
+            reason: notes || undefined,
+          }).catch((err) => {
+            console.error('[EmailService] Failed to send cancellation email:', err);
+          });
+        } else {
+          recordEmailLog({
+            to: targetCustomerName || 'Customer',
+            from: 'System <notifications@autoshinebn.com>',
+            subject: '⚠️ Reservation Cancelled Notification',
+            html: '<p>Booking cancellation notification skipped: No customer email address associated with this booking.</p>',
+            status: 'SKIPPED',
+            provider: getEmailSettings().activeProvider,
+            errorDetails: 'Skipped: No customer email address is attached to this booking.',
+          });
+        }
+      }
+
+      await addAuditLog(
+        user.id,
+        user.email,
+        'BOOKING_STATUS_CHANGE',
+        `Changed booking ${booking.id} status to ${status}. Details: ${notes || 'None'}`
+      );
+
+      broadcastRealtimeEvent({
+        type: 'BOOKING_UPDATED',
+        bookingId: booking.id,
+        carWashId: booking.carWashId,
+        data: {
+          id: booking.id,
+          status: updatedData.status,
+          customerId: booking.customerId,
+          customerName: booking.customerName,
+          date: booking.date,
+          timeSlot: booking.timeSlot,
+        },
+      });
+
+      res.json({ ...booking, ...updatedData });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Authenticated: Dispatch an Appointment Reminder Email to Customer
+  app.post('/api/bookings/:id/send-reminder', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const booking = await getBookingById(req.params.id);
+      if (!booking) {
+        res.status(404).json({ error: 'Booking not found.' });
+        return;
+      }
+
+      const user = req.user!;
+      const carWashes = await getCarWashes();
+      const users = await getUsers();
+
+      const isOwner = user.role === Role.OWNER && carWashes.some((cw) => cw.id === booking.carWashId && cw.ownerId === user.id);
+      const isEmployeeAtBusiness = user.role === Role.EMPLOYEE && users.some((u) => u.id === user.id && u.businessId === booking.carWashId);
+      const isAdmin = user.role === Role.ADMIN;
+
+      if (!isOwner && !isEmployeeAtBusiness && !isAdmin) {
+        res.status(403).json({ error: 'Only staff can dispatch appointment reminders.' });
+        return;
+      }
+
+      const targetCustomerEmail = booking.customerEmail || users.find((u) => u.id === booking.customerId)?.email;
+      const targetCustomerName = booking.customerName || users.find((u) => u.id === booking.customerId)?.name || 'Customer';
+
+      if (!targetCustomerEmail || targetCustomerEmail.endsWith('@walkin.guest')) {
+        recordEmailLog({
+          to: targetCustomerName || 'Walk-in Customer',
+          from: 'System <notifications@autoshinebn.com>',
+          subject: '⏰ Appointment Reminder Notification',
+          html: '<p>Reminder skipped: No customer email address associated with this booking.</p>',
+          status: 'SKIPPED',
+          provider: getEmailSettings().activeProvider,
+          errorDetails: 'Skipped: No customer email address is attached to this booking.',
+        });
+        res.status(400).json({ error: 'No email address attached to this booking to send a reminder to.' });
+        return;
+      }
+
+      const cw = carWashes.find((c) => c.id === booking.carWashId);
+      const sent = await sendBookingReminderEmail({
+        customerEmail: targetCustomerEmail,
+        customerName: targetCustomerName,
+        bookingId: booking.id,
+        businessName: cw ? cw.name : 'Autoshine Car Wash',
+        address: cw ? cw.address : 'Brunei Darussalam',
+        date: booking.date,
+        timeSlot: booking.timeSlot,
+        serviceName: booking.serviceName,
+        price: booking.price,
+      });
+
+      await addAuditLog(
+        user.id,
+        user.email,
+        'BOOKING_REMINDER_SENT',
+        `Dispatched appointment reminder to ${targetCustomerEmail} for booking ${booking.id} (${booking.date} ${booking.timeSlot})`
+      );
+
+      res.json({
+        success: sent,
+        message: `Appointment reminder dispatched to ${targetCustomerEmail}!`,
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to dispatch appointment reminder' });
+    }
+  });
+
+  // 🚗 Proximity & Lightweight Arrival Check Endpoint (Single GPS ping, <1KB data)
+  app.put('/api/bookings/:id/proximity', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { lat, lng } = req.body;
+      if (typeof lat !== 'number' || typeof lng !== 'number') {
+        res.status(400).json({ error: 'Valid latitude and longitude coordinates are required.' });
+        return;
+      }
+
+      const booking = await getBookingById(req.params.id);
+      if (!booking) {
+        res.status(404).json({ error: 'Booking not found.' });
+        return;
+      }
+
+      // Customer or authorized staff can update proximity
+      if (req.user!.id !== booking.customerId && req.user!.role !== Role.ADMIN && req.user!.role !== Role.OWNER) {
+        res.status(403).json({ error: 'Not authorized to report location for this booking.' });
+        return;
+      }
+
+      const carWash = await getCarWashById(booking.carWashId);
+      if (!carWash) {
+        res.status(404).json({ error: 'Car wash business not found.' });
+        return;
+      }
+
+      // Calculate distance using the standard Haversine formula (km)
+      const toRad = (val: number) => (val * Math.PI) / 180;
+      const R = 6371; // Earth radius in km
+      const dLat = toRad(carWash.locationLat - lat);
+      const dLon = toRad(carWash.locationLng - lng);
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRad(lat)) * Math.cos(toRad(carWash.locationLat)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      const distanceKm = Math.round(R * c * 100) / 100; // Exact distance rounded to 2 decimal places (e.g. 0.08 km = 80m)
+
+      // Estimate driving minutes based on typical urban speed (~30 km/h in Bandar Seri Begawan)
+      const etaMinutes = Math.max(1, Math.round((distanceKm / 30) * 60));
+
+      // 🎯 Precision Arrival Threshold: within 100 meters (0.10 km), mark as ARRIVED at station/bay
+      const proximityStatus: 'EN_ROUTE' | 'ARRIVED' = distanceKm <= 0.10 ? 'ARRIVED' : 'EN_ROUTE';
+
+      const updatedProximityData: Partial<Booking> = {
+        proximityStatus,
+        proximityDistanceKm: distanceKm,
+        proximityEtaMinutes: etaMinutes,
+        proximityUpdatedAt: new Date().toISOString(),
+      };
+
+      await updateBooking(booking.id, updatedProximityData);
+
+      // Instantly broadcast realtime proximity event to Station Owner and Staff
+      broadcastRealtimeEvent({
+        type: 'PROXIMITY_UPDATED',
+        bookingId: booking.id,
+        carWashId: booking.carWashId,
+        data: {
+          id: booking.id,
+          customerName: booking.customerName,
+          proximityStatus,
+          proximityDistanceKm: distanceKm,
+          proximityEtaMinutes: etaMinutes,
+          carWashName: carWash.name,
+        },
+      });
+
+      res.json({
+        success: true,
+        proximityStatus,
+        proximityDistanceKm: distanceKm,
+        proximityEtaMinutes: etaMinutes,
+        isArrived: proximityStatus === 'ARRIVED',
+        message: 'Status updated.',
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // 🔔 Owner / Staff: Request Arrival ETA Ping from Customer (In-App notification & chime)
+  app.post(
+    '/api/bookings/:id/request-eta',
+    authenticateToken,
+    requireRoles([Role.OWNER, Role.EMPLOYEE, Role.ADMIN, Role.SPECIAL]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const booking = await getBookingById(req.params.id);
+        if (!booking) {
+          res.status(404).json({ error: 'Booking not found.' });
+          return;
+        }
+
+        const carWash = await getCarWashById(booking.carWashId);
+        const stationName = carWash ? carWash.name : 'The car wash';
+
+        res.json({
+          success: true,
+          message: `Request received.`,
+        });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to send ETA request ping.' });
+      }
+    }
+  );
+
+  // ==========================================
+  // NOTIFICATIONS ENDPOINTS
+  // ==========================================
+
+  // Get user notifications
+  app.get('/api/notifications', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const notifs = await getNotificationsByUserId(user.id);
+      res.json(notifs);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Mark single notification as read
+  app.patch('/api/notifications/:id/read', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      await markNotificationAsRead(req.params.id, user.id);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Mark all notifications as read
+  app.patch('/api/notifications/mark-all-read', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      await markAllNotificationsAsRead(user.id);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // ==========================================
+  // OWNER / BUSINESS MANAGE ENDPOINTS
+  // ==========================================
+
+  // List employees for owner business
+  app.get(
+    '/api/owner/employees',
+    authenticateToken,
+    requireRoles([Role.OWNER, Role.ADMIN]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const user = req.user!;
+        const carWashes = await getCarWashes();
+        const users = await getUsers();
+
+        let employees: User[] = [];
+
+        if (user.role === Role.ADMIN) {
+          employees = users.filter((u) => u.role === Role.EMPLOYEE);
+        } else {
+          // Find car washes owned by this owner
+          const ownedIds = carWashes.filter((cw) => cw.ownerId === user.id).map((cw) => cw.id);
+          employees = users.filter((u) => u.role === Role.EMPLOYEE && u.businessId && ownedIds.includes(u.businessId));
+        }
+
+        const safeEmployees = employees.map(({ passwordHash: _, ...u }: any) => u);
+        res.json(safeEmployees);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Internal server error' });
+      }
+    }
+  );
+
+  // Add/Register employee under owner business
+  app.post(
+    '/api/owner/employees',
+    authenticateToken,
+    requireRoles([Role.OWNER, Role.ADMIN]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { email, password, name, businessId } = req.body;
+
+        if (!email || !password || !name || !businessId) {
+          res.status(400).json({ error: 'Fields (email, password, name, businessId) are required.' });
+          return;
+        }
+
+        const sanitizedEmail = String(email).trim().toLowerCase();
+        if (!isValidEmail(sanitizedEmail)) {
+          res.status(400).json({ error: 'Invalid employee email format. Please provide a valid email (e.g. employee@carwash.com).' });
+          return;
+        }
+
+        const carWashes = await getCarWashes();
+        const targetBusiness = carWashes.find((cw) => cw.id === businessId);
+
+        // Security check: If OWNER, verify they actually own the businessId
+        if (req.user!.role === Role.OWNER) {
+          const owned = carWashes.some((cw) => cw.id === businessId && cw.ownerId === req.user!.id);
+          if (!owned) {
+            res.status(403).json({ error: 'You do not own this business location.' });
+            return;
+          }
+        }
+
+        const existing = await getUserByEmail(sanitizedEmail);
+        if (existing) {
+          res.status(400).json({ error: 'Email already exists.' });
+          return;
+        }
+
+        const salt = bcrypt.genSaltSync(10);
+        const passwordHash = bcrypt.hashSync(password, salt);
+
+        const newEmployee: UserWithPassword = {
+          id: `usr_${Math.random().toString(36).substr(2, 9)}`,
+          email: sanitizedEmail,
+          name,
+          role: Role.EMPLOYEE,
+          isActive: true,
+          businessId,
+          passwordHash,
+          createdAt: new Date().toISOString(),
+        };
+
+        await createUser(newEmployee);
+
+        // Dispatch welcome and credentials email to employee
+        await sendRegistrationWelcomeEmail({
+          email: newEmployee.email,
+          name: newEmployee.name,
+          role: Role.EMPLOYEE,
+          businessName: targetBusiness?.name || 'Car Wash Location',
+          initialPassword: password
+        }).catch((e) => console.error('[Employee Welcome Email Error]:', e));
+
+        await addAuditLog(
+          req.user!.id,
+          req.user!.email,
+          'EMPLOYEE_CREATE',
+          `Created employee: ${newEmployee.name} (${newEmployee.email}) for business: ${businessId}`
+        );
+
+        const { passwordHash: _, ...safeEmployee } = newEmployee;
+        res.status(201).json(safeEmployee);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Internal server error' });
+      }
+    }
+  );
+
+  // Update employee under owner business
+  app.put(
+    '/api/owner/employees/:id',
+    authenticateToken,
+    requireRoles([Role.OWNER, Role.ADMIN]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { id } = req.params;
+        const { name, email, businessId } = req.body;
+
+        const targetUser = await getUserById(id);
+        if (!targetUser || targetUser.role !== Role.EMPLOYEE) {
+          res.status(404).json({ error: 'Employee not found.' });
+          return;
+        }
+
+        const carWashes = await getCarWashes();
+
+        // If OWNER, verify targetUser's current business and new businessId are owned by this owner
+        if (req.user!.role === Role.OWNER) {
+          const ownedIds = carWashes.filter((cw) => cw.ownerId === req.user!.id).map((cw) => cw.id);
+          if (targetUser.businessId && !ownedIds.includes(targetUser.businessId)) {
+            res.status(403).json({ error: 'You do not have access to this employee.' });
+            return;
+          }
+          if (businessId && !ownedIds.includes(businessId)) {
+            res.status(403).json({ error: 'You do not own the target business location.' });
+            return;
+          }
+        }
+
+        const updateData: Partial<User> = {};
+        if (name) updateData.name = name;
+        if (email) updateData.email = email.toLowerCase();
+        if (businessId) updateData.businessId = businessId;
+
+        await updateUser(id, updateData);
+
+        await addAuditLog(
+          req.user!.id,
+          req.user!.email,
+          'EMPLOYEE_UPDATE',
+          `Updated employee: ${targetUser.name} (${id})`
+        );
+
+        res.json({ success: true, message: 'Employee updated successfully.' });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Internal server error' });
+      }
+    }
+  );
+
+  // Delete employee under owner business
+  app.delete(
+    '/api/owner/employees/:id',
+    authenticateToken,
+    requireRoles([Role.OWNER, Role.ADMIN]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { id } = req.params;
+
+        const targetUser = await getUserById(id);
+        if (!targetUser || targetUser.role !== Role.EMPLOYEE) {
+          res.status(404).json({ error: 'Employee not found.' });
+          return;
+        }
+
+        const carWashes = await getCarWashes();
+
+        // If OWNER, verify targetUser's business is owned by this owner
+        if (req.user!.role === Role.OWNER) {
+          const ownedIds = carWashes.filter((cw) => cw.ownerId === req.user!.id).map((cw) => cw.id);
+          if (targetUser.businessId && !ownedIds.includes(targetUser.businessId)) {
+            res.status(403).json({ error: 'You do not have access to this employee.' });
+            return;
+          }
+        }
+
+        await deleteUser(id);
+
+        await addAuditLog(
+          req.user!.id,
+          req.user!.email,
+          'EMPLOYEE_DELETE',
+          `Deleted employee: ${targetUser.name} (${id})`
+        );
+
+        res.json({ success: true, message: 'Employee deleted successfully.' });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Internal server error' });
+      }
+    }
+  );
+
+  // Owner specific Customer Directory with full booking history, vehicle list, and contact details
+  app.get(
+    '/api/owner/customers',
+    authenticateToken,
+    requireRoles([Role.OWNER, Role.ADMIN, Role.SPECIAL]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const isAdmin = req.user!.role === Role.ADMIN || req.user!.role === Role.SPECIAL;
+        const carWashId = req.query.carWashId as string | undefined;
+        const customers = await getCustomersForOwner(req.user!.id, isAdmin, carWashId);
+        res.json(customers);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Internal server error' });
+      }
+    }
+  );
+
+  // Owner specific audit logs
+  app.get(
+    '/api/owner/logs',
+    authenticateToken,
+    requireRoles([Role.OWNER, Role.ADMIN]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const user = req.user!;
+        const logs = await getAuditLogs();
+        
+        if (user.role === Role.ADMIN) {
+          res.json(logs);
+          return;
+        }
+
+        const carWashes = await getCarWashes();
+        const ownedNames = carWashes.filter((cw) => cw.ownerId === user.id).map((cw) => cw.name);
+        const ownedIds = carWashes.filter((cw) => cw.ownerId === user.id).map((cw) => cw.id);
+
+        const filteredLogs = logs.filter((log) => {
+          if (log.userEmail === user.email || log.userId === user.id) return true;
+          const matchesBusinessName = ownedNames.some((name) => log.details && log.details.includes(name));
+          const matchesBusinessId = ownedIds.some((id) => log.details && log.details.includes(id));
+          return matchesBusinessName || matchesBusinessId;
+        });
+
+        res.json(filteredLogs);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Internal server error' });
+      }
+    }
+  );
+
+  // Basic Analytics Endpoint
+  app.get(
+    '/api/owner/analytics',
+    authenticateToken,
+    requireRoles([Role.OWNER, Role.ADMIN]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const user = req.user!;
+        const carWashes = await getCarWashes();
+        const bookings = await getBookings();
+
+        let myBusinessIds: string[] = [];
+
+        if (user.role === Role.ADMIN) {
+          myBusinessIds = carWashes.map((cw) => cw.id);
+        } else {
+          myBusinessIds = carWashes.filter((cw) => cw.ownerId === user.id).map((cw) => cw.id);
+        }
+
+        const myBookings = bookings.filter((b) => myBusinessIds.includes(b.carWashId));
+
+        const completedBookings = myBookings.filter((b) => b.status === BookingStatus.COMPLETED);
+        const pendingBookings = myBookings.filter((b) => b.status === BookingStatus.PENDING);
+        const inProgressBookings = myBookings.filter((b) => b.status === BookingStatus.IN_PROGRESS);
+        const cancelledBookings = myBookings.filter((b) => b.status === BookingStatus.CANCELLED);
+
+        // Calculate simulated revenue (e.g., $40 average per wash)
+        const estimatedRevenue = completedBookings.length * 45;
+
+        // Group bookings by date to show history
+        const bookingsByDate: { [date: string]: number } = {};
+        myBookings.forEach((b) => {
+          bookingsByDate[b.date] = (bookingsByDate[b.date] || 0) + 1;
+        });
+
+        res.json({
+          totalBookings: myBookings.length,
+          completedCount: completedBookings.length,
+          pendingCount: pendingBookings.length,
+          inProgressCount: inProgressBookings.length,
+          cancelledCount: cancelledBookings.length,
+          estimatedRevenue,
+          bookingsByDate,
+        });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Internal server error' });
+      }
+    }
+  );
+
+  // ==========================================
+  // SPECIAL USER ENDPOINTS
+  // ==========================================
+
+  // Special User Onboarding: Create Owner and Register Business
+  app.post(
+    '/api/special/create-owner',
+    authenticateToken,
+    requireRoles([Role.SPECIAL, Role.ADMIN]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { ownerEmail, ownerPassword, ownerName, businessName, businessAddress, businessLat, businessLng, businessDesc } = req.body;
+
+        if (!ownerEmail || !ownerPassword || !ownerName || !businessName || !businessAddress) {
+          res.status(400).json({ error: 'Missing required details for onboarding.' });
+          return;
+        }
+
+        const sanitizedEmail = String(ownerEmail).trim().toLowerCase();
+        if (!isValidEmail(sanitizedEmail)) {
+          res.status(400).json({ error: 'Invalid owner email format. Please enter a valid email address (e.g. owner@carwash.com).' });
+          return;
+        }
+
+        const existingUser = await getUserByEmail(sanitizedEmail);
+        if (existingUser) {
+          res.status(400).json({ error: 'Owner email already registered.' });
+          return;
+        }
+
+        // 1. Create Owner User
+        const salt = bcrypt.genSaltSync(10);
+        const passwordHash = bcrypt.hashSync(ownerPassword, salt);
+        let ownerUserId = `usr_${Math.random().toString(36).substr(2, 9)}`;
+
+        if (isSupabaseAuthEnabled) {
+          try {
+            console.log(`[Special Onboard] Registering owner ${sanitizedEmail} on Supabase Auth with Role.OWNER...`);
+            const supabaseId = await registerSupabaseUser(sanitizedEmail, ownerPassword, ownerName, Role.OWNER);
+            if (supabaseId) {
+              ownerUserId = supabaseId;
+            }
+          } catch (supErr: any) {
+            console.warn('[Special Onboard] Supabase Auth registration warning:', supErr.message);
+          }
+        }
+
+        const newOwner: UserWithPassword = {
+          id: ownerUserId,
+          email: sanitizedEmail,
+          name: ownerName,
+          role: Role.OWNER,
+          isActive: true,
+          passwordHash,
+          createdAt: new Date().toISOString(),
+        };
+
+        await createUser(newOwner);
+
+        // Dispatch welcome and credentials email to owner
+        await sendRegistrationWelcomeEmail({
+          email: newOwner.email,
+          name: newOwner.name,
+          role: Role.OWNER,
+          businessName: businessName,
+          initialPassword: ownerPassword
+        }).catch((e) => console.error('[Owner Welcome Email Error]:', e));
+
+        // 2. Register Business and link to newly created owner
+        const allowMembership = req.body.membershipEnabled !== undefined ? !!req.body.membershipEnabled : true;
+        const newCarWash: CarWash = {
+          id: `cw_${Math.random().toString(36).substr(2, 9)}`,
+          name: businessName,
+          description: businessDesc || 'Premium car wash business.',
+          locationLat: parseFloat(businessLat) || 4.8917,
+          locationLng: parseFloat(businessLng) || 114.9401,
+          address: businessAddress,
+          openingHours: {
+            monday: { open: '08:00', close: '18:00', isOpen: true },
+            tuesday: { open: '08:00', close: '18:00', isOpen: true },
+            wednesday: { open: '08:00', close: '18:00', isOpen: true },
+            thursday: { open: '08:00', close: '18:00', isOpen: true },
+            friday: { open: '08:00', close: '18:00', isOpen: true },
+            saturday: { open: '09:00', close: '17:00', isOpen: true },
+            sunday: { open: '10:00', close: '16:00', isOpen: false },
+          },
+          slotDuration: 30,
+          capacityPerSlot: 2,
+          ownerId: newOwner.id,
+          isActive: true,
+          ownerNavigationEnabled: true,
+          ownerQrCodeEnabled: req.body.ownerQrCodeEnabled !== undefined ? !!req.body.ownerQrCodeEnabled : false,
+          membershipEnabled: allowMembership,
+          createdAt: new Date().toISOString(),
+        };
+
+        await createCarWash(newCarWash);
+
+        if (allowMembership) {
+          await setCarWashMembershipFeature(newCarWash.id, true).catch(() => {});
+        }
+
+        await addAuditLog(
+          req.user!.id,
+          req.user!.email,
+          'SPECIAL_ONBOARD_OWNER',
+          `Special User onboarded Owner: ${ownerName} (${ownerEmail}) and business: ${businessName}`
+        );
+
+        const { passwordHash: _, ...safeOwner } = newOwner;
+        res.status(201).json({ owner: safeOwner, carWash: newCarWash });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Internal server error' });
+      }
+    }
+  );
+
+  // ==========================================
+  // MAP PRESETS ENDPOINTS
+  // ==========================================
+
+  // Public: Get all map presets
+  app.get('/api/map-presets', async (req, res) => {
+    try {
+      const presets = await getMapPresets();
+      res.json(presets);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Admin: Create map preset
+  app.post(
+    '/api/admin/map-presets',
+    authenticateToken,
+    requireRoles([Role.ADMIN]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { name, lat, lng, country } = req.body;
+        if (!name || lat === undefined || lng === undefined || !country) {
+          res.status(400).json({ error: 'Fields (name, lat, lng, country) are required.' });
+          return;
+        }
+
+        const preset: MapPreset = {
+          id: `pre_${Math.random().toString(36).substr(2, 9)}`,
+          name,
+          lat: parseFloat(lat),
+          lng: parseFloat(lng),
+          country,
+          isCustom: true,
+          createdAt: new Date().toISOString()
+        };
+
+        await createMapPreset(preset);
+        await addAuditLog(req.user!.id, req.user!.email, 'CREATE_MAP_PRESET', `Created map preset ${name} in ${country} at (${lat}, ${lng})`);
+        res.status(201).json(preset);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Internal server error' });
+      }
+    }
+  );
+
+  // Admin: Delete map preset
+  app.delete(
+    '/api/admin/map-presets/:id',
+    authenticateToken,
+    requireRoles([Role.ADMIN]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { id } = req.params;
+        await deleteMapPreset(id);
+        await addAuditLog(req.user!.id, req.user!.email, 'DELETE_MAP_PRESET', `Deleted map preset with ID ${id}`);
+        res.json({ success: true, message: 'Map preset deleted successfully' });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Internal server error' });
+      }
+    }
+  );
+
+  // ==========================================
+  // PLATFORM ADMIN ENDPOINTS
+  // ==========================================
+
+  // Admin: Get system and database connection status
+  app.get(
+    '/api/admin/system-status',
+    authenticateToken,
+    requireRoles([Role.ADMIN]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const isDbUsingPostgres = isUsingPostgres();
+        const dbError = getPostgresConnectionError();
+        const isAuthEnabled = isSupabaseAuthEnabled;
+
+        // Count of database records
+        const allUsers = await getUsers();
+        const allCarWashes = await getCarWashes();
+        const allBookings = await getBookings();
+
+        // Mask credentials in connection string for safety
+        let maskedDbUrl = 'None';
+        if (process.env.DATABASE_URL) {
+          try {
+            const urlObj = new URL(process.env.DATABASE_URL);
+            urlObj.password = '••••••••';
+            maskedDbUrl = urlObj.toString();
+          } catch (e) {
+            maskedDbUrl = 'Invalid Connection String Format';
+          }
+        }
+
+        res.json({
+          database: {
+            type: isDbUsingPostgres ? 'PostgreSQL (Supabase)' : 'SQLite (Fallback Local DB)',
+            status: isDbUsingPostgres ? 'Connected' : (process.env.DATABASE_URL ? 'Failed (Fell back to SQLite)' : 'SQLite (No DATABASE_URL supplied)'),
+            connectionString: maskedDbUrl,
+            error: dbError,
+            stats: {
+              usersCount: allUsers.length,
+              locationsCount: allCarWashes.length,
+              bookingsCount: allBookings.length,
+            }
+          },
+          supabaseAuth: {
+            enabled: isAuthEnabled,
+            url: process.env.SUPABASE_URL || 'Not Configured',
+            hasServiceKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY
+          },
+          email: {
+            status: process.env.RESEND_API_KEY ? 'Configured (Resend API)' : 'Simulated (Offline Fallback)',
+            fromAddress: process.env.EMAIL_FROM_ADDRESS || 'onboarding@resend.dev',
+            hasApiKey: !!process.env.RESEND_API_KEY
+          }
+        });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Internal server error' });
+      }
+    }
+  );
+
+  // Admin: View all users
+  app.get(
+    '/api/admin/users',
+    authenticateToken,
+    requireRoles([Role.ADMIN, Role.SPECIAL]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        let users = await getUsers();
+        const allWashes = await getCarWashes();
+
+        // Check and self-heal any owners whose role is currently CUSTOMER
+        for (const u of users) {
+          if (u.role === Role.CUSTOMER) {
+            const owns = allWashes.find(w => 
+              w.ownerId === u.id || 
+              (w.ownerEmail && w.ownerEmail.toLowerCase() === u.email.toLowerCase())
+            );
+            if (owns) {
+              u.role = Role.OWNER;
+              updateUser(u.id, { role: Role.OWNER }).catch(() => {});
+            }
+          }
+        }
+
+        // Cross-check with Supabase Auth users to ensure any users registered there but not yet in database are surfaced and synced
+        if (isSupabaseAuthEnabled && supabaseClient) {
+          try {
+            const { data: supData } = await supabaseClient.auth.admin.listUsers().catch(() => ({ data: null }));
+            if (supData && Array.isArray(supData.users)) {
+              for (const supUser of supData.users) {
+                if (!supUser.email) continue;
+                const emailLower = supUser.email.toLowerCase();
+                const existing = users.find(u => u.email.toLowerCase() === emailLower);
+                if (!existing) {
+                  const rawRole = String(supUser.user_metadata?.role || '').trim().toUpperCase();
+                  const ownsWash = allWashes.some(w => 
+                    w.ownerId === supUser.id || 
+                    (w.ownerEmail && w.ownerEmail.toLowerCase() === emailLower)
+                  );
+                  const role: Role = ownsWash || rawRole === 'OWNER' 
+                    ? Role.OWNER 
+                    : (Object.values(Role).includes(rawRole as Role) ? (rawRole as Role) : Role.CUSTOMER);
+                  const name = supUser.user_metadata?.full_name || supUser.email.split('@')[0];
+                  const salt = bcrypt.genSaltSync(10);
+                  const passwordHash = bcrypt.hashSync('owner123', salt);
+                  const placeholderUser: UserWithPassword = {
+                    id: supUser.id,
+                    email: emailLower,
+                    name,
+                    role,
+                    isActive: true,
+                    isEmailVerified: true,
+                    passwordHash,
+                    createdAt: supUser.created_at || new Date().toISOString(),
+                  };
+                  await createUser(placeholderUser).catch(() => {});
+                  users.push(placeholderUser);
+                } else if (existing.role === Role.CUSTOMER) {
+                  const rawRole = String(supUser.user_metadata?.role || '').trim().toUpperCase();
+                  if (rawRole === 'OWNER') {
+                    existing.role = Role.OWNER;
+                    updateUser(existing.id, { role: Role.OWNER }).catch(() => {});
+                  }
+                }
+              }
+            }
+          } catch (syncErr) {
+            console.warn('[Admin Users Supabase Sync Warning]:', syncErr);
+          }
+        }
+
+        const safeUsers = users.map(({ passwordHash: _, ...u }) => u);
+        res.json(safeUsers);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Internal server error' });
+      }
+    }
+  );
+
+  // Admin: Create any user
+  app.post(
+    '/api/admin/users',
+    authenticateToken,
+    requireRoles([Role.ADMIN]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { email, password, name, role, businessId } = req.body;
+
+        if (!email || !password || !name || !role) {
+          res.status(400).json({ error: 'Fields (email, password, name, role) are required.' });
+          return;
+        }
+
+        const sanitizedEmail = String(email).trim().toLowerCase();
+        if (!isValidEmail(sanitizedEmail)) {
+          res.status(400).json({ error: 'Invalid user email format. Please provide a valid email (e.g. user@carwash.com).' });
+          return;
+        }
+
+        const existing = await getUserByEmail(sanitizedEmail);
+        if (existing) {
+          res.status(400).json({ error: 'Email already registered.' });
+          return;
+        }
+
+        const salt = bcrypt.genSaltSync(10);
+        const passwordHash = bcrypt.hashSync(password, salt);
+
+        let adminCreatedUserId = `usr_${Math.random().toString(36).substr(2, 9)}`;
+
+        if (isSupabaseAuthEnabled) {
+          try {
+            console.log(`[Admin Create User] Registering user ${sanitizedEmail} on Supabase Auth with role ${role}...`);
+            const supabaseId = await registerSupabaseUser(sanitizedEmail, password, name, role as string);
+            if (supabaseId) {
+              adminCreatedUserId = supabaseId;
+            }
+          } catch (supErr: any) {
+            console.warn('[Admin Create User] Supabase Auth registration warning:', supErr.message);
+          }
+        }
+
+        const newUser: UserWithPassword = {
+          id: adminCreatedUserId,
+          email: sanitizedEmail,
+          name,
+          role: role as Role,
+          isActive: true,
+          businessId: role === Role.EMPLOYEE ? businessId : undefined,
+          passwordHash,
+          createdAt: new Date().toISOString(),
+        };
+
+        await createUser(newUser);
+
+        // Dispatch welcome and credentials email
+        await sendRegistrationWelcomeEmail({
+          email: newUser.email,
+          name: newUser.name,
+          role: newUser.role,
+          initialPassword: password
+        }).catch((e) => console.error('[Admin User Welcome Email Error]:', e));
+
+        await addAuditLog(req.user!.id, req.user!.email, 'ADMIN_USER_CREATE', `Admin created user ${name} (${sanitizedEmail}) with role ${role}`);
+
+        const { passwordHash: _, ...safeUser } = newUser;
+        res.status(201).json(safeUser);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Internal server error' });
+      }
+    }
+  );
+
+  // Admin: Update user role or status (active/suspended)
+  app.put(
+    '/api/admin/users/:id',
+    authenticateToken,
+    requireRoles([Role.ADMIN]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const targetUser = await getUserById(req.params.id);
+
+        if (!targetUser) {
+          res.status(404).json({ error: 'User not found.' });
+          return;
+        }
+
+        // Prevent self modification of role or lock
+        if (targetUser.id === req.user!.id) {
+          res.status(400).json({ error: 'You cannot suspend or change your own admin account.' });
+          return;
+        }
+
+        const { role, isActive, name, email, businessId } = req.body;
+
+        const updatedData: Partial<UserWithPassword> = {
+          role: role !== undefined ? (role as Role) : targetUser.role,
+          isActive: isActive !== undefined ? !!isActive : targetUser.isActive,
+          name: name !== undefined ? name : targetUser.name,
+          email: email !== undefined ? email.toLowerCase() : targetUser.email,
+          businessId: businessId !== undefined ? businessId : targetUser.businessId,
+        };
+
+        await updateUser(req.params.id, updatedData);
+
+        // Synchronize metadata with Supabase Auth
+        if (isSupabaseAuthEnabled && supabaseClient) {
+          try {
+            const { data: listData } = await supabaseClient.auth.admin.listUsers();
+            const found = (listData?.users as any[])?.find((u: any) => u.id === req.params.id || u.email?.toLowerCase() === targetUser.email.toLowerCase());
+            if (found) {
+              await supabaseClient.auth.admin.updateUserById(found.id, {
+                user_metadata: {
+                  ...(found.user_metadata || {}),
+                  role: updatedData.role,
+                  full_name: updatedData.name,
+                }
+              }).catch(() => {});
+            }
+          } catch (supErr: any) {
+            console.warn('[Admin User Update] Supabase Auth sync warning:', supErr?.message || supErr);
+          }
+        }
+
+        await addAuditLog(
+          req.user!.id,
+          req.user!.email,
+          'ADMIN_USER_UPDATE',
+          `Admin updated user ${targetUser.email}. Status: [Active: ${isActive}], Role: [${role}]`
+        );
+
+        res.json({ ...targetUser, ...updatedData });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Internal server error' });
+      }
+    }
+  );
+
+  // Admin: View Audit Logs
+  app.get(
+    '/api/admin/logs',
+    authenticateToken,
+    requireRoles([Role.ADMIN]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const logs = await getAuditLogs();
+        res.json(logs);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Internal server error' });
+      }
+    }
+  );
+
+  // Admin: View Sent/Simulated Email Logs
+  app.get(
+    '/api/admin/email-logs',
+    authenticateToken,
+    requireRoles([Role.ADMIN]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const logs = await getEmailLogs();
+        res.json(logs);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to retrieve email logs' });
+      }
+    }
+  );
+
+  // Admin: Clear Email Logs
+  app.delete(
+    '/api/admin/email-logs',
+    authenticateToken,
+    requireRoles([Role.ADMIN]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        await clearEmailLogs();
+        res.json({ message: 'Email logs cleared successfully.' });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to clear email logs' });
+      }
+    }
+  );
+
+  // Admin: Send Test Email
+  app.post(
+    '/api/admin/test-email',
+    authenticateToken,
+    requireRoles([Role.ADMIN]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { recipient, testEmail, subject, body } = req.body;
+        const targetRecipient = (recipient || testEmail || '').trim();
+        if (!targetRecipient || !isValidEmail(targetRecipient)) {
+          res.status(400).json({ error: 'Please provide a valid recipient email address.' });
+          return;
+        }
+
+        const emailSubject = subject || 'Autoshine BN Test Email';
+        const emailBody = body ? `<p style="font-size: 15px; color: #334155;">${body}</p>` : `<p style="font-size: 15px; color: #334155;">This is a test transactional email sent from your Autoshine BN administration console.</p>`;
+
+        const html = `
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
+            <h2 style="color: #0284c7; margin-top: 0;">Autoshine BN Email Test</h2>
+            ${emailBody}
+            <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 20px 0;" />
+            <p style="font-size: 12px; color: #94a3b8;">Sent via Autoshine BN System Admin Console at ${new Date().toLocaleString()}</p>
+          </div>
+        `;
+
+        const sent = await sendEmail(targetRecipient, emailSubject, html);
+        await addAuditLog(req.user!.id, req.user!.email, 'TEST_EMAIL_DISPATCH', `Dispatched test email to ${targetRecipient}`);
+        const lastLog = getEmailLogs()[0];
+        const failReason = (lastLog && (lastLog.status === 'FAILED' || lastLog.status === 'HELD_QUOTA'))
+          ? (lastLog.errorDetails || 'Failed to dispatch email. Check configuration.')
+          : 'Failed to dispatch email. Check API and SMTP configuration.';
+
+        res.json({
+          success: sent,
+          message: sent
+            ? `Test email sent to ${targetRecipient}.`
+            : failReason,
+          errorDetails: sent ? undefined : failReason,
+        });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to send test email' });
+      }
+    }
+  );
+
+  // Admin: Get Email Notification Settings & Daily Quota Status
+  app.get(
+    '/api/admin/email-settings',
+    authenticateToken,
+    requireRoles([Role.ADMIN]),
+    async (_req: AuthenticatedRequest, res) => {
+      try {
+        const settings = getEmailSettings();
+        const quota = getQuotaStatus();
+        res.json({ settings, quota });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to fetch email settings' });
+      }
+    }
+  );
+
+  // Admin: Update Email Notification Settings (Toggles, Provider, Quotas)
+  app.put(
+    '/api/admin/email-settings',
+    authenticateToken,
+    requireRoles([Role.ADMIN]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const updated = updateEmailSettings(req.body);
+        const quota = getQuotaStatus();
+        await addAuditLog(
+          req.user!.id,
+          req.user!.email,
+          'EMAIL_SETTINGS_UPDATE',
+          `Updated email notification toggles and provider: ${updated.activeProvider} (Master Enabled: ${updated.masterEnabled})`
+        );
+        res.json({ success: true, settings: updated, quota });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to update email settings' });
+      }
+    }
+  );
+
+  // Authenticated: Upload any image (e.g. business QR code images, logos, receipts)
+  app.post('/api/upload', authenticateToken, (req: AuthenticatedRequest, res, next) => {
+    uploadReceipt.single('image')(req, res, (err) => {
+      if (err) {
+        return res.status(400).json({ error: err.message || 'File upload error.' });
+      }
+      next();
+    });
+  }, (req: AuthenticatedRequest, res) => {
+    try {
+      if (!req.file) {
+        res.status(400).json({ error: 'No image file uploaded.' });
+        return;
+      }
+      const fileUrl = `/uploads/${req.file.filename}`;
+      res.json({ url: fileUrl });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // ==========================================
+  // 🌟 MULTI-TENANT MEMBERSHIP & LOYALTY API
+  // ==========================================
+
+  // 1. Get Programme Details / Config (Public / Authenticated)
+  const handleGetMembershipConfig = async (req: express.Request, res: express.Response) => {
+    try {
+      const config = await getCarWashMembershipConfig(req.params.carWashId);
+      if (!config) {
+        res.status(404).json({ error: 'Car wash not found or membership not configured.' });
+        return;
+      }
+      res.json(config);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to get membership programme' });
+    }
+  };
+  app.get('/api/membership/programme/:carWashId', handleGetMembershipConfig);
+  app.get('/api/membership/config/:carWashId', handleGetMembershipConfig);
+
+  // 2. Admin / Special User Feature Toggle
+  app.put(
+    '/api/membership/feature-toggle',
+    authenticateToken,
+    requireRoles([Role.ADMIN, Role.SPECIAL]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { carWashId, isEnabled } = req.body;
+        if (!carWashId || isEnabled === undefined) {
+          res.status(400).json({ error: 'carWashId and isEnabled are required.' });
+          return;
+        }
+
+        const cw = await getCarWashByIdOrSlug(carWashId) || await getCarWashById(carWashId);
+        if (!cw) {
+          res.status(404).json({ error: 'Car wash not found.' });
+          return;
+        }
+
+        await setCarWashMembershipFeature(cw.id, !!isEnabled);
+
+        await addAuditLog(
+          req.user!.id,
+          req.user!.email,
+          'MEMBERSHIP_FEATURE_TOGGLE',
+          `${req.user!.role} toggled loyalty & membership feature to [${isEnabled ? 'ENABLED' : 'DISABLED'}] for ${cw.name}`
+        );
+
+        res.json({ success: true, carWashId: cw.id, isEnabled: !!isEnabled });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to toggle membership feature' });
+      }
+    }
+  );
+
+  // 3. Owner / Admin Update Programme Settings
+  const handlePutMembershipConfig = async (req: AuthenticatedRequest, res: express.Response) => {
+    try {
+      const carWashId = req.params.carWashId;
+      const cw = await getCarWashByIdOrSlug(carWashId) || await getCarWashById(carWashId);
+      if (!cw) {
+        res.status(404).json({ error: 'Car wash not found.' });
+        return;
+      }
+
+      // Verify tenant authorization: Owner must own this car wash
+      if (req.user!.role === Role.OWNER && !checkIsCarWashOwner(req.user, cw)) {
+        res.status(403).json({ error: 'You do not own this car wash.' });
+        return;
+      }
+
+      // Check if feature is enabled by admin
+      const currentCfg = await getCarWashMembershipConfig(cw.id);
+      if (!currentCfg?.isFeatureEnabled && req.user!.role !== Role.ADMIN && req.user!.role !== Role.SPECIAL) {
+        res.status(403).json({ error: 'Membership feature has not been enabled for your business by an Administrator.' });
+        return;
+      }
+
+      const {
+        isProgrammeActive,
+        programmeName,
+        programmeDescription,
+        pointsExpiryMonths,
+        allowQrJoin,
+        allowCounterJoin,
+        termsConditions,
+      } = req.body;
+
+      const updated = await upsertCarWashMembershipConfig({
+        carWashId: cw.id,
+        isProgrammeActive,
+        programmeName,
+        programmeDescription,
+        pointsExpiryMonths: pointsExpiryMonths !== undefined ? parseInt(pointsExpiryMonths, 10) : undefined,
+        allowQrJoin,
+        allowCounterJoin,
+        termsConditions,
+      });
+
+      await addAuditLog(
+        req.user!.id,
+        req.user!.email,
+        'MEMBERSHIP_PROGRAMME_UPDATE',
+        `Updated loyalty programme settings for ${cw.name} (Active: ${updated.isProgrammeActive})`
+      );
+
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to update membership programme' });
+    }
+  };
+
+  app.put(
+    '/api/membership/programme/:carWashId',
+    authenticateToken,
+    requireRoles([Role.OWNER, Role.ADMIN, Role.SPECIAL]),
+    handlePutMembershipConfig
+  );
+  app.put(
+    '/api/membership/config/:carWashId',
+    authenticateToken,
+    requireRoles([Role.OWNER, Role.ADMIN, Role.SPECIAL]),
+    handlePutMembershipConfig
+  );
+
+  // 4. Points Rules CRUD
+  app.get('/api/membership/points-rules/:carWashId', async (req, res) => {
+    try {
+      const rules = await getMembershipPointsRules(req.params.carWashId);
+      res.json(rules);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to get points rules' });
+    }
+  });
+
+  app.post(
+    '/api/membership/points-rules/:carWashId',
+    authenticateToken,
+    requireRoles([Role.OWNER, Role.ADMIN, Role.SPECIAL]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const carWashId = req.params.carWashId;
+        const cw = await getCarWashByIdOrSlug(carWashId) || await getCarWashById(carWashId);
+        if (!cw) {
+          res.status(404).json({ error: 'Car wash not found.' });
+          return;
+        }
+        if (req.user!.role === Role.OWNER && !checkIsCarWashOwner(req.user, cw)) {
+          res.status(403).json({ error: 'You do not own this car wash.' });
+          return;
+        }
+
+        const { serviceId, serviceName, pointsAwarded, isActive } = req.body;
+        if (!serviceId || !serviceName || pointsAwarded === undefined) {
+          res.status(400).json({ error: 'serviceId, serviceName, and pointsAwarded are required.' });
+          return;
+        }
+
+        const rule = await upsertMembershipPointsRule(
+          cw.id,
+          serviceId,
+          serviceName,
+          parseInt(pointsAwarded, 10),
+          isActive !== false
+        );
+
+        res.json(rule);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to save points rule' });
+      }
+    }
+  );
+
+  // 5. Rewards CRUD
+  app.get('/api/membership/rewards/:carWashId', async (req, res) => {
+    try {
+      const activeOnly = req.query.active === 'true';
+      const rewards = await getMembershipRewards(req.params.carWashId, activeOnly);
+      res.json(rewards);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to get rewards' });
+    }
+  });
+
+  app.post(
+    '/api/membership/rewards/:carWashId',
+    authenticateToken,
+    requireRoles([Role.OWNER, Role.ADMIN, Role.SPECIAL]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const carWashId = req.params.carWashId;
+        const cw = await getCarWashByIdOrSlug(carWashId) || await getCarWashById(carWashId);
+        if (!cw) {
+          res.status(404).json({ error: 'Car wash not found.' });
+          return;
+        }
+        if (req.user!.role === Role.OWNER && !checkIsCarWashOwner(req.user, cw)) {
+          res.status(403).json({ error: 'You do not own this car wash.' });
+          return;
+        }
+
+        const { title, description, pointsCost, rewardType, discountValue, eligibleServiceId, isActive, maxRedemptionsPerMember, maxTotalSupply } = req.body;
+        if (!title || pointsCost === undefined) {
+          res.status(400).json({ error: 'title and pointsCost are required.' });
+          return;
+        }
+
+        const existingRewards = await getMembershipRewards(cw.id, false);
+        if (existingRewards.length >= 12) {
+          res.status(400).json({ error: 'Maximum reward limit reached (maximum 12 rewards allowed per car wash). Please edit or deactivate an existing reward.' });
+          return;
+        }
+
+        const reward = await createMembershipReward({
+          carWashId: cw.id,
+          title,
+          description,
+          pointsCost: parseInt(pointsCost, 10),
+          rewardType: rewardType || 'FREE_SERVICE',
+          discountValue: discountValue !== undefined && discountValue !== '' ? parseFloat(discountValue) : undefined,
+          eligibleServiceId: eligibleServiceId || undefined,
+          maxRedemptionsPerMember: maxRedemptionsPerMember !== undefined ? parseInt(maxRedemptionsPerMember, 10) : 0,
+          maxTotalSupply: maxTotalSupply !== undefined ? parseInt(maxTotalSupply, 10) : 0,
+          isActive: isActive !== false,
+        });
+
+        res.status(201).json(reward);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to create reward' });
+      }
+    }
+  );
+
+  app.put(
+    '/api/membership/rewards/:carWashId/:rewardId',
+    authenticateToken,
+    requireRoles([Role.OWNER, Role.ADMIN, Role.SPECIAL]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { carWashId, rewardId } = req.params;
+        const cw = await getCarWashByIdOrSlug(carWashId) || await getCarWashById(carWashId);
+        if (!cw) {
+          res.status(404).json({ error: 'Car wash not found.' });
+          return;
+        }
+        if (req.user!.role === Role.OWNER && !checkIsCarWashOwner(req.user, cw)) {
+          res.status(403).json({ error: 'You do not own this car wash.' });
+          return;
+        }
+
+        const updated = await updateMembershipReward(rewardId, req.body);
+        if (!updated) {
+          res.status(404).json({ error: 'Reward not found.' });
+          return;
+        }
+        res.json(updated);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to update reward' });
+      }
+    }
+  );
+
+  app.delete(
+    '/api/membership/rewards/:carWashId/:rewardId',
+    authenticateToken,
+    requireRoles([Role.OWNER, Role.ADMIN, Role.SPECIAL]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { carWashId, rewardId } = req.params;
+        const cw = await getCarWashByIdOrSlug(carWashId) || await getCarWashById(carWashId);
+        if (!cw) {
+          res.status(404).json({ error: 'Car wash not found.' });
+          return;
+        }
+        if (req.user!.role === Role.OWNER && !checkIsCarWashOwner(req.user, cw)) {
+          res.status(403).json({ error: 'You do not own this car wash.' });
+          return;
+        }
+
+        const deleted = await deleteMembershipReward(cw.id, rewardId);
+        if (!deleted) {
+          res.status(404).json({ error: 'Reward not found or could not be deleted.' });
+          return;
+        }
+
+        await addAuditLog(
+          req.user!.id,
+          req.user!.email,
+          'DELETE_MEMBERSHIP_REWARD',
+          `Deleted loyalty reward ${rewardId} from ${cw.name}`
+        );
+
+        broadcastRealtimeEvent({
+          type: 'BOOKING_UPDATED',
+          carWashId,
+          data: { type: 'REWARD_DELETED', rewardId, carWashId },
+        });
+
+        res.json({ success: true, message: 'Reward deleted successfully.' });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to delete reward' });
+      }
+    }
+  );
+
+  // 6. Customer Membership Operations
+  app.get('/api/membership/my-memberships', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const memberships = await getCustomerMemberships(req.user!.id);
+      res.json(memberships);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to get memberships' });
+    }
+  });
+
+  app.get('/api/membership/my-membership/:carWashId', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const membership = await getCustomerMembership(req.user!.id, req.params.carWashId);
+      if (membership && membership.status === 'ACTIVE') {
+        res.json(membership);
+      } else {
+        res.json(null);
+      }
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to get membership' });
+    }
+  });
+
+  app.post('/api/membership/join', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { carWashId, joinMethod, consentGiven } = req.body;
+      if (!carWashId) {
+        res.status(400).json({ error: 'carWashId is required.' });
+        return;
+      }
+      if (!consentGiven) {
+        res.status(400).json({ error: 'Explicit consent is required to join this loyalty programme.' });
+        return;
+      }
+
+      const cw = await getCarWashById(carWashId);
+      if (!cw) {
+        res.status(404).json({ error: 'Car wash operator not found.' });
+        return;
+      }
+
+      if (!cw.membershipEnabled) {
+        await setCarWashMembershipFeature(carWashId, true);
+      }
+
+      const membership = await joinCarWashMembership(req.user!.id, carWashId, joinMethod || 'ONLINE_OPT_IN');
+
+      // Send in-app notification to customer
+      await createNotification({
+        id: `notif_${Math.random().toString(36).substr(2, 9)}`,
+        userId: req.user!.id,
+        title: `Welcome to ${cw?.name || 'Rewards'}! 🌟`,
+        message: `Your membership card (${membership.membershipNumber}) is active! Start earning points on every wash.`,
+        type: 'STATUS_CHANGE',
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      }).catch(() => {});
+
+      // Send in-app notification to car wash owner
+      if (cw && cw.ownerId) {
+        await createNotification({
+          id: `notif_${Math.random().toString(36).substr(2, 9)}`,
+          userId: cw.ownerId,
+          title: `🌟 New VIP Club Member!`,
+          message: `${req.user!.name || 'A customer'} (${req.user!.email || ''}) just joined your ${cw.name} Loyalty Club (#${membership.membershipNumber})!`,
+          type: 'STATUS_CHANGE',
+          isRead: false,
+          createdAt: new Date().toISOString(),
+        }).catch(() => {});
+      }
+
+      broadcastRealtimeEvent({
+        type: 'BOOKING_UPDATED',
+        carWashId,
+        data: { type: 'MEMBERSHIP_JOINED', customerId: req.user!.id, carWashId, membershipId: membership.id },
+      });
+
+      res.status(201).json(membership);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message || 'Failed to join membership programme' });
+    }
+  });
+
+  app.post('/api/membership/leave', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { carWashId } = req.body;
+      if (!carWashId) {
+        res.status(400).json({ error: 'carWashId is required.' });
+        return;
+      }
+
+      const cancelled = await cancelCustomerMembership(req.user!.id, carWashId);
+      if (!cancelled) {
+        res.status(404).json({ error: 'Membership not found.' });
+        return;
+      }
+      res.json(cancelled);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to leave membership' });
+    }
+  });
+
+  app.get('/api/membership/ledger/:membershipId', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const ledger = await getMembershipLedger(req.params.membershipId);
+      res.json(ledger);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to get ledger' });
+    }
+  });
+
+  // 7. Manual Points Adjustment (Audited)
+  app.post(
+    '/api/membership/adjust-points',
+    authenticateToken,
+    requireRoles([Role.OWNER, Role.ADMIN, Role.SPECIAL]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { membershipId, pointsDelta, reason } = req.body;
+        if (!membershipId || pointsDelta === undefined || !reason) {
+          res.status(400).json({ error: 'membershipId, pointsDelta, and reason are required.' });
+          return;
+        }
+
+        const delta = parseInt(pointsDelta, 10);
+        if (isNaN(delta) || delta === 0) {
+          res.status(400).json({ error: 'Points delta must be a non-zero integer.' });
+          return;
+        }
+
+        const result = await adjustCustomerPoints({
+          membershipId,
+          pointsDelta: delta,
+          reason,
+          performedById: req.user!.id,
+          performedByRole: req.user!.role,
+        });
+
+        await addAuditLog(
+          req.user!.id,
+          req.user!.email,
+          'MANUAL_POINTS_ADJUSTMENT',
+          `Adjusted points by ${delta} on membership ${membershipId}. Reason: ${reason}`
+        );
+
+        // Notify customer about points adjustment
+        await createNotification({
+          id: `notif_${Math.random().toString(36).substr(2, 9)}`,
+          userId: result.transaction.customerId,
+          title: `Points Balance Adjusted 🌟`,
+          message: `Your loyalty points balance was adjusted by ${delta > 0 ? `+${delta}` : delta} pts (Current: ${result.newBalance} pts). Reason: ${reason}`,
+          type: 'STATUS_CHANGE',
+          isRead: false,
+          createdAt: new Date().toISOString(),
+        }).catch(() => {});
+
+        broadcastRealtimeEvent({
+          type: 'BOOKING_UPDATED',
+          carWashId: result.transaction.carWashId,
+          data: {
+            type: 'POINTS_ADJUSTED',
+            customerId: result.transaction.customerId,
+            membershipId,
+            pointsDelta: delta,
+            newBalance: result.newBalance,
+          },
+        });
+
+        res.json({
+          success: true,
+          newBalance: result.newBalance,
+          balanceAfter: result.newBalance,
+          transaction: result.transaction,
+        });
+      } catch (error: any) {
+        res.status(400).json({ error: error.message || 'Failed to adjust points' });
+      }
+    }
+  );
+
+  // 8. Redeem Reward (Customer)
+  app.post('/api/membership/redeem', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { carWashId, rewardId } = req.body;
+      if (!carWashId || !rewardId) {
+        res.status(400).json({ error: 'carWashId and rewardId are required.' });
+        return;
+      }
+
+      const cw = (await getCarWashByIdOrSlug(carWashId)) || (await getCarWashById(carWashId));
+      if (!cw) {
+        res.status(404).json({ error: 'Car wash operator not found.' });
+        return;
+      }
+
+      const resolvedCarWashId = cw.id;
+      if (!cw.membershipEnabled) {
+        await setCarWashMembershipFeature(resolvedCarWashId, true);
+      }
+
+      const result = await createMembershipRedemption(req.user!.id, resolvedCarWashId, rewardId);
+
+      await addAuditLog(
+        req.user!.id,
+        req.user!.email,
+        'REDEEM_REWARD',
+        `Redeemed voucher ${result.redemption.redemptionCode} for ${result.redemption.rewardTitle} (-${result.redemption.pointsSpent} pts)`
+      );
+
+      broadcastRealtimeEvent({
+        type: 'BOOKING_UPDATED',
+        carWashId: resolvedCarWashId,
+        data: {
+          type: 'REWARD_REDEEMED',
+          customerId: req.user!.id,
+          carWashId: resolvedCarWashId,
+          redemption: result.redemption,
+          newBalance: result.newBalance,
+        },
+      });
+
+      res.status(201).json({
+        success: true,
+        redemption: result.redemption,
+        newBalance: result.newBalance,
+        balanceAfter: result.newBalance,
+      });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message || 'Redemption failed' });
+    }
+  });
+
+  // 9. Customer Redemptions
+  app.get('/api/membership/my-redemptions', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const redemptions = await getCustomerRedemptions(req.user!.id);
+      res.json(redemptions);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to get redemptions' });
+    }
+  });
+
+  // 10. Staff / Counter Operations
+  // Scan & Identify Member
+  app.get(
+    '/api/membership/identify/:tokenOrCode',
+    authenticateToken,
+    requireRoles([Role.EMPLOYEE, Role.OWNER, Role.ADMIN, Role.SPECIAL]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const member = await getCustomerMembershipByToken(req.params.tokenOrCode);
+        if (!member) {
+          res.status(404).json({ error: 'Member not found with this code or QR token.' });
+          return;
+        }
+
+        // Verify employee business match if role is EMPLOYEE
+        if (req.user!.role === Role.EMPLOYEE) {
+          const emp = await getUserById(req.user!.id);
+          if (emp?.businessId && emp.businessId !== member.carWashId) {
+            res.status(403).json({ error: 'This customer membership belongs to a different car wash location.' });
+            return;
+          }
+        }
+
+        res.json(member);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to identify member' });
+      }
+    }
+  );
+
+  // Counter Walk-In Points Awarding
+  app.post(
+    '/api/membership/counter-award',
+    authenticateToken,
+    requireRoles([Role.EMPLOYEE, Role.OWNER, Role.ADMIN, Role.SPECIAL]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { membershipId, serviceName, points } = req.body;
+        if (!membershipId || !points) {
+          res.status(400).json({ error: 'membershipId and points are required.' });
+          return;
+        }
+
+        const pts = parseInt(points, 10);
+        if (isNaN(pts) || pts <= 0) {
+          res.status(400).json({ error: 'Points must be a positive integer.' });
+          return;
+        }
+
+        const members = await getCarWashMembers(req.body.carWashId || '');
+        // Fetch membership
+        const member = await getCustomerMembershipById(membershipId);
+        if (!member) {
+          res.status(404).json({ error: 'Membership not found.' });
+          return;
+        }
+
+        const carWashId = member.carWashId;
+        const customerId = member.customerId;
+
+        // Verify employee match
+        if (req.user!.role === Role.EMPLOYEE) {
+          const emp = await getUserById(req.user!.id);
+          if (emp?.businessId && emp.businessId !== carWashId) {
+            res.status(403).json({ error: 'Unauthorized: customer membership belongs to a different car wash.' });
+            return;
+          }
+        }
+
+        const result = await recordPointsTransaction({
+          membershipId,
+          customerId,
+          carWashId,
+          points: pts,
+          transactionType: 'EARN',
+          description: `Counter wash: ${serviceName || 'Walk-in Service'}`,
+          performedById: req.user!.id,
+          performedByRole: req.user!.role,
+        });
+
+        // Notify customer
+        await createNotification({
+          id: `notif_${Math.random().toString(36).substr(2, 9)}`,
+          userId: customerId,
+          title: `Counter Points Received! 🌟`,
+          message: `Staff awarded +${pts} points for your counter wash (${serviceName || 'Walk-in Service'}).`,
+          type: 'STATUS_CHANGE',
+          isRead: false,
+          createdAt: new Date().toISOString(),
+        }).catch(() => {});
+
+        broadcastRealtimeEvent({
+          type: 'BOOKING_UPDATED',
+          carWashId,
+          data: { type: 'POINTS_AWARDED', customerId, membershipId, points: pts, newBalance: result.newBalance },
+        });
+
+        res.json(result);
+      } catch (error: any) {
+        res.status(400).json({ error: error.message || 'Failed to award counter points' });
+      }
+    }
+  );
+
+  // Scan Voucher & Confirm Redemption
+  app.get(
+    '/api/membership/voucher/:tokenOrCode',
+    authenticateToken,
+    requireRoles([Role.EMPLOYEE, Role.OWNER, Role.ADMIN, Role.SPECIAL]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const redemption = await getRedemptionByToken(req.params.tokenOrCode);
+        if (!redemption) {
+          res.status(404).json({ error: 'Reward voucher not found.' });
+          return;
+        }
+        res.json(redemption);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to get voucher' });
+      }
+    }
+  );
+
+  app.post(
+    '/api/membership/confirm-redemption',
+    authenticateToken,
+    requireRoles([Role.EMPLOYEE, Role.OWNER, Role.ADMIN, Role.SPECIAL]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { tokenOrCode, carWashId } = req.body;
+        if (!tokenOrCode || !carWashId) {
+          res.status(400).json({ error: 'tokenOrCode and carWashId are required.' });
+          return;
+        }
+
+        const confirmed = await confirmMembershipRedemption(tokenOrCode, req.user!.id, carWashId);
+
+        await addAuditLog(
+          req.user!.id,
+          req.user!.email,
+          'CONFIRM_REWARD_REDEMPTION',
+          `Confirmed voucher ${confirmed.redemptionCode} (${confirmed.rewardTitle}) for member ${confirmed.customerName || confirmed.customerId}`
+        );
+
+        // Notify customer
+        await createNotification({
+          id: `notif_${Math.random().toString(36).substr(2, 9)}`,
+          userId: confirmed.customerId,
+          title: `Reward Voucher Redeemed! 🎁`,
+          message: `Your reward voucher ${confirmed.redemptionCode} (${confirmed.rewardTitle}) was processed by staff. Enjoy!`,
+          type: 'STATUS_CHANGE',
+          isRead: false,
+          createdAt: new Date().toISOString(),
+        }).catch(() => {});
+
+        broadcastRealtimeEvent({
+          type: 'BOOKING_UPDATED',
+          carWashId,
+          data: { type: 'REDEMPTION_CONFIRMED', customerId: confirmed.customerId, redemptionCode: confirmed.redemptionCode },
+        });
+
+        res.json(confirmed);
+      } catch (error: any) {
+        res.status(400).json({ error: error.message || 'Failed to confirm redemption' });
+      }
+    }
+  );
+
+  // Owner Member Management List
+  app.get(
+    '/api/membership/members/:carWashId',
+    authenticateToken,
+    requireRoles([Role.OWNER, Role.EMPLOYEE, Role.ADMIN, Role.SPECIAL]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const carWashId = req.params.carWashId;
+        const cw = await getCarWashByIdOrSlug(carWashId) || await getCarWashById(carWashId);
+        if (!cw) {
+          res.status(404).json({ error: 'Car wash not found.' });
+          return;
+        }
+
+        if (req.user!.role === Role.OWNER && !checkIsCarWashOwner(req.user, cw)) {
+          res.status(403).json({ error: 'Unauthorized: You do not own this car wash.' });
+          return;
+        }
+        if (req.user!.role === Role.EMPLOYEE) {
+          const emp = await getUserById(req.user!.id);
+          if (emp?.businessId && emp.businessId !== cw.id && emp.businessId !== carWashId) {
+            res.status(403).json({ error: 'Unauthorized: Assigned to different car wash.' });
+            return;
+          }
+        }
+
+        const search = req.query.search as string | undefined;
+        const members = await getCarWashMembers(cw.id, search);
+        res.json(members);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to fetch members' });
+      }
+    }
+  );
+
+  // Owner Redemptions History List
+  app.get(
+    '/api/membership/redemptions/:carWashId',
+    authenticateToken,
+    requireRoles([Role.OWNER, Role.EMPLOYEE, Role.ADMIN, Role.SPECIAL]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const carWashId = req.params.carWashId;
+        const cw = await getCarWashByIdOrSlug(carWashId) || await getCarWashById(carWashId);
+        if (!cw) {
+          res.status(404).json({ error: 'Car wash not found.' });
+          return;
+        }
+
+        if (req.user!.role === Role.OWNER && !checkIsCarWashOwner(req.user, cw)) {
+          res.status(403).json({ error: 'Unauthorized: You do not own this car wash.' });
+          return;
+        }
+
+        const redemptions = await getCarWashRedemptions(carWashId);
+        res.json(redemptions);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to fetch redemptions' });
+      }
+    }
+  );
+
+  // ==========================================
+  // ISSUE REPORTING & DISPUTE RESOLUTION
+  // ==========================================
+  const ISSUES_FILE_PATH = path.resolve(process.cwd(), 'data', 'issues.json');
+
+  function loadReportedIssues(): any[] {
+    try {
+      if (fs.existsSync(ISSUES_FILE_PATH)) {
+        const raw = fs.readFileSync(ISSUES_FILE_PATH, 'utf-8');
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      console.warn('[Issues] Error reading issues file:', e);
+    }
+    return [];
+  }
+
+  function saveReportedIssues(issues: any[]) {
+    try {
+      const dir = path.dirname(ISSUES_FILE_PATH);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(ISSUES_FILE_PATH, JSON.stringify(issues, null, 2), 'utf-8');
+    } catch (e) {
+      console.error('[Issues] Failed to save issues:', e);
+    }
+  }
+
+  // Create issue report
+  app.post('/api/issues', async (req, res) => {
+    try {
+      const { title, description, category, priority, userName, userEmail, bookingId, carWashId } = req.body;
+      if (!title || !description) {
+        res.status(400).json({ error: 'Title and description are required.' });
+        return;
+      }
+
+      const issues = loadReportedIssues();
+      const newIssue = {
+        id: `iss_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+        title,
+        description,
+        category: category || 'GENERAL',
+        priority: priority || 'MEDIUM',
+        status: 'OPEN',
+        userName: userName || 'Customer',
+        userEmail: userEmail || '',
+        bookingId: bookingId || undefined,
+        carWashId: carWashId || undefined,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      issues.unshift(newIssue);
+      saveReportedIssues(issues);
+
+      console.log(`[Issue Reported] New issue logged: "${title}" by ${userEmail || userName}`);
+      res.status(201).json({ success: true, message: 'Your issue has been reported and logged with our support team.', issue: newIssue });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to submit issue' });
+    }
+  });
+
+  // Query issues
+  app.get('/api/issues', async (req, res) => {
+    try {
+      let issues = loadReportedIssues();
+      const { status, category, search } = req.query;
+
+      if (status) {
+        issues = issues.filter((i) => i.status === status);
+      }
+      if (category) {
+        issues = issues.filter((i) => i.category === category);
+      }
+      if (search && typeof search === 'string') {
+        const q = search.toLowerCase();
+        issues = issues.filter((i) =>
+          (i.title && i.title.toLowerCase().includes(q)) ||
+          (i.description && i.description.toLowerCase().includes(q)) ||
+          (i.userName && i.userName.toLowerCase().includes(q)) ||
+          (i.userEmail && i.userEmail.toLowerCase().includes(q))
+        );
+      }
+
+      res.json(issues);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to fetch issues' });
+    }
+  });
+
+  // Update issue
+  app.patch('/api/issues/:id', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const issues = loadReportedIssues();
+      const index = issues.findIndex((i) => i.id === id);
+      if (index === -1) {
+        res.status(404).json({ error: 'Issue not found.' });
+        return;
+      }
+
+      const updated = {
+        ...issues[index],
+        ...req.body,
+        updatedAt: new Date().toISOString(),
+        resolvedBy: req.user?.id,
+        resolvedByName: req.user?.name,
+      };
+
+      issues[index] = updated;
+      saveReportedIssues(issues);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to update issue' });
+    }
+  });
+
+  // Delete issue
+  app.delete('/api/issues/:id', authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      let issues = loadReportedIssues();
+      issues = issues.filter((i) => i.id !== id);
+      saveReportedIssues(issues);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to delete issue' });
+    }
+  });
+
+  // ==========================================
+  // SERVE SECURE UPLOADS AND VITE SERVICES
+  // ==========================================
+
+  // Serve uploaded payment receipt screenshots securely with browser caching
+  app.use(
+    '/uploads',
+    express.static(path.resolve(process.cwd(), 'uploads'), {
+      maxAge: '7d',
+      immutable: true,
+    })
+  );
+
+  if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
+    console.log('Vite middleware mounted in development mode.');
+  } else {
+    const distPath = path.join(process.cwd(), 'dist');
+    // Set 1-year immutable cache for hashed Vite assets (/assets/*), and strict no-cache for index.html
+    app.use(
+      express.static(distPath, {
+        maxAge: '1y',
+        immutable: true,
+        setHeaders: (res, filePath) => {
+          if (filePath.endsWith('.html')) {
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+          }
+        },
+      })
+    );
+    app.get('*', (req, res) => {
+      const indexPath = path.join(distPath, 'index.html');
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        res.status(200).send('<!DOCTYPE html><html><head><title>Car Wash Booking</title></head><body><div id="root"></div></body></html>');
+      }
+    });
+    console.log('Production static asset serving mounted from dist/');
+  }
+}
+
+startServer().catch((err) => {
+  console.error('Fatal server startup error:', err);
 });

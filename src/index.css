@@ -1,89 +1,75 @@
 @import "tailwindcss";
 
-@theme {
-  --font-display: "Bricolage Grotesque", "Plus Jakarta Sans", sans-serif;
-  --font-sans: "Plus Jakarta Sans", "Inter", sans-serif;
-  --font-mono: "JetBrains Mono", monospace;
-
-  --color-bg-canvas: #F5F7F4;
-  --color-surface-white: #FFFFFF;
-  --color-surface-muted: #EDF1EC;
-  --color-ink-base: #132218;
-  --color-ink-muted: #4F6155;
-  --color-ink-subtle: #7A8E80;
-  --color-border-subtle: #D9E2D9;
-  --color-border-strong: #B8C7B8;
-
-  --color-brand-primary: #DE5124;
-  --color-brand-hover: #BF3F16;
-  --color-brand-light: #FDEEE9;
-  --color-brand-surface: #FFF6F3;
-
-  --color-accent-fresh: #247545;
-  --color-accent-light: #E0F2E6;
-
-  --color-warn-amber: #C48214;
-  --color-warn-light: #FDF3E1;
-
-  --color-danger-crimson: #BA2D2D;
-  --color-danger-light: #FDE8E8;
-
-  --color-transit-blue: #236885;
-  --color-transit-light: #E1F0F6;
+/* Leaflet custom marker overrides */
+.leaflet-div-icon {
+  background: transparent !important;
+  border: none !important;
 }
 
-:root {
-  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-  color: #132218;
-  background-color: #F5F7F4;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+.carwash-marker-pill {
+  transition: transform 0.15s ease-out, filter 0.15s ease-out;
 }
 
-/* Custom crisp scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: #C4D3C5;
-  border-radius: 9999px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #9DB49F;
+.carwash-marker-pill:hover {
+  transform: scale(1.06);
+  z-index: 9999 !important;
 }
 
-@media print {
-  body {
-    background-color: #FFFFFF !important;
-    color: #000000 !important;
-    margin: 0 !important;
-    padding: 0 !important;
-  }
+.carwash-marker-selected {
+  z-index: 10000 !important;
+}
 
-  @page {
-    size: A4 portrait;
-    margin: 12mm;
-  }
+/* Custom Leaflet popup refinement */
+.leaflet-popup-content-wrapper {
+  border-radius: 18px !important;
+  box-shadow: 0 20px 40px -10px rgba(15, 23, 42, 0.35), 0 8px 16px -4px rgba(15, 23, 42, 0.15) !important;
+  border: 1px solid #cbd5e1 !important;
+  padding: 0 !important;
+  background: #ffffff !important;
+  overflow: visible !important;
+}
 
-  /* Hide background interface elements when printing statement */
-  header, nav, aside, footer, .no-print, button {
-    display: none !important;
-  }
+.leaflet-popup-content {
+  margin: 14px 16px !important;
+  line-height: 1.45 !important;
+  min-width: 270px !important;
+  max-width: 360px !important;
+  word-break: break-word !important;
+  overflow-wrap: break-word !important;
+  overflow: visible !important;
+}
 
-  #printable-statement {
-    position: absolute !important;
-    left: 0 !important;
-    top: 0 !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    border: none !important;
-    box-shadow: none !important;
+.leaflet-popup-close-button {
+  top: 10px !important;
+  right: 10px !important;
+  width: 26px !important;
+  height: 26px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: #f1f5f9 !important;
+  border-radius: 9999px !important;
+  color: #64748b !important;
+  font-size: 16px !important;
+  font-weight: 700 !important;
+  border: 1px solid #e2e8f0 !important;
+  transition: all 0.15s ease !important;
+  z-index: 999 !important;
+}
+
+.leaflet-popup-close-button:hover {
+  background: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+@media (max-width: 420px) {
+  .leaflet-popup-content {
+    min-width: 240px !important;
+    max-width: 290px !important;
+    margin: 12px 12px !important;
   }
 }
 
+.leaflet-popup-tip {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+}
