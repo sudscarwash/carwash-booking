@@ -26,6 +26,22 @@ export class ErrorBoundary extends Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('Uncaught error caught by ErrorBoundary:', error, errorInfo);
+    const errMsg = error?.message || '';
+    if (
+      errMsg.includes("reading 'useState'") ||
+      errMsg.includes("reading 'useMemo'") ||
+      errMsg.includes("reading 'useEffect'") ||
+      errMsg.includes('Invalid hook call') ||
+      errMsg.includes('Failed to fetch dynamically imported module')
+    ) {
+      const reloadKey = 'cw_auto_reload_stale_react';
+      const lastReload = sessionStorage.getItem(reloadKey);
+      const now = Date.now();
+      if (!lastReload || now - Number(lastReload) > 8000) {
+        sessionStorage.setItem(reloadKey, String(now));
+        window.location.reload();
+      }
+    }
   }
 
   private handleReset = () => {

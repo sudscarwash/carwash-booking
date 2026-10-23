@@ -79,6 +79,7 @@ export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeVi
   const [awardPointsAmount, setAwardPointsAmount] = useState<number>(10);
   const [isAwarding, setIsAwarding] = useState(false);
   const [awardSuccessMsg, setAwardSuccessMsg] = useState<string | null>(null);
+  const [awardErrorMsg, setAwardErrorMsg] = useState<string | null>(null);
 
   // 2. Voucher Redemption State
   const [voucherCodeInput, setVoucherCodeInput] = useState('');
@@ -87,6 +88,7 @@ export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeVi
   const [voucherCheckError, setVoucherCheckError] = useState<string | null>(null);
   const [isConfirmingVoucher, setIsConfirmingVoucher] = useState(false);
   const [confirmSuccessMsg, setConfirmSuccessMsg] = useState<string | null>(null);
+  const [confirmErrorMsg, setConfirmErrorMsg] = useState<string | null>(null);
 
   // 3. Camera QR Scanner State
   const [cameraScannerMode, setCameraScannerMode] = useState<'member' | 'voucher' | null>(null);
@@ -184,13 +186,14 @@ export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeVi
       const data = await safeJsonOrError(res, 'Failed to award points');
 
       setAwardSuccessMsg(`Successfully awarded +${awardPointsAmount} points to ${searchedMember.customerName || searchedMember.membershipNumber}! New Balance: ${data.balanceAfter} pts.`);
+      setAwardErrorMsg(null);
       // Update searched member state balance
       setSearchedMember({
         ...searchedMember,
         pointsBalance: data.balanceAfter,
       });
     } catch (err: any) {
-      alert(err.message || 'Error awarding points');
+      setAwardErrorMsg(err.message || 'Error awarding points');
     } finally {
       setIsAwarding(false);
     }
@@ -205,6 +208,7 @@ export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeVi
     setVoucherCheckError(null);
     setCheckedVoucher(null);
     setConfirmSuccessMsg(null);
+    setConfirmErrorMsg(null);
 
     try {
       const res = await fetch(`/api/membership/voucher/${encodeURIComponent(code)}`, {
@@ -237,6 +241,7 @@ export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeVi
 
     setIsConfirmingVoucher(true);
     setConfirmSuccessMsg(null);
+    setConfirmErrorMsg(null);
 
     try {
       const res = await fetch('/api/membership/confirm-redemption', {
@@ -256,7 +261,7 @@ export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeVi
       setCheckedVoucher(data);
       setConfirmSuccessMsg(`Voucher ${data.redemptionCode} (${data.rewardTitle}) successfully confirmed! Service applied for customer.`);
     } catch (err: any) {
-      alert(err.message || 'Error confirming voucher');
+      setConfirmErrorMsg(err.message || 'Error confirming voucher');
     } finally {
       setIsConfirmingVoucher(false);
     }
@@ -444,6 +449,13 @@ export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeVi
                     </div>
                   )}
 
+                  {awardErrorMsg && (
+                    <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-2xl flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4 shrink-0 text-rose-600" />
+                      <span>{awardErrorMsg}</span>
+                    </div>
+                  )}
+
                   <button
                     type="submit"
                     disabled={isAwarding}
@@ -578,6 +590,13 @@ export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeVi
                   <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-2xl flex items-center gap-2">
                     <CheckCircle className="h-4 w-4 shrink-0 text-emerald-600" />
                     <span>{confirmSuccessMsg}</span>
+                  </div>
+                )}
+
+                {confirmErrorMsg && (
+                  <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-2xl flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4 shrink-0 text-rose-600" />
+                    <span>{confirmErrorMsg}</span>
                   </div>
                 )}
 

@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { CarWash, CustomerMembership, CarWashMembershipConfig, MembershipReward } from '../types';
 import { useApp } from '../context/AppContext';
-import { Award, Gift, Sparkles, Check, ChevronRight, QrCode, Shield, Info, ArrowRight, ExternalLink } from 'lucide-react';
+import { Award, Gift, Sparkles, Check, ChevronRight, QrCode, Shield, Info, ArrowRight, ExternalLink, AlertCircle } from 'lucide-react';
 import { MembershipCardModal } from './MembershipCardModal';
 
 interface CustomerMembershipSectionProps {
@@ -24,6 +24,7 @@ export const CustomerMembershipSection: React.FC<CustomerMembershipSectionProps>
 
   const [activeMembershipModal, setActiveMembershipModal] = useState<CustomerMembership | null>(null);
   const [consentChecked, setConsentChecked] = useState(false);
+  const [joinError, setJoinError] = useState<string | null>(null);
   const [isJoining, setIsJoining] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
   const [programmeConfig, setProgrammeConfig] = useState<CarWashMembershipConfig | null>(null);
@@ -63,16 +64,19 @@ export const CustomerMembershipSection: React.FC<CustomerMembershipSectionProps>
     }
     if (!carWash) return;
     if (!consentChecked) {
-      alert('Please check the terms and consent box to join this loyalty programme.');
+      setJoinError('Please check the terms and consent box to join this loyalty programme.');
       return;
     }
 
+    setJoinError(null);
     setIsJoining(true);
     try {
       const created = await joinCarWashMembership(carWash.id, true, 'ONLINE_OPT_IN');
       if (created) {
         setActiveMembershipModal(created);
       }
+    } catch (err: any) {
+      setJoinError(err.message || 'Failed to join membership');
     } finally {
       setIsJoining(false);
     }
@@ -222,6 +226,13 @@ export const CustomerMembershipSection: React.FC<CustomerMembershipSectionProps>
               I agree to join <strong>{carWash.name}</strong> Rewards and confirm I understand that points belong strictly to this business and are awarded upon service completion.
             </span>
           </label>
+
+          {joinError && (
+            <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0 text-rose-600" />
+              <span>{joinError}</span>
+            </div>
+          )}
 
           <button
             onClick={handleJoin}

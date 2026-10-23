@@ -4617,6 +4617,12 @@ async function startServer() {
           isActive: isActive !== false,
         });
 
+        broadcastRealtimeEvent({
+          type: 'BOOKING_UPDATED',
+          carWashId: cw.id,
+          data: { type: 'REWARDS_UPDATED', carWashId: cw.id },
+        });
+
         res.status(201).json(reward);
       } catch (error: any) {
         res.status(500).json({ error: error.message || 'Failed to create reward' });
@@ -4646,6 +4652,13 @@ async function startServer() {
           res.status(404).json({ error: 'Reward not found.' });
           return;
         }
+
+        broadcastRealtimeEvent({
+          type: 'BOOKING_UPDATED',
+          carWashId: cw.id,
+          data: { type: 'REWARDS_UPDATED', carWashId: cw.id },
+        });
+
         res.json(updated);
       } catch (error: any) {
         res.status(500).json({ error: error.message || 'Failed to update reward' });
@@ -4675,6 +4688,12 @@ async function startServer() {
           res.status(404).json({ error: 'Reward not found or could not be deleted.' });
           return;
         }
+
+        broadcastRealtimeEvent({
+          type: 'BOOKING_UPDATED',
+          carWashId: cw.id,
+          data: { type: 'REWARDS_UPDATED', carWashId: cw.id },
+        });
 
         await addAuditLog(
           req.user!.id,
@@ -4880,12 +4899,20 @@ async function startServer() {
   app.post('/api/membership/redeem', authenticateToken, async (req: AuthenticatedRequest, res) => {
     try {
       const { carWashId, rewardId } = req.body;
-      if (!carWashId || !rewardId) {
-        res.status(400).json({ error: 'carWashId and rewardId are required.' });
+      if (!rewardId) {
+        res.status(400).json({ error: 'rewardId is required.' });
         return;
       }
 
-      const cw = (await getCarWashByIdOrSlug(carWashId)) || (await getCarWashById(carWashId));
+      // Check reward to identify its authoritative issuing car wash
+      const reward = await getMembershipRewardById(rewardId);
+      if (!reward || !reward.isActive) {
+        res.status(404).json({ error: 'Reward is not available or inactive.' });
+        return;
+      }
+
+      const targetCarWashId = reward.carWashId || carWashId;
+      const cw = (await getCarWashByIdOrSlug(targetCarWashId)) || (await getCarWashById(targetCarWashId)) || (carWashId ? await getCarWashByIdOrSlug(carWashId) : null);
       if (!cw) {
         res.status(404).json({ error: 'Car wash operator not found.' });
         return;
@@ -5067,9 +5094,10 @@ async function startServer() {
     requireRoles([Role.EMPLOYEE, Role.OWNER, Role.ADMIN, Role.SPECIAL]),
     async (req: AuthenticatedRequest, res) => {
       try {
-        const { tokenOrCode, carWashId } = req.body;
+        const tokenOrCode = req.body.tokenOrCode || req.body.redemptionCode || req.body.code;
+        const carWashId = req.body.carWashId;
         if (!tokenOrCode || !carWashId) {
-          res.status(400).json({ error: 'tokenOrCode and carWashId are required.' });
+          res.status(400).json({ error: 'tokenOrCode (or redemptionCode) and carWashId are required.' });
           return;
         }
 

@@ -5041,8 +5041,12 @@ export async function getMembershipRewards(carWashId: string, activeOnly: boolea
     sql += ' ORDER BY pointsCost ASC, createdAt DESC';
     let rows = await runQueryAll(sql, [resolvedId]);
 
-    // If car wash has no rewards configured yet, seed standard rewards so customer can always redeem
-    if (rows.length === 0) {
+    // Check if this car wash has any rewards at all (active or inactive)
+    const countRow = await runQueryOne('SELECT COUNT(*) as count FROM membership_rewards WHERE carWashId = ?', [resolvedId]);
+    const totalCount = Number(countRow?.count || 0);
+
+    // Only seed standard rewards if this car wash has never had any rewards configured
+    if (totalCount === 0) {
       const initTimestamp = new Date().toISOString();
       const stdRewards = [
         { id: `mrw_${resolvedId}_tyre_shine`, title: 'Free Tyre Shine & Rim Gloss', desc: 'Complimentary high-gloss tyre shine coat and rim cleaning.', pts: 50, type: 'FREE_ADDON', val: 5 },
@@ -5182,23 +5186,28 @@ export async function createMembershipRedemption(
   carWashId: string,
   rewardId: string
 ): Promise<{ redemption: MembershipRedemption; newBalance: number; balanceAfter: number }> {
-  // Resolve car wash ID or slug to canonical ID
-  const cw = (await getCarWashByIdOrSlug(carWashId)) || (await getCarWashById(carWashId));
-  const resolvedCarWashId = cw ? cw.id : carWashId;
+  // 1. Verify reward exists and is active
+  const reward = await getMembershipRewardById(rewardId);
+  if (!reward || !reward.isActive) {
+    throw new Error('Reward is not available or inactive.');
+  }
 
-  // Verify membership
+  // 2. Authoritative car wash for this reward is reward.carWashId
+  const rewardCarWash = (await getCarWashByIdOrSlug(reward.carWashId)) || (await getCarWashById(reward.carWashId));
+  const resolvedCarWashId = rewardCarWash ? rewardCarWash.id : reward.carWashId;
+
+  // 3. Verify customer has an active membership for the car wash issuing this reward
   let membership = await getCustomerMembership(customerId, resolvedCarWashId);
-  if (!membership && carWashId !== resolvedCarWashId) {
-    membership = await getCustomerMembership(customerId, carWashId);
+  if (!membership && reward.carWashId !== resolvedCarWashId) {
+    membership = await getCustomerMembership(customerId, reward.carWashId);
+  }
+  if (!membership && carWashId) {
+    const passedCw = (await getCarWashByIdOrSlug(carWashId)) || (await getCarWashById(carWashId));
+    const resolvedPassedId = passedCw ? passedCw.id : carWashId;
+    membership = await getCustomerMembership(customerId, resolvedPassedId);
   }
   if (!membership || membership.status !== 'ACTIVE') {
-    throw new Error('You do not have an active membership with this car wash.');
-  }
-
-  // Verify reward
-  const reward = await getMembershipRewardById(rewardId);
-  if (!reward || (reward.carWashId !== resolvedCarWashId && reward.carWashId !== carWashId) || !reward.isActive) {
-    throw new Error('Reward is not available or inactive.');
+    throw new Error(`You do not have an active membership with ${rewardCarWash?.name || 'this car wash'}. Please enroll in their rewards club to redeem.`);
   }
 
   const currentPts = Number(membership.pointsBalance || 0);
@@ -5335,8 +5344,11 @@ export async function confirmMembershipRedemption(
     throw new Error('Redemption record not found.');
   }
 
-  // Cross-tenant verification
-  if (redemption.carWashId !== carWashId) {
+  // Cross-tenant verification (handling slug vs ID resolution)
+  const staffCw = (await getCarWashByIdOrSlug(carWashId)) || (await getCarWashById(carWashId));
+  const resolvedStaffCarWashId = staffCw ? staffCw.id : carWashId;
+
+  if (redemption.carWashId !== resolvedStaffCarWashId && redemption.carWashId !== carWashId) {
     throw new Error('This voucher belongs to a different car wash location.');
   }
 

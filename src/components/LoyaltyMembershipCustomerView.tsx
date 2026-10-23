@@ -92,6 +92,7 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
   const [qrModalData, setQrModalData] = useState<{ title: string; subtitle: string; code: string; qrUrl: string } | null>(null);
   const [redeemingReward, setRedeemingReward] = useState<MembershipReward | null>(null);
   const [isRedeeming, setIsRedeeming] = useState(false);
+  const [redeemError, setRedeemError] = useState<string | null>(null);
   const [redemptionSuccessVoucher, setRedemptionSuccessVoucher] = useState<MembershipRedemption | null>(null);
   
   // Leave Club Modal
@@ -259,7 +260,7 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
     }
   }, [token]);
 
-  const effectiveCarWashId = viewingCarWashId || selectedMembership?.carWashId || (locations.length > 0 ? locations[0].id : 'cw_brunei');
+  const effectiveCarWashId = selectedMembership ? selectedMembership.carWashId : (viewingCarWashId || (locations.length > 0 ? locations[0].id : 'cw_brunei'));
 
   // Trigger reward and config fetches whenever effectiveCarWashId changes
   useEffect(() => {
@@ -330,8 +331,12 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
 
   // Redeem Reward
   const handleConfirmRedeem = async () => {
-    if (!redeemingReward || !selectedMembership || !token) return;
+    if (!redeemingReward || !token) return;
+    const targetCarWashId = redeemingReward.carWashId || selectedMembership?.carWashId;
+    if (!targetCarWashId) return;
+
     setIsRedeeming(true);
+    setRedeemError(null);
     try {
       const res = await fetch('/api/membership/redeem', {
         method: 'POST',
@@ -340,7 +345,7 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          carWashId: selectedMembership.carWashId,
+          carWashId: targetCarWashId,
           rewardId: redeemingReward.id,
         }),
       });
@@ -361,13 +366,14 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
       if (updatedBalance !== undefined) {
         setSelectedMembership((prev) => (prev ? { ...prev, pointsBalance: updatedBalance } : null));
         setMemberships((prev) =>
-          prev.map((m) => (m.id === selectedMembership.id ? { ...m, pointsBalance: updatedBalance } : m))
+          prev.map((m) => (m.id === selectedMembership?.id ? { ...m, pointsBalance: updatedBalance } : m))
         );
       }
 
       // 3. Open Success Modal
       setRedemptionSuccessVoucher(newlyRedeemed);
       setRedeemingReward(null);
+      showNotification(`🎉 Voucher ${newlyRedeemed?.redemptionCode || ''} unlocked!`, 'success');
 
       // 4. Background re-sync
       fetchMemberships();
@@ -380,7 +386,8 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
       // 5. Switch to vouchers tab
       setActiveSubTab('vouchers');
     } catch (err: any) {
-      alert(err.message || 'Redemption failed');
+      setRedeemError(err.message || 'Redemption failed');
+      showNotification(err.message || 'Redemption failed', 'error');
     } finally {
       setIsRedeeming(false);
     }
@@ -411,9 +418,13 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
       setJoinConsent(false);
       setMemberships((prev) => [data, ...prev.filter((m) => m.id !== data.id)]);
       setSelectedMembership(data);
+      setViewingCarWashId(data.carWashId);
+      fetchCatalogRewards(data.carWashId);
+      fetchProgrammeConfig(data.carWashId);
+      fetchLedger(data.id);
       setActiveSubTab('card');
       await fetchMemberships();
-      fetchMyMemberships();
+      if (fetchMyMemberships) fetchMyMemberships();
     } catch (err: any) {
       setJoinError(err.message || 'Failed to join loyalty club');
     } finally {
@@ -444,9 +455,13 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
       const data = await safeJsonOrError(res, 'Failed to join membership');
       setMemberships((prev) => [data, ...prev.filter((m) => m.id !== data.id)]);
       setSelectedMembership(data);
+      setViewingCarWashId(data.carWashId);
+      fetchCatalogRewards(data.carWashId);
+      fetchProgrammeConfig(data.carWashId);
+      fetchLedger(data.id);
       setActiveSubTab('card');
       await fetchMemberships();
-      fetchMyMemberships();
+      if (fetchMyMemberships) fetchMyMemberships();
     } catch (err: any) {
       setJoinError(err.message || 'Failed to join loyalty club');
     } finally {
@@ -489,7 +504,13 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
                 value={selectedMembership?.id || ''}
                 onChange={(e) => {
                   const found = activeValidMemberships.find((m) => m.id === e.target.value);
-                  if (found) setSelectedMembership(found);
+                  if (found) {
+                    setSelectedMembership(found);
+                    setViewingCarWashId(found.carWashId);
+                    fetchCatalogRewards(found.carWashId);
+                    fetchProgrammeConfig(found.carWashId);
+                    fetchLedger(found.id);
+                  }
                 }}
                 className="bg-slate-900/90 text-white font-bold text-sm px-3 py-2 rounded-xl border border-white/20 focus:outline-none focus:ring-2 focus:ring-indigo-400"
               >
@@ -818,7 +839,10 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
                           <button
                             type="button"
                             disabled={!canRedeem}
-                            onClick={() => setRedeemingReward(reward)}
+                            onClick={() => {
+                              setRedeemError(null);
+                              setRedeemingReward(reward);
+                            }}
                             className={`w-full py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                               canRedeem
                                 ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-md'
@@ -1208,6 +1232,13 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
                 <strong className="font-mono">{Math.max(0, Number(selectedMembership?.pointsBalance ?? 0) - Number(redeemingReward.pointsCost || 0)).toLocaleString()} pts</strong>
               </div>
             </div>
+
+            {redeemError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-semibold flex items-center gap-2 text-left">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                <span>{redeemError}</span>
+              </div>
+            )}
 
             <div className="flex gap-2 pt-2">
               <button
