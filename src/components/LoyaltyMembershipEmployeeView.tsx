@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Award, 
   Gift, 
@@ -14,14 +14,19 @@ import {
   Calendar,
   Sparkles,
   ArrowRight,
-  Camera
+  Camera,
+  Plus,
+  CheckSquare,
+  Square,
+  RotateCcw
 } from 'lucide-react';
 import { 
   CarWash, 
   CustomerMembership, 
   MembershipReward, 
   MembershipRedemption,
-  MembershipPointsRule 
+  MembershipPointsRule,
+  WashService
 } from '../types.js';
 import { CameraQrScannerModal } from './CameraQrScannerModal.js';
 
@@ -74,9 +79,12 @@ export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeVi
   const [memberSearchError, setMemberSearchError] = useState<string | null>(null);
   
   const [pointsRules, setPointsRules] = useState<MembershipPointsRule[]>([]);
-  const [selectedServiceId, setSelectedServiceId] = useState<string>('');
+  const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
+  const [hasCustomService, setHasCustomService] = useState(false);
   const [customServiceName, setCustomServiceName] = useState('');
-  const [awardPointsAmount, setAwardPointsAmount] = useState<number>(10);
+  const [customServicePoints, setCustomServicePoints] = useState<number>(10);
+  const [awardPointsAmount, setAwardPointsAmount] = useState<number>(0);
+  const [manualPointsOverride, setManualPointsOverride] = useState<boolean>(false);
   const [isAwarding, setIsAwarding] = useState(false);
   const [awardSuccessMsg, setAwardSuccessMsg] = useState<string | null>(null);
   const [awardErrorMsg, setAwardErrorMsg] = useState<string | null>(null);
@@ -89,6 +97,7 @@ export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeVi
   const [isConfirmingVoucher, setIsConfirmingVoucher] = useState(false);
   const [confirmSuccessMsg, setConfirmSuccessMsg] = useState<string | null>(null);
   const [confirmErrorMsg, setConfirmErrorMsg] = useState<string | null>(null);
+  const [confirmedSessionVouchers, setConfirmedSessionVouchers] = useState<MembershipRedemption[]>([]);
 
   // 3. Camera QR Scanner State
   const [cameraScannerMode, setCameraScannerMode] = useState<'member' | 'voucher' | null>(null);
@@ -110,6 +119,31 @@ export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeVi
     fetchRules();
   }, [carWash?.id]);
 
+  // Helper to determine points for a service
+  const getServicePoints = useCallback((svc: WashService): number => {
+    const matchRule = pointsRules.find((r) => r.serviceId === svc.id);
+    if (matchRule && typeof matchRule.pointsAwarded === 'number' && matchRule.pointsAwarded > 0) {
+      return matchRule.pointsAwarded;
+    }
+    if (typeof svc.points === 'number' && svc.points > 0) {
+      return svc.points;
+    }
+    return Math.max(1, Math.round(Number(svc.price) || 10));
+  }, [pointsRules]);
+
+  // Calculate total points from selected services + custom service
+  const calculateTotalPoints = useCallback((serviceIds: string[], withCustom: boolean, customPts: number): number => {
+    let sum = 0;
+    for (const id of serviceIds) {
+      const svc = carWash.services?.find((s) => s.id === id);
+      if (svc) sum += getServicePoints(svc);
+    }
+    if (withCustom && customPts > 0) {
+      sum += customPts;
+    }
+    return sum;
+  }, [carWash.services, getServicePoints]);
+
   // Lookup member by code / phone / QR token
   const lookupMember = async (queryText: string) => {
     const query = queryText.trim();
@@ -119,6 +153,7 @@ export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeVi
     setMemberSearchError(null);
     setSearchedMember(null);
     setAwardSuccessMsg(null);
+    setAwardErrorMsg(null);
 
     try {
       const res = await fetch(`/api/membership/identify/${encodeURIComponent(query)}`, {
@@ -127,12 +162,14 @@ export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeVi
       const data = await safeJsonOrError(res, 'Member not found with this code, phone or QR pass');
       setSearchedMember(data);
 
-      // Pre-select first service if available
-      if (carWash.services && carWash.services.length > 0 && !selectedServiceId) {
+      // Pre-select first service if nothing is selected
+      if (carWash.services && carWash.services.length > 0 && selectedServiceIds.length === 0) {
         const first = carWash.services[0];
-        setSelectedServiceId(first.id);
-        const matchRule = pointsRules.find((r) => r.serviceId === first.id);
-        setAwardPointsAmount(matchRule ? matchRule.pointsAwarded : 10);
+        const initialIds = [first.id];
+        setSelectedServiceIds(initialIds);
+        const autoPts = calculateTotalPoints(initialIds, false, 0);
+        setAwardPointsAmount(autoPts || 10);
+        setManualPointsOverride(false);
       }
     } catch (err: any) {
       setMemberSearchError(err.message || 'No active member matches that code');
@@ -147,28 +184,86 @@ export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeVi
     lookupMember(memberSearchQuery);
   };
 
-  // When service dropdown changes, update suggested points
-  const handleServiceChange = (serviceId: string) => {
-    setSelectedServiceId(serviceId);
-    const matchRule = pointsRules.find((r) => r.serviceId === serviceId);
-    if (matchRule) {
-      setAwardPointsAmount(matchRule.pointsAwarded);
-    } else {
-      setAwardPointsAmount(10); // Standard fallback
+  // Toggle multi-service selection
+  const toggleService = (serviceId: string) => {
+    setSelectedServiceIds((prev) => {
+      const next = prev.includes(serviceId)
+        ? prev.filter((id) => id !== serviceId)
+        : [...prev, serviceId];
+      if (!manualPointsOverride) {
+        const total = calculateTotalPoints(next, hasCustomService, customServicePoints);
+        setAwardPointsAmount(total);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAllServices = () => {
+    const allIds = (carWash.services || []).map((s) => s.id);
+    setSelectedServiceIds(allIds);
+    if (!manualPointsOverride) {
+      setAwardPointsAmount(calculateTotalPoints(allIds, hasCustomService, customServicePoints));
     }
   };
 
-  // Submit Counter Points Award
+  const handleClearAllServices = () => {
+    setSelectedServiceIds([]);
+    if (!manualPointsOverride) {
+      setAwardPointsAmount(calculateTotalPoints([], hasCustomService, customServicePoints));
+    }
+  };
+
+  const handleCustomServiceToggle = (enabled: boolean) => {
+    setHasCustomService(enabled);
+    if (!manualPointsOverride) {
+      setAwardPointsAmount(calculateTotalPoints(selectedServiceIds, enabled, customServicePoints));
+    }
+  };
+
+  const handleCustomPointsChange = (pts: number) => {
+    const validPts = Math.max(0, pts);
+    setCustomServicePoints(validPts);
+    if (!manualPointsOverride) {
+      setAwardPointsAmount(calculateTotalPoints(selectedServiceIds, hasCustomService, validPts));
+    }
+  };
+
+  const handleResetToCalculated = () => {
+    setManualPointsOverride(false);
+    setAwardPointsAmount(calculateTotalPoints(selectedServiceIds, hasCustomService, customServicePoints));
+  };
+
+  // Submit Counter Points Award with Multiple Services
   const handleAwardPoints = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!searchedMember || !token) return;
 
+    if (selectedServiceIds.length === 0 && (!hasCustomService || !customServiceName.trim())) {
+      setAwardErrorMsg('Please select at least one wash service or add a custom service.');
+      return;
+    }
+
+    if (awardPointsAmount <= 0) {
+      setAwardErrorMsg('Points to award must be greater than zero.');
+      return;
+    }
+
     setIsAwarding(true);
     setAwardSuccessMsg(null);
+    setAwardErrorMsg(null);
 
     try {
-      const selectedServiceObj = carWash.services?.find((s) => s.id === selectedServiceId);
-      const svcName = selectedServiceObj ? selectedServiceObj.name : (customServiceName || 'Walk-in Wash');
+      const selectedNames = (carWash.services || [])
+        .filter((s) => selectedServiceIds.includes(s.id))
+        .map((s) => s.name);
+
+      if (hasCustomService && customServiceName.trim()) {
+        selectedNames.push(customServiceName.trim());
+      }
+
+      const svcName = selectedNames.length > 0
+        ? (selectedNames.length === 1 ? selectedNames[0] : `${selectedNames.join(', ')} (${selectedNames.length} services)`)
+        : (customServiceName || 'Walk-in Wash');
 
       const res = await fetch('/api/membership/counter-award', {
         method: 'POST',
@@ -179,13 +274,14 @@ export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeVi
         body: JSON.stringify({
           membershipId: searchedMember.id,
           serviceName: svcName,
+          services: selectedNames,
           points: awardPointsAmount,
         }),
       });
 
       const data = await safeJsonOrError(res, 'Failed to award points');
 
-      setAwardSuccessMsg(`Successfully awarded +${awardPointsAmount} points to ${searchedMember.customerName || searchedMember.membershipNumber}! New Balance: ${data.balanceAfter} pts.`);
+      setAwardSuccessMsg(`🎉 Successfully awarded +${awardPointsAmount} points to ${searchedMember.customerName || searchedMember.membershipNumber}! Services: ${svcName}. New Balance: ${data.balanceAfter} pts.`);
       setAwardErrorMsg(null);
       // Update searched member state balance
       setSearchedMember({
@@ -259,6 +355,7 @@ export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeVi
       const data = await safeJsonOrError(res, 'Failed to confirm voucher');
 
       setCheckedVoucher(data);
+      setConfirmedSessionVouchers((prev) => [data, ...prev.filter((v) => v.id !== data.id)]);
       setConfirmSuccessMsg(`Voucher ${data.redemptionCode} (${data.rewardTitle}) successfully confirmed! Service applied for customer.`);
     } catch (err: any) {
       setConfirmErrorMsg(err.message || 'Error confirming voucher');
@@ -396,50 +493,154 @@ export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeVi
                 </div>
               ) : (
                 <form onSubmit={handleAwardPoints} className="space-y-4">
+                  {/* Service Selection Header */}
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Select Completed Wash Service</label>
-                    <select
-                      value={selectedServiceId}
-                      onChange={(e) => handleServiceChange(e.target.value)}
-                      className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    >
-                      {carWash.services?.map((svc) => (
-                        <option key={svc.id} value={svc.id}>
-                          {svc.name} - BND {Number(svc.price).toFixed(2)}
-                        </option>
-                      ))}
-                      <option value="custom">Other / Custom Walk-In Service</option>
-                    </select>
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-800">
+                          Select Completed Services (Choose Several)
+                        </label>
+                        <p className="text-[11px] text-slate-500">
+                          Check all services provided to the customer today. Points auto-calculate.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[10px] font-bold">
+                        <button
+                          type="button"
+                          onClick={handleSelectAllServices}
+                          className="px-2 py-1 text-indigo-600 hover:bg-indigo-50 rounded-lg cursor-pointer transition-colors"
+                        >
+                          Select All
+                        </button>
+                        <span className="text-slate-300">|</span>
+                        <button
+                          type="button"
+                          onClick={handleClearAllServices}
+                          className="px-2 py-1 text-slate-500 hover:bg-slate-100 rounded-lg cursor-pointer transition-colors"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Multi-Service Cards Grid */}
+                    <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                      {carWash.services && carWash.services.length > 0 ? (
+                        carWash.services.map((svc) => {
+                          const isSelected = selectedServiceIds.includes(svc.id);
+                          const pts = getServicePoints(svc);
+                          return (
+                            <div
+                              key={svc.id}
+                              onClick={() => toggleService(svc.id)}
+                              className={`p-2.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                                isSelected
+                                  ? 'bg-indigo-50/80 border-indigo-400 shadow-xs'
+                                  : 'bg-slate-50/70 border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className={`w-4 h-4 rounded-md flex items-center justify-center shrink-0 transition-colors ${
+                                  isSelected ? 'bg-indigo-600 text-white' : 'border border-slate-300 bg-white'
+                                }`}>
+                                  {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-xs font-bold text-slate-900 truncate">{svc.name}</p>
+                                  <p className="text-[10px] text-slate-500 font-medium">BND {Number(svc.price).toFixed(2)}</p>
+                                </div>
+                              </div>
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-black shrink-0 font-mono ${
+                                isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-700'
+                              }`}>
+                                +{pts} PTS
+                              </span>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <p className="text-xs text-slate-400 italic p-2">No predefined services found for this station.</p>
+                      )}
+                    </div>
                   </div>
 
-                  {selectedServiceId === 'custom' && (
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">Service Description</label>
+                  {/* Optional Custom Walk-in / Extra Service */}
+                  <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-2.5">
+                    <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
                       <input
-                        type="text"
-                        value={customServiceName}
-                        onChange={(e) => setCustomServiceName(e.target.value)}
-                        placeholder="e.g. Special Engine Degrease"
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        type="checkbox"
+                        checked={hasCustomService}
+                        onChange={(e) => handleCustomServiceToggle(e.target.checked)}
+                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4 cursor-pointer"
+                      />
+                      <span>Add Custom / Other Walk-In Service</span>
+                    </label>
+
+                    {hasCustomService && (
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 animate-fade-in">
+                        <div className="sm:col-span-2">
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Service Name</label>
+                          <input
+                            type="text"
+                            value={customServiceName}
+                            onChange={(e) => setCustomServiceName(e.target.value)}
+                            placeholder="e.g. Engine Degrease or Tar Removal"
+                            className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-indigo-500"
+                            required={hasCustomService}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Extra Points</label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={customServicePoints}
+                            onChange={(e) => handleCustomPointsChange(parseInt(e.target.value) || 0)}
+                            className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold font-mono focus:ring-2 focus:ring-indigo-500"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Calculated Points Summary & Manual Adjustment */}
+                  <div className="bg-gradient-to-r from-indigo-50 to-violet-50 p-3.5 rounded-2xl border border-indigo-150 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-700">
+                        Total Points to Award:
+                      </span>
+                      <div className="flex items-center gap-2">
+                        {manualPointsOverride && (
+                          <button
+                            type="button"
+                            onClick={handleResetToCalculated}
+                            className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 cursor-pointer"
+                            title="Reset to automatically calculated points sum"
+                          >
+                            <RotateCcw className="w-3 h-3" /> Auto-calculate
+                          </button>
+                        )}
+                        <span className="text-[11px] text-slate-500">
+                          ({selectedServiceIds.length + (hasCustomService && customServiceName.trim() ? 1 : 0)} services selected)
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min="1"
+                        max="5000"
+                        value={awardPointsAmount}
+                        onChange={(e) => {
+                          setAwardPointsAmount(Math.max(0, parseInt(e.target.value) || 0));
+                          setManualPointsOverride(true);
+                        }}
+                        className="flex-1 px-3 py-2 bg-white border border-indigo-200 rounded-xl text-lg font-black font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 text-indigo-700 shadow-xs"
                         required
                       />
+                      <span className="text-sm font-extrabold text-indigo-900 font-mono">PTS</span>
                     </div>
-                  )}
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Points to Award</label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={1000}
-                      value={awardPointsAmount}
-                      onChange={(e) => setAwardPointsAmount(parseInt(e.target.value) || 0)}
-                      className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base font-black font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 text-indigo-700"
-                      required
-                    />
-                    <p className="text-[10px] text-slate-400 mt-1">
-                      Auto-filled based on car wash loyalty points rules for this service.
-                    </p>
                   </div>
 
                   {awardSuccessMsg && (
@@ -618,10 +819,56 @@ export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeVi
                     )}
                   </button>
                 ) : checkedVoucher.status === 'REDEEMED' ? (
-                  <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl text-center font-medium">
-                    ✓ This voucher has already been marked as redeemed and confirmed.
+                  <div className="space-y-3">
+                    <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl text-center font-medium">
+                      ✓ This voucher has been confirmed and redeemed.
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCheckedVoucher(null);
+                        setVoucherCodeInput('');
+                        setConfirmSuccessMsg(null);
+                        setConfirmErrorMsg(null);
+                      }}
+                      className="w-full py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-indigo-200"
+                    >
+                      <Plus className="h-4 w-4" /> Validate Another Voucher for Customer
+                    </button>
                   </div>
                 ) : null}
+              </div>
+            )}
+
+            {/* Session Confirmed Vouchers List */}
+            {confirmedSessionVouchers.length > 0 && (
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2.5">
+                <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                  <span className="flex items-center gap-1.5">
+                    <CheckCircle className="w-4 h-4 text-emerald-600" />
+                    Vouchers Confirmed in this Session ({confirmedSessionVouchers.length})
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmedSessionVouchers([])}
+                    className="text-[10px] text-slate-400 hover:text-slate-600 font-normal cursor-pointer"
+                  >
+                    Clear History
+                  </button>
+                </div>
+                <div className="divide-y divide-slate-200/60 max-h-36 overflow-y-auto">
+                  {confirmedSessionVouchers.map((v) => (
+                    <div key={v.id} className="py-2 flex items-center justify-between text-xs">
+                      <div className="min-w-0 pr-2">
+                        <span className="font-mono font-bold text-slate-900 block">{v.redemptionCode}</span>
+                        <span className="text-[11px] text-slate-500 truncate block">{v.rewardTitle}</span>
+                      </div>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 shrink-0">
+                        REDEEMED
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>

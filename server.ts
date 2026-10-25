@@ -345,7 +345,26 @@ const sendOwnerNewBookingEmail = async (options: {
 
 const sendPasswordResetOTP = emailServiceSafe.sendPasswordResetOTP || (async () => false);
 const sendRegistrationWelcomeEmail = emailServiceSafe.sendRegistrationWelcomeEmail || (async () => false);
-const sendEmailVerificationOTP = emailServiceSafe.sendEmailVerificationOTP || (async () => false);
+const sendEmailVerificationOTP = async (
+  email: string,
+  name: string,
+  code: string,
+  verificationUrl?: string
+): Promise<boolean> => {
+  if (typeof emailServiceSafe.sendEmailVerificationOTP === 'function') {
+    return emailServiceSafe.sendEmailVerificationOTP(email, name, code, verificationUrl);
+  }
+  const defaultUrl = verificationUrl || `https://autoshinebn.com/register?verify=true&email=${encodeURIComponent(email)}&code=${encodeURIComponent(code)}`;
+  internalRecordEmailLog({
+    to: email,
+    from: 'AutoShine BN <sandbox@autoshinebn.dev>',
+    subject: `Your Verification Code: ${code} - Autoshine BN`,
+    html: `<p>Hello <strong>${name}</strong>, your verification code is <strong>${code}</strong>.</p><p>If you closed your registration window, you can use this link to return and enter your code: <a href="${defaultUrl}">Return to Verification Page</a></p>`,
+    status: 'SIMULATED',
+    provider: 'SANDBOX_CONSOLE',
+  });
+  return true;
+};
 const sendAdminLoginOtp = emailServiceSafe.sendAdminLoginOtp || (async () => false);
 const sendEmail = emailServiceSafe.sendEmail || (async () => false);
 const isEmailDeliveryActive = emailServiceSafe.isEmailDeliveryActive || (() => false);
@@ -732,6 +751,19 @@ async function startServer() {
     return deg * (Math.PI / 180);
   }
 
+  // Derive authoritative base URL for external email callbacks and verification links
+  function getRequestAppUrl(req: express.Request): string {
+    const forwardedProto = req.headers['x-forwarded-proto'];
+    const proto = typeof forwardedProto === 'string' ? forwardedProto.split(',')[0].trim() : (req.protocol || 'https');
+    const forwardedHost = req.headers['x-forwarded-host'];
+    const host = typeof forwardedHost === 'string' ? forwardedHost.split(',')[0].trim() : (req.get('host') || 'localhost:3000');
+    const origin = req.get('origin');
+    if (origin && !origin.includes('localhost')) {
+      return origin.replace(/\/+$/, '');
+    }
+    return `${proto}://${host}`.replace(/\/+$/, '');
+  }
+
   // ==========================================
   // AUTH API ENDPOINTS
   // ==========================================
@@ -842,8 +874,10 @@ async function startServer() {
       console.log(`🔐 [REGISTRATION VERIFICATION OTP]: Email: ${newUser.email} -> CODE: ${verificationOtp}`);
       console.log('========================================================');
 
-      // Dispatch Email Verification OTP via Resend
-      const emailSent = await sendEmailVerificationOTP(newUser.email, newUser.name, verificationOtp);
+      // Dispatch Email Verification OTP with direct return link back to verification page
+      const appBaseUrl = getRequestAppUrl(req);
+      const verificationUrl = `${appBaseUrl}/register?verify=true&email=${encodeURIComponent(newUser.email)}&code=${encodeURIComponent(verificationOtp)}`;
+      const emailSent = await sendEmailVerificationOTP(newUser.email, newUser.name, verificationOtp, verificationUrl);
 
       await addAuditLog(
         newUser.id,
@@ -953,7 +987,9 @@ async function startServer() {
       console.log(`🔐 [RESEND REGISTRATION OTP]: Email: ${sanitizedEmail} -> CODE: ${newOtp}`);
       console.log('========================================================');
 
-      const emailSent = await sendEmailVerificationOTP(sanitizedEmail, user.name, newOtp);
+      const appBaseUrl = getRequestAppUrl(req);
+      const verificationUrl = `${appBaseUrl}/register?verify=true&email=${encodeURIComponent(sanitizedEmail)}&code=${encodeURIComponent(newOtp)}`;
+      const emailSent = await sendEmailVerificationOTP(sanitizedEmail, user.name, newOtp, verificationUrl);
       const isLiveDelivered = emailSent && isEmailDeliveryActive();
       const shouldProvideDevCode = !isLiveDelivered || isRenderEnv || isExplicitDev || !isProductionEnv;
 
@@ -1158,7 +1194,9 @@ async function startServer() {
           const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // 15 mins
           await createPasswordReset(user.email, newOtp, expiresAt);
           otpCode = newOtp;
-          await sendEmailVerificationOTP(user.email, user.name, newOtp).catch(() => {});
+          const appBaseUrl = getRequestAppUrl(req);
+          const verificationUrl = `${appBaseUrl}/register?verify=true&email=${encodeURIComponent(user.email)}&code=${encodeURIComponent(newOtp)}`;
+          await sendEmailVerificationOTP(user.email, user.name, newOtp, verificationUrl).catch(() => {});
         }
 
         const isLiveDelivered = isEmailDeliveryActive();
@@ -5002,7 +5040,9 @@ async function startServer() {
     requireRoles([Role.EMPLOYEE, Role.OWNER, Role.ADMIN, Role.SPECIAL]),
     async (req: AuthenticatedRequest, res) => {
       try {
-        const { membershipId, serviceName, points } = req.body;
+        const { membershipId, points } = req.body;
+        const rawServiceName = req.body.serviceName || (Array.isArray(req.body.services) ? req.body.services.map((s: any) => typeof s === 'string' ? s : (s.name || s.title)).join(', ') : '');
+        const serviceName = rawServiceName || 'Walk-in Service';
         if (!membershipId || !points) {
           res.status(400).json({ error: 'membershipId and points are required.' });
           return;
@@ -5094,14 +5134,76 @@ async function startServer() {
     requireRoles([Role.EMPLOYEE, Role.OWNER, Role.ADMIN, Role.SPECIAL]),
     async (req: AuthenticatedRequest, res) => {
       try {
-        const tokenOrCode = req.body.tokenOrCode || req.body.redemptionCode || req.body.code;
         const carWashId = req.body.carWashId;
-        if (!tokenOrCode || !carWashId) {
-          res.status(400).json({ error: 'tokenOrCode (or redemptionCode) and carWashId are required.' });
+        const tokensOrCodes = Array.isArray(req.body.tokensOrCodes) 
+          ? req.body.tokensOrCodes 
+          : (Array.isArray(req.body.codes) ? req.body.codes : null);
+        const singleTokenOrCode = req.body.tokenOrCode || req.body.redemptionCode || req.body.code;
+
+        if (!carWashId || (!tokensOrCodes && !singleTokenOrCode)) {
+          res.status(400).json({ error: 'carWashId and tokenOrCode (or tokensOrCodes array) are required.' });
           return;
         }
 
-        const confirmed = await confirmMembershipRedemption(tokenOrCode, req.user!.id, carWashId);
+        // Batch confirmation support
+        if (tokensOrCodes && tokensOrCodes.length > 0) {
+          const confirmedList: any[] = [];
+          const errors: Array<{ code: string; error: string }> = [];
+
+          for (const item of tokensOrCodes) {
+            try {
+              const confirmed = await confirmMembershipRedemption(item, req.user!.id, carWashId);
+              confirmedList.push(confirmed);
+
+              await addAuditLog(
+                req.user!.id,
+                req.user!.email,
+                'CONFIRM_REWARD_REDEMPTION',
+                `Confirmed voucher ${confirmed.redemptionCode} (${confirmed.rewardTitle}) for member ${confirmed.customerName || confirmed.customerId}`
+              );
+
+              await createNotification({
+                id: `notif_${Math.random().toString(36).substr(2, 9)}`,
+                userId: confirmed.customerId,
+                title: `Reward Voucher Redeemed! 🎁`,
+                message: `Your reward voucher ${confirmed.redemptionCode} (${confirmed.rewardTitle}) was processed by staff. Enjoy!`,
+                type: 'STATUS_CHANGE',
+                isRead: false,
+                createdAt: new Date().toISOString(),
+              }).catch(() => {});
+
+              broadcastRealtimeEvent({
+                type: 'BOOKING_UPDATED',
+                carWashId,
+                data: { type: 'REDEMPTION_CONFIRMED', customerId: confirmed.customerId, redemptionCode: confirmed.redemptionCode },
+              });
+            } catch (err: any) {
+              errors.push({ code: item, error: err.message || 'Failed to confirm voucher' });
+            }
+          }
+
+          if (confirmedList.length === 0 && errors.length > 0) {
+            res.status(400).json({
+              error: errors.map((e) => `${e.code}: ${e.error}`).join('; '),
+              errors,
+              confirmedList: [],
+              confirmedCount: 0,
+            });
+            return;
+          }
+
+          res.json({
+            success: true,
+            confirmedList,
+            confirmedCount: confirmedList.length,
+            errors,
+            message: `Confirmed ${confirmedList.length} of ${tokensOrCodes.length} vouchers.`
+          });
+          return;
+        }
+
+        // Single confirmation fallback (preserving original response structure)
+        const confirmed = await confirmMembershipRedemption(singleTokenOrCode, req.user!.id, carWashId);
 
         await addAuditLog(
           req.user!.id,

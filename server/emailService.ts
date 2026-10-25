@@ -655,10 +655,20 @@ export async function sendEmail(
 /**
  * Send a 6-digit OTP code for Email Verification upon Registration (Critical Auth)
  */
-export async function sendEmailVerificationOTP(email: string, name: string, code: string): Promise<boolean> {
+export async function sendEmailVerificationOTP(
+  email: string,
+  name: string,
+  code: string,
+  verificationUrl?: string
+): Promise<boolean> {
+  const defaultBaseUrl = process.env.APP_URL || process.env.VITE_APP_URL || 'https://autoshinebn.com';
+  const fallbackUrl =
+    verificationUrl ||
+    `${defaultBaseUrl.replace(/\/+$/, '')}/register?verify=true&email=${encodeURIComponent(email)}&code=${encodeURIComponent(code)}`;
+
   const subject = `Your Verification Code: ${code} - Autoshine BN`;
   const html = `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff; color: #1e293b;">
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px 24px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff; color: #1e293b;">
       <div style="text-align: center; margin-bottom: 24px;">
         <h1 style="color: #0284c7; margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.025em;">Autoshine BN</h1>
         <p style="color: #64748b; margin: 4px 0 0 0; font-size: 14px;">Account Email Verification</p>
@@ -668,9 +678,29 @@ export async function sendEmailVerificationOTP(email: string, name: string, code
       <p style="font-size: 15px; line-height: 1.6; color: #334155;">Hello <strong>${name}</strong>,</p>
       <p style="font-size: 15px; line-height: 1.6; color: #334155;">Thank you for signing up for Autoshine BN! Please use the 6-digit verification code below to verify your email address and activate your account:</p>
       
-      <div style="background-color: #f0f9ff; border: 1px solid #bae6fd; padding: 20px; border-radius: 12px; text-align: center; margin: 28px 0;">
+      <div style="background-color: #f0f9ff; border: 1px solid #bae6fd; padding: 22px; border-radius: 12px; text-align: center; margin: 26px 0;">
         <span style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 38px; font-weight: 800; letter-spacing: 8px; color: #0284c7;">${code}</span>
         <p style="color: #0369a1; font-size: 12px; margin: 8px 0 0 0; font-weight: 600;">This verification code is valid for 15 minutes.</p>
+      </div>
+
+      <!-- Direct Fallback / Return Link for Closed Registration Windows -->
+      <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin: 26px 0; text-align: left;">
+        <h3 style="color: #0f172a; font-size: 15px; font-weight: 700; margin: 0 0 8px 0;">
+          Closed your registration window?
+        </h3>
+        <p style="font-size: 13px; line-height: 1.6; color: #475569; margin: 0 0 16px 0;">
+          If you closed your registration window, you can use this link to return and enter your code without losing your registration state.
+        </p>
+        <div style="text-align: center; margin-bottom: 12px;">
+          <a href="${fallbackUrl}"
+             style="display: inline-block; background-color: #0284c7; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 700; padding: 12px 28px; border-radius: 10px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);">
+            Return to Verification Page &rarr;
+          </a>
+        </div>
+        <p style="font-size: 11px; line-height: 1.5; color: #64748b; margin: 0; word-break: break-all; text-align: center;">
+          Or copy and paste this direct link into your browser:<br />
+          <a href="${fallbackUrl}" style="color: #0284c7; text-decoration: underline;">${fallbackUrl}</a>
+        </p>
       </div>
 
       <p style="font-size: 14px; line-height: 1.6; color: #475569;">If you did not create an account on Autoshine BN, you can safely ignore this email.</p>

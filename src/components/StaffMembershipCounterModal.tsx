@@ -3,10 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
-import { CarWash, CustomerMembership, MembershipRedemption } from '../types';
+import React, { useState, useEffect, useCallback } from 'react';
+import { CarWash, CustomerMembership, MembershipRedemption, MembershipPointsRule, WashService } from '../types';
 import { useApp } from '../context/AppContext';
-import { Award, QrCode, Search, Gift, CheckCircle, AlertTriangle, X, ArrowRight, UserCheck, Camera } from 'lucide-react';
+import { Award, QrCode, Search, Gift, CheckCircle, AlertTriangle, X, ArrowRight, UserCheck, Camera, Plus, Check, RotateCcw } from 'lucide-react';
 import { CameraQrScannerModal } from './CameraQrScannerModal.js';
 
 interface StaffMembershipCounterModalProps {
@@ -20,7 +20,8 @@ export const StaffMembershipCounterModal: React.FC<StaffMembershipCounterModalPr
   isOpen,
   onClose,
 }) => {
-  const { showNotification } = useApp();
+  const { locations, showNotification } = useApp();
+  const currentCarWash = locations.find((l) => l.id === carWashId);
 
   const [activeTab, setActiveTab] = useState<'scan_member' | 'redeem_voucher'>('scan_member');
 
@@ -28,8 +29,15 @@ export const StaffMembershipCounterModal: React.FC<StaffMembershipCounterModalPr
   const [memberInput, setMemberInput] = useState('');
   const [searchingMember, setSearchingMember] = useState(false);
   const [foundMember, setFoundMember] = useState<CustomerMembership | null>(null);
-  const [selectedServiceName, setSelectedServiceName] = useState('Standard Wash');
-  const [counterPoints, setCounterPoints] = useState(10);
+
+  // Multi-Service Points Award State
+  const [pointsRules, setPointsRules] = useState<MembershipPointsRule[]>([]);
+  const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
+  const [hasCustomService, setHasCustomService] = useState(false);
+  const [customServiceName, setCustomServiceName] = useState('');
+  const [customServicePoints, setCustomServicePoints] = useState<number>(10);
+  const [counterPoints, setCounterPoints] = useState<number>(10);
+  const [manualPointsOverride, setManualPointsOverride] = useState<boolean>(false);
   const [awardingPoints, setAwardingPoints] = useState(false);
 
   // Voucher redemption state
@@ -37,9 +45,46 @@ export const StaffMembershipCounterModal: React.FC<StaffMembershipCounterModalPr
   const [searchingVoucher, setSearchingVoucher] = useState(false);
   const [foundVoucher, setFoundVoucher] = useState<MembershipRedemption | null>(null);
   const [confirmingVoucher, setConfirmingVoucher] = useState(false);
+  const [confirmedSessionVouchers, setConfirmedSessionVouchers] = useState<MembershipRedemption[]>([]);
 
   // Camera QR Scanner state
   const [cameraScannerMode, setCameraScannerMode] = useState<'member' | 'voucher' | null>(null);
+
+  // Fetch points rules for this location
+  useEffect(() => {
+    if (!carWashId || !isOpen) return;
+    fetch(`/api/membership/points-rules/${carWashId}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rules) => {
+        if (Array.isArray(rules)) setPointsRules(rules);
+      })
+      .catch(() => {});
+  }, [carWashId, isOpen]);
+
+  // Points helper for a service
+  const getServicePoints = useCallback((svc: WashService): number => {
+    const matchRule = pointsRules.find((r) => r.serviceId === svc.id);
+    if (matchRule && typeof matchRule.pointsAwarded === 'number' && matchRule.pointsAwarded > 0) {
+      return matchRule.pointsAwarded;
+    }
+    if (typeof svc.points === 'number' && svc.points > 0) {
+      return svc.points;
+    }
+    return Math.max(1, Math.round(Number(svc.price) || 10));
+  }, [pointsRules]);
+
+  // Total points calculation helper
+  const calculateTotalPoints = useCallback((serviceIds: string[], withCustom: boolean, customPts: number): number => {
+    let sum = 0;
+    for (const id of serviceIds) {
+      const svc = currentCarWash?.services?.find((s) => s.id === id);
+      if (svc) sum += getServicePoints(svc);
+    }
+    if (withCustom && customPts > 0) {
+      sum += customPts;
+    }
+    return sum;
+  }, [currentCarWash?.services, getServicePoints]);
 
   // Modular Search Member
   const lookupMember = async (inputStr: string) => {
@@ -55,6 +100,16 @@ export const StaffMembershipCounterModal: React.FC<StaffMembershipCounterModalPr
       if (res.ok) {
         const data = await res.json();
         setFoundMember(data);
+
+        // Pre-select first service if nothing is selected
+        if (currentCarWash?.services && currentCarWash.services.length > 0 && selectedServiceIds.length === 0) {
+          const first = currentCarWash.services[0];
+          const initialIds = [first.id];
+          setSelectedServiceIds(initialIds);
+          const autoPts = calculateTotalPoints(initialIds, false, 0);
+          setCounterPoints(autoPts || 10);
+          setManualPointsOverride(false);
+        }
       } else {
         const err = await res.json();
         showNotification(err.error || 'Member not found with this code, phone or QR pass', 'error');
@@ -71,11 +126,83 @@ export const StaffMembershipCounterModal: React.FC<StaffMembershipCounterModalPr
     lookupMember(memberInput);
   };
 
-  // Award Counter Points
+  // Toggle multi-service
+  const toggleService = (serviceId: string) => {
+    setSelectedServiceIds((prev) => {
+      const next = prev.includes(serviceId)
+        ? prev.filter((id) => id !== serviceId)
+        : [...prev, serviceId];
+      if (!manualPointsOverride) {
+        const total = calculateTotalPoints(next, hasCustomService, customServicePoints);
+        setCounterPoints(total);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAllServices = () => {
+    const allIds = (currentCarWash?.services || []).map((s) => s.id);
+    setSelectedServiceIds(allIds);
+    if (!manualPointsOverride) {
+      setCounterPoints(calculateTotalPoints(allIds, hasCustomService, customServicePoints));
+    }
+  };
+
+  const handleClearAllServices = () => {
+    setSelectedServiceIds([]);
+    if (!manualPointsOverride) {
+      setCounterPoints(calculateTotalPoints([], hasCustomService, customServicePoints));
+    }
+  };
+
+  const handleCustomServiceToggle = (enabled: boolean) => {
+    setHasCustomService(enabled);
+    if (!manualPointsOverride) {
+      setCounterPoints(calculateTotalPoints(selectedServiceIds, enabled, customServicePoints));
+    }
+  };
+
+  const handleCustomPointsChange = (pts: number) => {
+    const validPts = Math.max(0, pts);
+    setCustomServicePoints(validPts);
+    if (!manualPointsOverride) {
+      setCounterPoints(calculateTotalPoints(selectedServiceIds, hasCustomService, validPts));
+    }
+  };
+
+  const handleResetToCalculated = () => {
+    setManualPointsOverride(false);
+    setCounterPoints(calculateTotalPoints(selectedServiceIds, hasCustomService, customServicePoints));
+  };
+
+  // Award Counter Points with Multiple Services
   const handleAwardCounterPoints = async () => {
     if (!foundMember) return;
+
+    if (selectedServiceIds.length === 0 && (!hasCustomService || !customServiceName.trim())) {
+      showNotification('Please select at least one wash service or add a custom service.', 'error');
+      return;
+    }
+
+    if (counterPoints <= 0) {
+      showNotification('Points to award must be greater than zero.', 'error');
+      return;
+    }
+
     setAwardingPoints(true);
     try {
+      const selectedNames = (currentCarWash?.services || [])
+        .filter((s) => selectedServiceIds.includes(s.id))
+        .map((s) => s.name);
+
+      if (hasCustomService && customServiceName.trim()) {
+        selectedNames.push(customServiceName.trim());
+      }
+
+      const effectiveName = selectedNames.length > 0
+        ? (selectedNames.length === 1 ? selectedNames[0] : `${selectedNames.join(', ')} (${selectedNames.length} services)`)
+        : (customServiceName || 'Walk-in Wash');
+
       const token = localStorage.getItem('cw_token');
       const res = await fetch('/api/membership/counter-award', {
         method: 'POST',
@@ -86,13 +213,14 @@ export const StaffMembershipCounterModal: React.FC<StaffMembershipCounterModalPr
         body: JSON.stringify({
           membershipId: foundMember.id,
           carWashId,
-          serviceName: selectedServiceName,
+          serviceName: effectiveName,
+          services: selectedNames,
           points: counterPoints,
         })
       });
       if (res.ok) {
         const result = await res.json();
-        showNotification(`🎉 +${counterPoints} points awarded to ${foundMember.customerName || 'Customer'}! New Balance: ${result.newBalance} pts`, 'success');
+        showNotification(`🎉 +${counterPoints} points awarded to ${foundMember.customerName || 'Customer'}! Services: ${effectiveName}. New Balance: ${result.newBalance} pts`, 'success');
         setFoundMember({
           ...foundMember,
           pointsBalance: result.newBalance,
@@ -159,6 +287,7 @@ export const StaffMembershipCounterModal: React.FC<StaffMembershipCounterModalPr
         const data = await res.json();
         showNotification(`✅ Voucher ${data.redemptionCode} redeemed successfully!`, 'success');
         setFoundVoucher(data);
+        setConfirmedSessionVouchers((prev) => [data, ...prev.filter((v) => v.id !== data.id)]);
       } else {
         const err = await res.json();
         showNotification(err.error || 'Redemption failed', 'error');
@@ -290,35 +419,146 @@ export const StaffMembershipCounterModal: React.FC<StaffMembershipCounterModalPr
                     </div>
                   </div>
 
-                  <div className="border-t border-indigo-100 pt-3 space-y-2 text-xs">
-                    <span className="font-bold text-slate-800 block">Award Points for Completed Wash:</span>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-[10px] font-bold text-slate-500 block mb-1">Service Description</label>
-                        <input
-                          type="text"
-                          value={selectedServiceName}
-                          onChange={(e) => setSelectedServiceName(e.target.value)}
-                          placeholder="e.g. Deluxe Wash"
-                          className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs"
-                        />
+                  <div className="border-t border-indigo-100 pt-3 space-y-3 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-800 block">Select Completed Services (Choose Several):</span>
+                      <div className="flex items-center gap-1.5 text-[10px] font-bold">
+                        <button
+                          type="button"
+                          onClick={handleSelectAllServices}
+                          className="px-2 py-0.5 text-indigo-600 hover:bg-indigo-50 rounded cursor-pointer"
+                        >
+                          Select All
+                        </button>
+                        <span className="text-slate-300">|</span>
+                        <button
+                          type="button"
+                          onClick={handleClearAllServices}
+                          className="px-2 py-0.5 text-slate-500 hover:bg-slate-100 rounded cursor-pointer"
+                        >
+                          Clear
+                        </button>
                       </div>
+                    </div>
+
+                    {/* Multi-Service Cards Grid */}
+                    <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+                      {currentCarWash?.services && currentCarWash.services.length > 0 ? (
+                        currentCarWash.services.map((svc) => {
+                          const isSelected = selectedServiceIds.includes(svc.id);
+                          const pts = getServicePoints(svc);
+                          return (
+                            <div
+                              key={svc.id}
+                              onClick={() => toggleService(svc.id)}
+                              className={`p-2 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-2.5 ${
+                                isSelected
+                                  ? 'bg-indigo-50 border-indigo-400 shadow-2xs'
+                                  : 'bg-white border-slate-200 hover:border-slate-300'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <div className={`w-3.5 h-3.5 rounded flex items-center justify-center shrink-0 transition-colors ${
+                                  isSelected ? 'bg-indigo-600 text-white' : 'border border-slate-300 bg-white'
+                                }`}>
+                                  {isSelected && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-xs font-bold text-slate-900 truncate">{svc.name}</p>
+                                  <p className="text-[10px] text-slate-500 font-medium">BND {Number(svc.price).toFixed(2)}</p>
+                                </div>
+                              </div>
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-black shrink-0 font-mono ${
+                                isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-700'
+                              }`}>
+                                +{pts} PTS
+                              </span>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <p className="text-xs text-slate-400 italic">No services listed for this location.</p>
+                      )}
+                    </div>
+
+                    {/* Optional Custom Walk-In Service */}
+                    <div className="p-2.5 bg-white rounded-xl border border-slate-200 space-y-2">
+                      <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={hasCustomService}
+                          onChange={(e) => handleCustomServiceToggle(e.target.checked)}
+                          className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer"
+                        />
+                        <span>Add Custom / Other Walk-In Service</span>
+                      </label>
+
+                      {hasCustomService && (
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 animate-fade-in">
+                          <div className="sm:col-span-2">
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Service Name</label>
+                            <input
+                              type="text"
+                              value={customServiceName}
+                              onChange={(e) => setCustomServiceName(e.target.value)}
+                              placeholder="e.g. Engine Degrease"
+                              className="w-full px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                              required={hasCustomService}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Points</label>
+                            <input
+                              type="number"
+                              min="0"
+                              value={customServicePoints}
+                              onChange={(e) => handleCustomPointsChange(parseInt(e.target.value) || 0)}
+                              className="w-full px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold font-mono"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Points Sum Bar */}
+                    <div className="bg-indigo-50/80 p-2.5 rounded-xl border border-indigo-150 flex items-center justify-between gap-2">
                       <div>
-                        <label className="text-[10px] font-bold text-slate-500 block mb-1">Points to Award</label>
+                        <span className="text-[11px] font-bold text-slate-700 block">Total Points to Award:</span>
+                        <span className="text-[10px] text-slate-500">
+                          {selectedServiceIds.length + (hasCustomService && customServiceName.trim() ? 1 : 0)} services selected
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {manualPointsOverride && (
+                          <button
+                            type="button"
+                            onClick={handleResetToCalculated}
+                            className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-0.5 cursor-pointer"
+                            title="Reset to calculated total"
+                          >
+                            <RotateCcw className="w-2.5 h-2.5" /> Auto
+                          </button>
+                        )}
                         <input
                           type="number"
                           min="1"
+                          max="5000"
                           value={counterPoints}
-                          onChange={(e) => setCounterPoints(Number(e.target.value))}
-                          className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold font-mono"
+                          onChange={(e) => {
+                            setCounterPoints(Math.max(0, parseInt(e.target.value) || 0));
+                            setManualPointsOverride(true);
+                          }}
+                          className="w-20 px-2 py-1 bg-white border border-indigo-200 rounded-lg text-sm font-black font-mono text-indigo-700 text-right"
+                          required
                         />
+                        <span className="text-xs font-extrabold text-indigo-900 font-mono">PTS</span>
                       </div>
                     </div>
 
                     <button
                       onClick={handleAwardCounterPoints}
                       disabled={awardingPoints}
-                      className="w-full mt-2 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-xl text-xs shadow-xs cursor-pointer disabled:opacity-50"
+                      className="w-full mt-2 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-xl text-xs shadow-xs cursor-pointer disabled:opacity-50 transition-colors flex items-center justify-center gap-1.5"
                     >
                       {awardingPoints ? 'Awarding Points...' : `Award +${counterPoints} Points Now`}
                     </button>
@@ -417,15 +657,59 @@ export const StaffMembershipCounterModal: React.FC<StaffMembershipCounterModalPr
                     <button
                       onClick={handleConfirmRedeem}
                       disabled={confirmingVoucher}
-                      className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl text-xs shadow-xs cursor-pointer disabled:opacity-50"
+                      className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl text-xs shadow-xs cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
                     >
                       {confirmingVoucher ? 'Confirming...' : 'Confirm Voucher Redemption'}
                     </button>
                   ) : (
-                    <div className="p-3 bg-emerald-50 text-emerald-900 rounded-xl text-center text-xs font-bold">
-                      ✓ This voucher has already been confirmed and redeemed.
+                    <div className="space-y-2">
+                      <div className="p-3 bg-emerald-50 text-emerald-900 rounded-xl text-center text-xs font-bold border border-emerald-200">
+                        ✓ This voucher has been confirmed and redeemed.
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFoundVoucher(null);
+                          setVoucherInput('');
+                        }}
+                        className="w-full py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-indigo-200"
+                      >
+                        <Plus className="h-3.5 w-3.5" /> Validate Another Voucher for Customer
+                      </button>
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* Session Confirmed Vouchers List */}
+              {confirmedSessionVouchers.length > 0 && (
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                    <span className="flex items-center gap-1.5">
+                      <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                      Session Confirmed Vouchers ({confirmedSessionVouchers.length})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmedSessionVouchers([])}
+                      className="text-[10px] text-slate-400 hover:text-slate-600 font-normal cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                  <div className="divide-y divide-slate-200/60 max-h-32 overflow-y-auto">
+                    {confirmedSessionVouchers.map((v) => (
+                      <div key={v.id} className="py-1.5 flex items-center justify-between text-xs">
+                        <div className="min-w-0 pr-2">
+                          <span className="font-mono font-bold text-slate-900 block text-[11px]">{v.redemptionCode}</span>
+                          <span className="text-[10px] text-slate-500 truncate block">{v.rewardTitle}</span>
+                        </div>
+                        <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-100 text-emerald-800 shrink-0">
+                          REDEEMED
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

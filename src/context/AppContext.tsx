@@ -420,9 +420,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       if (err.data?.requireOtp) {
         showNotification(err.message || 'Please verify your email address before logging in.', 'error');
+        const targetEmail = err.data.email || email;
+        if (targetEmail) {
+          localStorage.setItem('cw_pending_reg_email', targetEmail);
+          sessionStorage.setItem('cw_pending_reg_email', targetEmail);
+        }
         return {
           requireOtp: true,
-          email: err.data.email || email,
+          email: targetEmail,
           sandboxCode: err.data.sandboxCode
         };
       }
@@ -513,6 +518,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       if (data.requireOtp) {
         showNotification(data.message || 'Verification code sent to your email address.', 'success');
+        if (data.email) {
+          localStorage.setItem('cw_pending_reg_email', data.email);
+          sessionStorage.setItem('cw_pending_reg_email', data.email);
+        }
         return {
           success: true,
           requireOtp: true,
@@ -525,6 +534,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setToken(data.token);
       localStorage.setItem('cw_user', JSON.stringify(data.user));
       localStorage.setItem('cw_token', data.token);
+      localStorage.removeItem('cw_pending_reg_email');
+      sessionStorage.removeItem('cw_pending_reg_email');
+      sessionStorage.removeItem('cw_pending_reg_code');
       showNotification(`Account created successfully! Welcome, ${data.user.name}!`, 'success');
       return { success: true };
     } catch (err: any) {
@@ -547,6 +559,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setToken(data.token);
       localStorage.setItem('cw_user', JSON.stringify(data.user));
       localStorage.setItem('cw_token', data.token);
+      localStorage.removeItem('cw_pending_reg_email');
+      sessionStorage.removeItem('cw_pending_reg_email');
+      sessionStorage.removeItem('cw_pending_reg_code');
       showNotification(`Email verified! Welcome to Autoshine BN, ${data.user.name}!`, 'success');
       return true;
     } catch (err: any) {

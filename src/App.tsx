@@ -20,7 +20,7 @@ import { BookingFlowModal } from './components/BookingFlowModal.js';
 import { Role, CarWash } from './types.js';
 import { isValidEmail } from './lib/validation.js';
 import { useModalBack } from './utils/useBackHandler.js';
-import { Lock, Mail, UserPlus, LogIn, Sparkles, Compass, Sliders, Briefcase, Shield, ShieldAlert, KeyRound, Check, Info, X, AlertTriangle, LogOut, Eye, EyeOff, Building, Phone, MapPin, Bell } from 'lucide-react';
+import { Lock, Mail, UserPlus, LogIn, Sparkles, Compass, Sliders, Briefcase, Shield, ShieldAlert, KeyRound, Check, CheckCircle, ExternalLink, Info, X, AlertTriangle, LogOut, Eye, EyeOff, Building, Phone, MapPin, Bell } from 'lucide-react';
 import autoshineLogo from './assets/images/autoshine_logo.jpg';
 
 const MainAppContent: React.FC = () => {
@@ -50,12 +50,47 @@ const MainAppContent: React.FC = () => {
   });
 
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [isRegisterMode, setIsRegisterMode] = useState(() => window.location.pathname === '/register');
-  const [isForgotMode, setIsForgotMode] = useState(() => window.location.pathname === '/forgot-password');
-  const [isResetMode, setIsResetMode] = useState(() => window.location.pathname === '/reset-password');
-  const [isRegisterOtpMode, setIsRegisterOtpMode] = useState(false);
-  const [pendingRegisterEmail, setPendingRegisterEmail] = useState('');
-  const [registerOtpCode, setRegisterOtpCode] = useState('');
+
+  // Parse initial auth & verification query params and stored state
+  const initialUrlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
+  const initialPath = typeof window !== 'undefined' ? window.location.pathname : '';
+  const initialVerifyParam = initialUrlParams.get('verify') === 'true' || initialUrlParams.has('verify');
+  const storedPendingEmail = typeof window !== 'undefined' ? (localStorage.getItem('cw_pending_reg_email') || sessionStorage.getItem('cw_pending_reg_email') || '') : '';
+  const initialEmailParam = initialUrlParams.get('email') || storedPendingEmail;
+  const initialCodeParam = initialUrlParams.get('code') || initialUrlParams.get('otp') || (typeof window !== 'undefined' ? (sessionStorage.getItem('cw_pending_reg_code') || '') : '') || '';
+
+  const isVerifyPath = initialPath === '/verify-email' || initialPath === '/verify';
+  const isRegisterPath = initialPath === '/register' || initialPath.startsWith('/register');
+  const isReturningFromFallbackLink = Boolean(
+    initialVerifyParam ||
+    initialUrlParams.has('code') ||
+    initialUrlParams.has('otp') ||
+    isVerifyPath
+  );
+
+  const shouldStartInOtpMode = Boolean(
+    isReturningFromFallbackLink ||
+    (isRegisterPath && Boolean(initialEmailParam))
+  ) && Boolean(initialEmailParam || initialCodeParam);
+
+  // Preserve initial registration state in storage if present
+  if (typeof window !== 'undefined' && initialEmailParam) {
+    try {
+      localStorage.setItem('cw_pending_reg_email', initialEmailParam);
+      sessionStorage.setItem('cw_pending_reg_email', initialEmailParam);
+      if (initialCodeParam) {
+        sessionStorage.setItem('cw_pending_reg_code', initialCodeParam);
+      }
+    } catch {}
+  }
+
+  const [isRegisterMode, setIsRegisterMode] = useState(() => initialPath === '/register' || initialPath === '/verify-email' || initialPath === '/verify' || initialVerifyParam);
+  const [isForgotMode, setIsForgotMode] = useState(() => initialPath === '/forgot-password');
+  const [isResetMode, setIsResetMode] = useState(() => initialPath === '/reset-password');
+  const [isRegisterOtpMode, setIsRegisterOtpMode] = useState(() => shouldStartInOtpMode);
+  const [pendingRegisterEmail, setPendingRegisterEmail] = useState(() => initialEmailParam);
+  const [registerOtpCode, setRegisterOtpCode] = useState(() => initialCodeParam);
+  const [hasRestoredSessionFromLink] = useState(() => Boolean(isReturningFromFallbackLink && initialEmailParam));
   const [registerOtpDevCode, setRegisterOtpDevCode] = useState<string | null>(null);
   const [isAdminOtpMode, setIsAdminOtpMode] = useState(false);
   const [pendingAdminEmail, setPendingAdminEmail] = useState('');
@@ -216,10 +251,48 @@ const MainAppContent: React.FC = () => {
         window.history.replaceState({ path: targetPath }, '', targetPath);
       }
     } else {
-      if (path === '/register') {
+      const searchParams = new URLSearchParams(window.location.search);
+      const isVerifyRoute =
+        path === '/verify-email' ||
+        path === '/verify' ||
+        (path === '/register' &&
+          (searchParams.get('verify') === 'true' ||
+            searchParams.has('verify') ||
+            searchParams.has('code') ||
+            searchParams.has('otp')));
+      const emailInQuery = searchParams.get('email');
+      const codeInQuery = searchParams.get('code') || searchParams.get('otp');
+
+      if (isVerifyRoute) {
+        setIsRegisterMode(true);
+        setIsRegisterOtpMode(true);
+        setIsForgotMode(false);
+        setIsResetMode(false);
+        const storedEmail = localStorage.getItem('cw_pending_reg_email') || sessionStorage.getItem('cw_pending_reg_email');
+        const targetEmail = emailInQuery || storedEmail;
+        if (targetEmail) {
+          setPendingRegisterEmail(targetEmail);
+          localStorage.setItem('cw_pending_reg_email', targetEmail);
+          sessionStorage.setItem('cw_pending_reg_email', targetEmail);
+        }
+        if (codeInQuery) {
+          setRegisterOtpCode(codeInQuery);
+          sessionStorage.setItem('cw_pending_reg_code', codeInQuery);
+        }
+      } else if (path === '/register') {
         setIsRegisterMode(true);
         setIsForgotMode(false);
         setIsResetMode(false);
+        const storedEmail = localStorage.getItem('cw_pending_reg_email') || sessionStorage.getItem('cw_pending_reg_email');
+        if (emailInQuery) {
+          setPendingRegisterEmail(emailInQuery);
+          localStorage.setItem('cw_pending_reg_email', emailInQuery);
+          sessionStorage.setItem('cw_pending_reg_email', emailInQuery);
+          setIsRegisterOtpMode(true);
+        } else if (storedEmail) {
+          setPendingRegisterEmail(storedEmail);
+          setIsRegisterOtpMode(true);
+        }
       } else if (path === '/forgot-password') {
         setIsForgotMode(true);
         setIsRegisterMode(false);
@@ -267,10 +340,48 @@ const MainAppContent: React.FC = () => {
           return;
         }
 
-        if (path === '/register') {
+        const searchParams = new URLSearchParams(window.location.search);
+        const isVerifyRoute =
+          path === '/verify-email' ||
+          path === '/verify' ||
+          (path === '/register' &&
+            (searchParams.get('verify') === 'true' ||
+              searchParams.has('verify') ||
+              searchParams.has('code') ||
+              searchParams.has('otp')));
+        const emailInQuery = searchParams.get('email');
+        const codeInQuery = searchParams.get('code') || searchParams.get('otp');
+
+        if (isVerifyRoute) {
+          setIsRegisterMode(true);
+          setIsRegisterOtpMode(true);
+          setIsForgotMode(false);
+          setIsResetMode(false);
+          const storedEmail = localStorage.getItem('cw_pending_reg_email') || sessionStorage.getItem('cw_pending_reg_email');
+          const targetEmail = emailInQuery || storedEmail;
+          if (targetEmail) {
+            setPendingRegisterEmail(targetEmail);
+            localStorage.setItem('cw_pending_reg_email', targetEmail);
+            sessionStorage.setItem('cw_pending_reg_email', targetEmail);
+          }
+          if (codeInQuery) {
+            setRegisterOtpCode(codeInQuery);
+            sessionStorage.setItem('cw_pending_reg_code', codeInQuery);
+          }
+        } else if (path === '/register') {
           setIsRegisterMode(true);
           setIsForgotMode(false);
           setIsResetMode(false);
+          const storedEmail = localStorage.getItem('cw_pending_reg_email') || sessionStorage.getItem('cw_pending_reg_email');
+          if (emailInQuery) {
+            setPendingRegisterEmail(emailInQuery);
+            localStorage.setItem('cw_pending_reg_email', emailInQuery);
+            sessionStorage.setItem('cw_pending_reg_email', emailInQuery);
+            setIsRegisterOtpMode(true);
+          } else if (storedEmail) {
+            setPendingRegisterEmail(storedEmail);
+            setIsRegisterOtpMode(true);
+          }
         } else if (path === '/forgot-password') {
           setIsForgotMode(true);
           setIsRegisterMode(false);
@@ -377,6 +488,8 @@ const MainAppContent: React.FC = () => {
           setPendingRegisterEmail(targetRegEmail);
           setRegisterOtpDevCode(res.sandboxCode || null);
           setRegisterOtpCode(res.sandboxCode || '');
+          localStorage.setItem('cw_pending_reg_email', targetRegEmail);
+          sessionStorage.setItem('cw_pending_reg_email', targetRegEmail);
         } else {
           setIsRegisterMode(false);
           setEmail('');
@@ -400,6 +513,8 @@ const MainAppContent: React.FC = () => {
           setPendingRegisterEmail(regTargetEmail);
           setRegisterOtpDevCode(res.sandboxCode || null);
           setRegisterOtpCode(res.sandboxCode || '');
+          localStorage.setItem('cw_pending_reg_email', regTargetEmail);
+          sessionStorage.setItem('cw_pending_reg_email', regTargetEmail);
         }
       }
     }
@@ -420,6 +535,9 @@ const MainAppContent: React.FC = () => {
       setName('');
       setRegisterOtpCode('');
       setPendingRegisterEmail('');
+      localStorage.removeItem('cw_pending_reg_email');
+      sessionStorage.removeItem('cw_pending_reg_email');
+      sessionStorage.removeItem('cw_pending_reg_code');
     }
     setAuthLoading(false);
   };
@@ -869,6 +987,18 @@ const MainAppContent: React.FC = () => {
                     </div>
                   </div>
 
+                  {hasRestoredSessionFromLink && (
+                    <div className="my-3 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 flex items-start gap-2 shadow-2xs">
+                      <CheckCircle className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-bold text-emerald-950">Registration Session Restored</p>
+                        <p className="text-[11px] text-emerald-800 mt-0.5">
+                          You returned via your verification email link. Your registration state has been preserved—enter your 6-digit code below to activate your account.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
                   {Boolean(isDevMode || registerOtpDevCode) && (
                     <div className="my-3 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs">
                       <div className="flex items-center gap-2">
@@ -923,10 +1053,13 @@ const MainAppContent: React.FC = () => {
                         onClick={() => {
                           setIsRegisterOtpMode(false);
                           setIsRegisterMode(true);
+                          localStorage.removeItem('cw_pending_reg_email');
+                          sessionStorage.removeItem('cw_pending_reg_email');
+                          sessionStorage.removeItem('cw_pending_reg_code');
                         }}
                         className="text-xs text-sky-600 hover:text-sky-500 font-bold font-sans cursor-pointer"
                       >
-                        Change Details
+                        Change Details / Start Over
                       </button>
                     </div>
                   </form>
@@ -1133,6 +1266,23 @@ const MainAppContent: React.FC = () => {
                   </div>
 
                   <form onSubmit={handleAuthSubmit} className="space-y-4">
+                    {isRegisterMode && Boolean(pendingRegisterEmail) && (
+                      <div className="p-3 bg-sky-50 border border-sky-200 rounded-xl text-xs text-sky-900 flex items-center justify-between gap-2 shadow-2xs">
+                        <div className="flex items-center gap-2 overflow-hidden">
+                          <Mail className="h-4 w-4 text-sky-600 shrink-0" />
+                          <span className="truncate">
+                            Pending registration verification for: <strong>{pendingRegisterEmail}</strong>
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setIsRegisterOtpMode(true)}
+                          className="px-2.5 py-1 bg-sky-600 hover:bg-sky-500 text-white rounded-lg font-bold text-[11px] shrink-0 cursor-pointer shadow-2xs"
+                        >
+                          Enter Code &rarr;
+                        </button>
+                      </div>
+                    )}
                     {isRegisterMode && (
                       <div>
                         <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Full Name</label>

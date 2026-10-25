@@ -23,7 +23,9 @@ import {
   Sparkles,
   Sliders,
   DollarSign,
-  Trash2
+  Trash2,
+  Filter,
+  CheckCheck
 } from 'lucide-react';
 import { 
   CarWash, 
@@ -78,7 +80,7 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
   token,
   currentUser,
 }) => {
-  const [activeTab, setActiveTab] = useState<'config' | 'rules' | 'rewards' | 'members' | 'redemptions' | 'poster'>('config');
+  const [activeTab, setActiveTab] = useState<'config' | 'rules' | 'rewards' | 'members' | 'redemptions' | 'counter' | 'poster'>('config');
   const [loading, setLoading] = useState(true);
 
   // 1. Config State
@@ -134,8 +136,12 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
     setTimeout(() => setToastBanner(null), 3500);
   };
 
-  // 5. Redemptions History
+  // 5. Redemptions History & Actions
   const [redemptions, setRedemptions] = useState<MembershipRedemption[]>([]);
+  const [redemptionStatusFilter, setRedemptionStatusFilter] = useState<'ALL' | 'PENDING' | 'REDEEMED'>('ALL');
+  const [redemptionSearch, setRedemptionSearch] = useState('');
+  const [selectedRedemptionCodes, setSelectedRedemptionCodes] = useState<string[]>([]);
+  const [isConfirmingRedemptions, setIsConfirmingRedemptions] = useState(false);
 
   // 6. QR Poster State
   const [posterQrUrl, setPosterQrUrl] = useState('');
@@ -488,6 +494,110 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
     );
   });
 
+  // Redemption Management Handlers
+  const handleConfirmSingleVoucher = async (redemption: MembershipRedemption) => {
+    setIsConfirmingRedemptions(true);
+    try {
+      const res = await fetch('/api/membership/confirm-redemption', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          tokenOrCode: redemption.redemptionToken || redemption.redemptionCode,
+          carWashId: carWash.id,
+        })
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setRedemptions((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+        setSelectedRedemptionCodes((prev) =>
+          prev.filter((c) => c !== redemption.redemptionCode && c !== redemption.redemptionToken)
+        );
+        showBanner(`✅ Voucher ${updated.redemptionCode} (${updated.rewardTitle}) confirmed successfully!`, 'success');
+      } else {
+        const err = await res.json();
+        showBanner(err.error || 'Failed to confirm voucher redemption', 'error');
+      }
+    } catch (e: any) {
+      showBanner(e.message || 'Error confirming voucher', 'error');
+    } finally {
+      setIsConfirmingRedemptions(false);
+    }
+  };
+
+  const handleConfirmSelectedVouchers = async () => {
+    if (selectedRedemptionCodes.length === 0) return;
+    setIsConfirmingRedemptions(true);
+    try {
+      const res = await fetch('/api/membership/confirm-redemption', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          tokensOrCodes: selectedRedemptionCodes,
+          carWashId: carWash.id,
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.confirmedList && Array.isArray(data.confirmedList)) {
+          const confirmedMap = new Map<string, MembershipRedemption>(
+            data.confirmedList.map((item: MembershipRedemption) => [item.id, item])
+          );
+          setRedemptions((prev) => prev.map((r) => confirmedMap.get(r.id) || r));
+          showBanner(`✅ Successfully confirmed ${data.confirmedCount || data.confirmedList.length} vouchers!`, 'success');
+        }
+        setSelectedRedemptionCodes([]);
+      } else {
+        const err = await res.json();
+        showBanner(err.error || 'Failed to confirm selected vouchers', 'error');
+      }
+    } catch (e: any) {
+      showBanner(e.message || 'Error confirming vouchers', 'error');
+    } finally {
+      setIsConfirmingRedemptions(false);
+    }
+  };
+
+  const filteredRedemptions = redemptions.filter((r) => {
+    if (redemptionStatusFilter === 'PENDING' && r.status !== 'PENDING') return false;
+    if (redemptionStatusFilter === 'REDEEMED' && r.status !== 'REDEEMED') return false;
+    if (redemptionSearch.trim()) {
+      const q = redemptionSearch.toLowerCase();
+      const codeMatch = (r.redemptionCode || '').toLowerCase().includes(q);
+      const titleMatch = (r.rewardTitle || '').toLowerCase().includes(q);
+      const custMatch = (r.customerName || '').toLowerCase().includes(q);
+      if (!codeMatch && !titleMatch && !custMatch) return false;
+    }
+    return true;
+  });
+
+  const pendingFilteredRedemptions = filteredRedemptions.filter((r) => r.status === 'PENDING');
+  const allPendingSelected =
+    pendingFilteredRedemptions.length > 0 &&
+    pendingFilteredRedemptions.every((r) => selectedRedemptionCodes.includes(r.redemptionCode));
+
+  const handleToggleSelectAllPending = () => {
+    if (allPendingSelected) {
+      setSelectedRedemptionCodes([]);
+    } else {
+      setSelectedRedemptionCodes(pendingFilteredRedemptions.map((r) => r.redemptionCode));
+    }
+  };
+
+  const handleToggleSelectRow = (code: string) => {
+    setSelectedRedemptionCodes((prev) =>
+      prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]
+    );
+  };
+
+  const pendingVoucherTotal = redemptions.filter((r) => r.status === 'PENDING').length;
+  const redeemedVoucherTotal = redemptions.filter((r) => r.status === 'REDEEMED').length;
+
   return (
     <div className="space-y-6">
       {/* Header Banner */}
@@ -579,6 +689,21 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
           }`}
         >
           <Award className="h-4 w-4" /> Redemptions ({redemptions.length})
+          {pendingVoucherTotal > 0 && (
+            <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-amber-400 text-amber-950 font-black">
+              {pendingVoucherTotal}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab('counter')}
+          className={`px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 cursor-pointer ${
+            activeTab === 'counter'
+              ? 'bg-indigo-600 text-white shadow-md'
+              : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
+          }`}
+        >
+          <QrCode className="h-4 w-4" /> Counter Desk
         </button>
         <button
           onClick={() => setActiveTab('poster')}
@@ -942,76 +1067,251 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
         </div>
       )}
 
-      {/* TAB 5: REDEMPTIONS HISTORY */}
+      {/* TAB 5: REDEMPTIONS HISTORY & BATCH CONFIRMATION */}
       {activeTab === 'redemptions' && (
-        <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-sm space-y-4">
-          <div className="pb-2 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-sm space-y-5">
+          {/* Header */}
+          <div className="pb-3 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h3 className="text-base font-bold text-slate-800">Customer Voucher Redemptions</h3>
-              <p className="text-xs text-slate-400">Audit log of all vouchers redeemed by members at your station.</p>
+              <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                <Gift className="h-5 w-5 text-indigo-600" /> Customer Voucher Redemptions
+              </h3>
+              <p className="text-xs text-slate-400">
+                Audit log of all reward vouchers. Verify and confirm single or multiple vouchers.
+              </p>
             </div>
-            <button
-              type="button"
-              onClick={() => setShowCounterModal(true)}
-              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm self-start sm:self-auto"
-            >
-              <QrCode className="h-4 w-4" /> Scan &amp; Confirm Voucher
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowCounterModal(true)}
+                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm"
+              >
+                <QrCode className="h-4 w-4" /> Scan &amp; Confirm Voucher
+              </button>
+            </div>
           </div>
 
+          {/* Filter Bar & Search */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pt-1">
+            {/* Status Filter Pills */}
+            <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-2xl border border-slate-200 self-start">
+              <button
+                type="button"
+                onClick={() => setRedemptionStatusFilter('ALL')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  redemptionStatusFilter === 'ALL'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                All ({redemptions.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setRedemptionStatusFilter('PENDING')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  redemptionStatusFilter === 'PENDING'
+                    ? 'bg-amber-500 text-white shadow-xs'
+                    : 'text-amber-700 hover:bg-amber-100/60'
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5" />
+                Ready to Claim ({pendingVoucherTotal})
+              </button>
+              <button
+                type="button"
+                onClick={() => setRedemptionStatusFilter('REDEEMED')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  redemptionStatusFilter === 'REDEEMED'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-emerald-700 hover:bg-emerald-100/60'
+                }`}
+              >
+                <Check className="w-3.5 h-3.5" />
+                Redeemed ({redeemedVoucherTotal})
+              </button>
+            </div>
+
+            {/* Search Input */}
+            <div className="relative w-full md:w-72">
+              <Search className="h-4 w-4 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                value={redemptionSearch}
+                onChange={(e) => setRedemptionSearch(e.target.value)}
+                placeholder="Search voucher code, customer, reward..."
+                className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+          </div>
+
+          {/* Bulk Selection Bar (when 1 or more pending vouchers selected) */}
+          {selectedRedemptionCodes.length > 0 && (
+            <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fade-in shadow-xs">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 animate-pulse" />
+                <span className="text-xs font-bold text-indigo-950">
+                  {selectedRedemptionCodes.length} voucher{selectedRedemptionCodes.length > 1 ? 's' : ''} selected
+                </span>
+                <span className="text-[11px] text-indigo-700 hidden sm:inline">
+                  (Choose multiple vouchers to redeem them in a single batch)
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedRedemptionCodes([])}
+                  className="px-3 py-1.5 text-xs text-indigo-700 hover:text-indigo-900 font-semibold cursor-pointer"
+                >
+                  Clear Selection
+                </button>
+                <button
+                  type="button"
+                  disabled={isConfirmingRedemptions}
+                  onClick={handleConfirmSelectedVouchers}
+                  className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  {isConfirmingRedemptions ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Confirming...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCheck className="w-4 h-4" /> Confirm Selected ({selectedRedemptionCodes.length})
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Table */}
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs text-slate-600">
-              <thead className="bg-slate-50 text-slate-400 uppercase tracking-wider text-[10px] font-bold border-b border-slate-100">
+              <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider text-[10px] font-bold border-b border-slate-200">
                 <tr>
-                  <th className="px-4 py-3 rounded-l-xl">Voucher Code</th>
+                  <th className="px-4 py-3 rounded-l-xl w-10">
+                    <input
+                      type="checkbox"
+                      checked={allPendingSelected}
+                      onChange={handleToggleSelectAllPending}
+                      disabled={pendingFilteredRedemptions.length === 0}
+                      title="Select all pending vouchers"
+                      className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4 cursor-pointer disabled:opacity-40"
+                    />
+                  </th>
+                  <th className="px-4 py-3">Voucher Code</th>
                   <th className="px-4 py-3">Customer</th>
                   <th className="px-4 py-3">Reward Item</th>
                   <th className="px-4 py-3">Points Spent</th>
                   <th className="px-4 py-3">Date Claimed</th>
-                  <th className="px-4 py-3 text-right rounded-r-xl">Status</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3 text-right rounded-r-xl">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {redemptions.length === 0 ? (
+                {filteredRedemptions.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="text-center py-8 text-slate-400 italic">
-                      No voucher redemptions yet.
+                    <td colSpan={8} className="text-center py-10 text-slate-400 italic">
+                      {redemptions.length === 0
+                        ? 'No voucher redemptions recorded yet.'
+                        : 'No vouchers match the selected filter.'}
                     </td>
                   </tr>
                 ) : (
-                  redemptions.map((r) => (
-                    <tr key={r.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="px-4 py-3 font-mono font-bold text-slate-900">{r.redemptionCode}</td>
-                      <td className="px-4 py-3 font-semibold text-slate-800">{r.customerName || 'Customer'}</td>
-                      <td className="px-4 py-3 font-bold text-slate-700">{r.rewardTitle}</td>
-                      <td className="px-4 py-3 font-mono font-bold text-rose-600">-{r.pointsSpent} pts</td>
-                      <td className="px-4 py-3 text-slate-500">
-                        <div className="font-semibold text-slate-700">
-                          {r.createdAt ? new Date(r.createdAt).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }) : '—'}
-                        </div>
-                        {r.redeemedAt ? (
-                          <div className="text-[10px] text-emerald-600 font-bold flex items-center gap-1 mt-0.5">
-                            ✓ Redeemed: {new Date(r.redeemedAt).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
+                  filteredRedemptions.map((r) => {
+                    const isPending = r.status === 'PENDING';
+                    const isSelected = selectedRedemptionCodes.includes(r.redemptionCode);
+
+                    return (
+                      <tr
+                        key={r.id}
+                        className={`transition-colors ${
+                          isSelected ? 'bg-indigo-50/70' : 'hover:bg-slate-50/80'
+                        }`}
+                      >
+                        <td className="px-4 py-3">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            disabled={!isPending}
+                            onChange={() => handleToggleSelectRow(r.redemptionCode)}
+                            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="font-mono font-bold text-slate-900 block text-xs">
+                            {r.redemptionCode}
+                          </span>
+                          {r.redemptionToken && (
+                            <span className="font-mono text-[9px] text-slate-400 truncate max-w-[120px] block">
+                              tok: {r.redemptionToken.slice(0, 10)}...
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="font-semibold text-slate-800 block">{r.customerName || 'Customer'}</span>
+                          {r.customerEmail && (
+                            <span className="text-[10px] text-slate-400 block">{r.customerEmail}</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 font-bold text-slate-800">
+                          {r.rewardTitle}
+                        </td>
+                        <td className="px-4 py-3 font-mono font-bold text-rose-600">
+                          -{r.pointsSpent} pts
+                        </td>
+                        <td className="px-4 py-3 text-slate-500">
+                          <div className="font-semibold text-slate-700">
+                            {r.createdAt
+                              ? new Date(r.createdAt).toLocaleString(undefined, {
+                                  dateStyle: 'short',
+                                  timeStyle: 'short',
+                                })
+                              : '—'}
                           </div>
-                        ) : (
-                          <div className="text-[10px] text-amber-600 font-medium mt-0.5">
-                            ⏳ Ready to Claim
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                          r.status === 'PENDING'
-                            ? 'bg-amber-100 text-amber-800 animate-pulse'
-                            : r.status === 'REDEEMED'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : 'bg-slate-100 text-slate-600'
-                        }`}>
-                          {r.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))
+                          {r.redeemedAt ? (
+                            <div className="text-[10px] text-emerald-600 font-bold flex items-center gap-1 mt-0.5">
+                              ✓ Redeemed: {new Date(r.redeemedAt).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
+                            </div>
+                          ) : (
+                            <div className="text-[10px] text-amber-600 font-medium mt-0.5">
+                              ⏳ Ready to Claim
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${
+                              r.status === 'PENDING'
+                                ? 'bg-amber-100 text-amber-800 animate-pulse'
+                                : r.status === 'REDEEMED'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-slate-100 text-slate-600'
+                            }`}
+                          >
+                            {r.status === 'PENDING' ? 'Ready to Claim' : r.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {isPending ? (
+                            <button
+                              type="button"
+                              disabled={isConfirmingRedemptions}
+                              onClick={() => handleConfirmSingleVoucher(r)}
+                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-lg text-[11px] shadow-xs cursor-pointer transition-colors inline-flex items-center gap-1 disabled:opacity-50"
+                            >
+                              <Check className="w-3.5 h-3.5" /> Confirm
+                            </button>
+                          ) : (
+                            <span className="text-[11px] font-semibold text-emerald-600 inline-flex items-center gap-1">
+                              <CheckCircle className="w-3.5 h-3.5" /> Redeemed
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -1019,7 +1319,95 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
         </div>
       )}
 
-      {/* TAB 6: COUNTER QR POSTER */}
+      {/* TAB 6: COUNTER DESK TERMINAL WORKSPACE */}
+      {activeTab === 'counter' && (
+        <div className="space-y-6">
+          <div className="bg-gradient-to-br from-indigo-900 via-indigo-950 to-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div className="space-y-2">
+              <div className="inline-flex items-center gap-1.5 bg-emerald-500/20 border border-emerald-400/30 px-3 py-0.5 rounded-full text-emerald-300 text-xs font-semibold">
+                <QrCode className="h-3.5 w-3.5" />
+                <span>Station Front Counter Terminal</span>
+              </div>
+              <h3 className="text-xl sm:text-2xl font-black">Counter Desk &amp; Quick Redemptions</h3>
+              <p className="text-xs sm:text-sm text-indigo-200 max-w-xl">
+                Award points for multiple walk-in wash services simultaneously, or scan and confirm customer reward vouchers in single or bulk operations.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowCounterModal(true)}
+              className="px-5 py-3.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-2xl shadow-lg transition-all flex items-center gap-2 cursor-pointer text-xs self-start md:self-auto shrink-0"
+            >
+              <QrCode className="h-5 w-5" /> Launch Fullscreen Counter Terminal
+            </button>
+          </div>
+
+          {/* Quick Counter Workflows */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Award Points Card */}
+            <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="p-2.5 rounded-2xl bg-indigo-50 text-indigo-600">
+                  <Coins className="h-6 w-6" />
+                </span>
+                <span className="text-[10px] uppercase font-bold text-slate-400">Walk-In Counter</span>
+              </div>
+              <div>
+                <h4 className="font-bold text-slate-800 text-base">Award Walk-In Points (Multi-Service)</h4>
+                <p className="text-xs text-slate-500 mt-1">
+                  Customers can now be credited for multiple wash items (e.g., Express Wash + Vacuum + Tyre Polish) in a single transaction with automated sum calculation and custom items.
+                </p>
+              </div>
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCounterModal(true)}
+                  className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                >
+                  <Coins className="h-4 w-4" /> Award Walk-In Points
+                </button>
+              </div>
+            </div>
+
+            {/* Validate Vouchers Card */}
+            <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="p-2.5 rounded-2xl bg-emerald-50 text-emerald-600">
+                  <Gift className="h-6 w-6" />
+                </span>
+                <span className="text-[10px] uppercase font-bold text-slate-400">Voucher Desk</span>
+              </div>
+              <div>
+                <h4 className="font-bold text-slate-800 text-base">Verify &amp; Redeem Customer Vouchers</h4>
+                <p className="text-xs text-slate-500 mt-1">
+                  Quickly check voucher validity, redeem one voucher and validate another for the same customer without leaving the screen, or batch-confirm multiple vouchers.
+                </p>
+              </div>
+              <div className="pt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCounterModal(true)}
+                  className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                >
+                  <QrCode className="h-4 w-4" /> Scan Voucher QR
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRedemptionStatusFilter('PENDING');
+                    setActiveTab('redemptions');
+                  }}
+                  className="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                >
+                  View Pending ({pendingVoucherTotal})
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 7: COUNTER QR POSTER */}
       {activeTab === 'poster' && (
         <div className="space-y-6">
           <style>{`
