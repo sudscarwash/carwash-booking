@@ -1093,12 +1093,19 @@ export const AdminDashboard: React.FC = () => {
                           </span>
                         </td>
                         <td className="py-4 px-4">
-                          <span className={`inline-flex items-center gap-1 text-[11px] font-bold ${
-                            u.isActive ? 'text-emerald-600' : 'text-rose-500'
-                          }`}>
-                            {u.isActive ? <ShieldCheck className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
-                            {u.isActive ? 'ACTIVE' : 'LOCKED'}
-                          </span>
+                          <div className="flex flex-col gap-1">
+                            <span className={`inline-flex items-center gap-1 text-[11px] font-bold ${
+                              u.isActive ? 'text-emerald-600' : 'text-rose-500'
+                            }`}>
+                              {u.isActive ? <ShieldCheck className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
+                              {u.isActive ? 'ACTIVE' : 'LOCKED'}
+                            </span>
+                            {u.isEmailVerified === false && (
+                              <span className="inline-flex items-center text-[10px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded font-mono font-bold w-fit">
+                                UNVERIFIED
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="py-4 px-4 text-slate-400 font-mono text-xs">{u.createdAt ? u.createdAt.substring(0, 10) : 'N/A'}</td>
                         <td className="py-4 px-4 text-right space-x-2">

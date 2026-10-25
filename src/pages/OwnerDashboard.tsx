@@ -4774,9 +4774,15 @@ export const OwnerDashboard: React.FC = () => {
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
-                      <span className="bg-indigo-50 text-indigo-800 text-[9px] font-bold px-1.5 py-0.5 rounded font-mono border border-indigo-100 hidden sm:inline-block">
-                        Staff
-                      </span>
+                      {emp.isEmailVerified === false ? (
+                        <span className="bg-amber-50 text-amber-800 text-[9px] font-bold px-1.5 py-0.5 rounded font-mono border border-amber-200">
+                          Pending Verification
+                        </span>
+                      ) : (
+                        <span className="bg-emerald-50 text-emerald-800 text-[9px] font-bold px-1.5 py-0.5 rounded font-mono border border-emerald-100 hidden sm:inline-block">
+                          Verified Staff
+                        </span>
+                      )}
 
                       {/* Edit Button */}
                       <button

@@ -987,6 +987,16 @@ const MainAppContent: React.FC = () => {
                     </div>
                   </div>
 
+                  <div className="my-3 p-3 bg-sky-50 border border-sky-200 rounded-xl text-xs text-sky-950 flex items-start gap-2.5 shadow-2xs">
+                    <Info className="h-4 w-4 text-sky-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-bold text-sky-950">Verification Required to Access Account</p>
+                      <p className="text-[11px] text-sky-800 mt-0.5 leading-relaxed">
+                        Your account requires email verification before accessing your dashboard. A 6-digit code was sent to <strong className="font-semibold text-sky-900">{pendingRegisterEmail || email || 'your email'}</strong>. Enter the code below or click the return link in your email.
+                      </p>
+                    </div>
+                  </div>
+
                   {hasRestoredSessionFromLink && (
                     <div className="my-3 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 flex items-start gap-2 shadow-2xs">
                       <CheckCircle className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />

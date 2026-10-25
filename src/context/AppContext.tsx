@@ -363,7 +363,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       data = await res.json().catch(() => ({}));
     } else {
       const text = await res.text().catch(() => '');
-      data = { error: text || `HTTP error ${res.status}` };
+      let cleanError = text;
+      // Strip raw HTML if error was returned as HTML by proxies or servers
+      if (typeof text === 'string' && (text.includes('<html') || text.includes('<!DOCTYPE') || text.trim().startsWith('<'))) {
+        if (res.status === 403 || text.includes('403') || text.toLowerCase().includes('forbidden')) {
+          cleanError = 'Email verification required: Please enter the 6-digit verification code sent to your email, or use the link in the email to activate your account.';
+        } else {
+          cleanError = `Service request returned status ${res.status}. Please check your connection and try again.`;
+        }
+      }
+      data = { error: cleanError || `HTTP error ${res.status}`, rawHtml: text.includes('<html') };
     }
 
     if (!res.ok) {
@@ -375,6 +384,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       const err: any = new Error(data.error || `Request failed with status ${res.status}`);
       err.data = data;
+      err.status = res.status;
       throw err;
     }
     return data;
@@ -402,6 +412,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         };
       }
 
+      // Registration Email OTP Challenge (for unverified accounts across all roles)
+      if (data.requireOtp) {
+        showNotification(
+          data.message || 'Email verification required: A 6-digit verification code has been sent to your email. Please enter the code below to log in.',
+          'info'
+        );
+        const targetEmail = data.email || email.trim();
+        if (targetEmail) {
+          localStorage.setItem('cw_pending_reg_email', targetEmail);
+          sessionStorage.setItem('cw_pending_reg_email', targetEmail);
+        }
+        return {
+          requireOtp: true,
+          email: targetEmail,
+          sandboxCode: data.sandboxCode,
+          message: data.message
+        };
+      }
+
       setUser(data.user);
       setToken(data.token);
       localStorage.setItem('cw_user', JSON.stringify(data.user));
@@ -419,7 +448,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         };
       }
       if (err.data?.requireOtp) {
-        showNotification(err.message || 'Please verify your email address before logging in.', 'error');
+        showNotification(err.message || 'Email verification required: A 6-digit verification code has been sent to your email. Please check your inbox.', 'info');
         const targetEmail = err.data.email || email;
         if (targetEmail) {
           localStorage.setItem('cw_pending_reg_email', targetEmail);
@@ -428,10 +457,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return {
           requireOtp: true,
           email: targetEmail,
-          sandboxCode: err.data.sandboxCode
+          sandboxCode: err.data.sandboxCode,
+          message: err.message
         };
       }
-      showNotification(err.message, 'error');
+
+      let errorMsg = err.message || 'Failed to log in.';
+      // Catch and clean any remaining 403 or HTML errors
+      if (
+        err.status === 403 ||
+        (typeof errorMsg === 'string' && (errorMsg.includes('<html') || errorMsg.includes('403') || errorMsg.toLowerCase().includes('forbidden')))
+      ) {
+        errorMsg = 'Email verification required: A 6-digit verification code has been sent to your email. Please check your inbox (or spam folder) and enter your code to activate your account.';
+        const targetEmail = email.trim();
+        if (targetEmail) {
+          localStorage.setItem('cw_pending_reg_email', targetEmail);
+          sessionStorage.setItem('cw_pending_reg_email', targetEmail);
+        }
+        showNotification(errorMsg, 'error');
+        return {
+          requireOtp: true,
+          email: targetEmail,
+          message: errorMsg
+        };
+      }
+
+      showNotification(errorMsg, 'error');
       return false;
     } finally {
       setLoading(false);

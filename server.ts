@@ -349,10 +349,15 @@ const sendEmailVerificationOTP = async (
   email: string,
   name: string,
   code: string,
-  verificationUrl?: string
+  verificationUrl?: string,
+  extraOptions?: {
+    role?: string;
+    businessName?: string;
+    initialPassword?: string;
+  }
 ): Promise<boolean> => {
   if (typeof emailServiceSafe.sendEmailVerificationOTP === 'function') {
-    return emailServiceSafe.sendEmailVerificationOTP(email, name, code, verificationUrl);
+    return emailServiceSafe.sendEmailVerificationOTP(email, name, code, verificationUrl, extraOptions);
   }
   const defaultUrl = verificationUrl || `https://autoshinebn.com/register?verify=true&email=${encodeURIComponent(email)}&code=${encodeURIComponent(code)}`;
   internalRecordEmailLog({
@@ -1185,7 +1190,7 @@ async function startServer() {
         }
       }
 
-      if (user.isEmailVerified === false) {
+      if (user.isEmailVerified === false || (user.isEmailVerified as unknown) === 0) {
         let activeOtp = await getPasswordResetByEmail(user.email);
         let otpCode = activeOtp?.token;
 
@@ -1196,16 +1201,17 @@ async function startServer() {
           otpCode = newOtp;
           const appBaseUrl = getRequestAppUrl(req);
           const verificationUrl = `${appBaseUrl}/register?verify=true&email=${encodeURIComponent(user.email)}&code=${encodeURIComponent(newOtp)}`;
-          await sendEmailVerificationOTP(user.email, user.name, newOtp, verificationUrl).catch(() => {});
+          await sendEmailVerificationOTP(user.email, user.name, newOtp, verificationUrl, { role: user.role }).catch(() => {});
         }
 
         const isLiveDelivered = isEmailDeliveryActive();
         const shouldProvideDevCode = !isLiveDelivered || isRenderEnv || isExplicitDev || !isProductionEnv;
 
-        res.status(403).json({
-          error: 'Your email address is not verified yet. Please enter the 6-digit verification code sent to your email to log in.',
+        res.status(200).json({
           requireOtp: true,
           email: user.email,
+          message: 'Email verification required: A 6-digit verification code has been sent to your email. Please check your inbox and enter the code to log in.',
+          error: 'Email verification required: A 6-digit verification code was sent to your email. Please check your inbox and enter the code below to log in.',
           sandboxCode: shouldProvideDevCode ? otpCode : undefined
         });
         return;
@@ -3595,6 +3601,7 @@ async function startServer() {
           name,
           role: Role.EMPLOYEE,
           isActive: true,
+          isEmailVerified: false,
           businessId,
           passwordHash,
           createdAt: new Date().toISOString(),
@@ -3602,24 +3609,47 @@ async function startServer() {
 
         await createUser(newEmployee);
 
-        // Dispatch welcome and credentials email to employee
-        await sendRegistrationWelcomeEmail({
-          email: newEmployee.email,
-          name: newEmployee.name,
-          role: Role.EMPLOYEE,
-          businessName: targetBusiness?.name || 'Car Wash Location',
-          initialPassword: password
-        }).catch((e) => console.error('[Employee Welcome Email Error]:', e));
+        // Generate 6-digit email verification OTP
+        const verificationOtp = Math.floor(100000 + Math.random() * 900000).toString();
+        const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // 15 mins expiry
+        await createPasswordReset(newEmployee.email, verificationOtp, expiresAt);
+
+        console.log('========================================================');
+        console.log(`🔐 [EMPLOYEE REGISTRATION VERIFICATION OTP]: Email: ${newEmployee.email} -> CODE: ${verificationOtp}`);
+        console.log('========================================================');
+
+        // Dispatch Email Verification OTP with direct return link back to verification page
+        const appBaseUrl = getRequestAppUrl(req);
+        const verificationUrl = `${appBaseUrl}/register?verify=true&email=${encodeURIComponent(newEmployee.email)}&code=${encodeURIComponent(verificationOtp)}`;
+        const emailSent = await sendEmailVerificationOTP(
+          newEmployee.email,
+          newEmployee.name,
+          verificationOtp,
+          verificationUrl,
+          {
+            role: Role.EMPLOYEE,
+            businessName: targetBusiness?.name || 'Car Wash Location',
+            initialPassword: password
+          }
+        );
 
         await addAuditLog(
           req.user!.id,
           req.user!.email,
           'EMPLOYEE_CREATE',
-          `Created employee: ${newEmployee.name} (${newEmployee.email}) for business: ${businessId}`
+          `Created employee: ${newEmployee.name} (${newEmployee.email}) for business: ${businessId}. Verification OTP dispatched (${emailSent ? 'Delivered via Resend' : 'Sandbox fallback'}).`
         );
 
         const { passwordHash: _, ...safeEmployee } = newEmployee;
-        res.status(201).json(safeEmployee);
+        const isLiveDelivered = emailSent && isEmailDeliveryActive();
+        const shouldProvideDevCode = !isLiveDelivered || isRenderEnv || isExplicitDev || !isProductionEnv;
+
+        res.status(201).json({
+          ...safeEmployee,
+          requireOtp: true,
+          emailDelivered: isLiveDelivered,
+          sandboxCode: shouldProvideDevCode ? verificationOtp : undefined
+        });
       } catch (error: any) {
         res.status(500).json({ error: error.message || 'Internal server error' });
       }
@@ -3873,20 +3903,36 @@ async function startServer() {
           name: ownerName,
           role: Role.OWNER,
           isActive: true,
+          isEmailVerified: false,
           passwordHash,
           createdAt: new Date().toISOString(),
         };
 
         await createUser(newOwner);
 
-        // Dispatch welcome and credentials email to owner
-        await sendRegistrationWelcomeEmail({
-          email: newOwner.email,
-          name: newOwner.name,
-          role: Role.OWNER,
-          businessName: businessName,
-          initialPassword: ownerPassword
-        }).catch((e) => console.error('[Owner Welcome Email Error]:', e));
+        // Generate 6-digit email verification OTP
+        const verificationOtp = Math.floor(100000 + Math.random() * 900000).toString();
+        const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // 15 mins expiry
+        await createPasswordReset(newOwner.email, verificationOtp, expiresAt);
+
+        console.log('========================================================');
+        console.log(`🔐 [OWNER REGISTRATION VERIFICATION OTP]: Email: ${newOwner.email} -> CODE: ${verificationOtp}`);
+        console.log('========================================================');
+
+        // Dispatch Email Verification OTP with direct return link back to verification page
+        const appBaseUrl = getRequestAppUrl(req);
+        const verificationUrl = `${appBaseUrl}/register?verify=true&email=${encodeURIComponent(newOwner.email)}&code=${encodeURIComponent(verificationOtp)}`;
+        const emailSent = await sendEmailVerificationOTP(
+          newOwner.email,
+          newOwner.name,
+          verificationOtp,
+          verificationUrl,
+          {
+            role: Role.OWNER,
+            businessName: businessName,
+            initialPassword: ownerPassword
+          }
+        );
 
         // 2. Register Business and link to newly created owner
         const allowMembership = req.body.membershipEnabled !== undefined ? !!req.body.membershipEnabled : true;
@@ -3926,11 +3972,24 @@ async function startServer() {
           req.user!.id,
           req.user!.email,
           'SPECIAL_ONBOARD_OWNER',
-          `Special User onboarded Owner: ${ownerName} (${ownerEmail}) and business: ${businessName}`
+          `Special User onboarded Owner: ${ownerName} (${ownerEmail}) and business: ${businessName}. Verification OTP dispatched (${emailSent ? 'Delivered via Resend' : 'Sandbox fallback'}).`
         );
 
         const { passwordHash: _, ...safeOwner } = newOwner;
-        res.status(201).json({ owner: safeOwner, carWash: newCarWash });
+        const isLiveDelivered = emailSent && isEmailDeliveryActive();
+        const shouldProvideDevCode = !isLiveDelivered || isRenderEnv || isExplicitDev || !isProductionEnv;
+
+        res.status(201).json({
+          owner: {
+            ...safeOwner,
+            requireOtp: true,
+            emailDelivered: isLiveDelivered,
+            sandboxCode: shouldProvideDevCode ? verificationOtp : undefined
+          },
+          carWash: newCarWash,
+          requireOtp: true,
+          sandboxCode: shouldProvideDevCode ? verificationOtp : undefined
+        });
       } catch (error: any) {
         res.status(500).json({ error: error.message || 'Internal server error' });
       }
@@ -4183,12 +4242,16 @@ async function startServer() {
           }
         }
 
+        const isInitialAdmin = sanitizedEmail.toLowerCase() === (process.env.INITIAL_ADMIN_EMAIL || '').toLowerCase();
+        const shouldBeVerified = role === Role.ADMIN || isInitialAdmin;
+
         const newUser: UserWithPassword = {
           id: adminCreatedUserId,
           email: sanitizedEmail,
           name,
           role: role as Role,
           isActive: true,
+          isEmailVerified: shouldBeVerified ? true : false,
           businessId: role === Role.EMPLOYEE ? businessId : undefined,
           passwordHash,
           createdAt: new Date().toISOString(),
@@ -4196,18 +4259,60 @@ async function startServer() {
 
         await createUser(newUser);
 
-        // Dispatch welcome and credentials email
-        await sendRegistrationWelcomeEmail({
-          email: newUser.email,
-          name: newUser.name,
-          role: newUser.role,
-          initialPassword: password
-        }).catch((e) => console.error('[Admin User Welcome Email Error]:', e));
+        let emailSent = false;
+        let verificationOtp: string | undefined;
 
-        await addAuditLog(req.user!.id, req.user!.email, 'ADMIN_USER_CREATE', `Admin created user ${name} (${sanitizedEmail}) with role ${role}`);
+        if (!shouldBeVerified) {
+          // Generate 6-digit email verification OTP
+          verificationOtp = Math.floor(100000 + Math.random() * 900000).toString();
+          const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // 15 mins expiry
+          await createPasswordReset(newUser.email, verificationOtp, expiresAt);
+
+          console.log('========================================================');
+          console.log(`🔐 [ADMIN CREATED USER VERIFICATION OTP]: Email: ${newUser.email} -> CODE: ${verificationOtp}`);
+          console.log('========================================================');
+
+          // Dispatch Email Verification OTP with direct return link back to verification page
+          const appBaseUrl = getRequestAppUrl(req);
+          const verificationUrl = `${appBaseUrl}/register?verify=true&email=${encodeURIComponent(newUser.email)}&code=${encodeURIComponent(verificationOtp)}`;
+          emailSent = await sendEmailVerificationOTP(
+            newUser.email,
+            newUser.name,
+            verificationOtp,
+            verificationUrl,
+            {
+              role: newUser.role,
+              initialPassword: password
+            }
+          );
+        } else {
+          // Dispatch welcome and credentials email to new admin
+          await sendRegistrationWelcomeEmail({
+            email: newUser.email,
+            name: newUser.name,
+            role: newUser.role,
+            initialPassword: password
+          }).catch((e) => console.error('[Admin User Welcome Email Error]:', e));
+          emailSent = true;
+        }
+
+        await addAuditLog(
+          req.user!.id,
+          req.user!.email,
+          'ADMIN_USER_CREATE',
+          `Admin created user ${name} (${sanitizedEmail}) with role ${role}${!shouldBeVerified ? ' (Verification OTP Dispatched)' : ''}`
+        );
 
         const { passwordHash: _, ...safeUser } = newUser;
-        res.status(201).json(safeUser);
+        const isLiveDelivered = emailSent && isEmailDeliveryActive();
+        const shouldProvideDevCode = !isLiveDelivered || isRenderEnv || isExplicitDev || !isProductionEnv;
+
+        res.status(201).json({
+          ...safeUser,
+          requireOtp: !shouldBeVerified,
+          emailDelivered: isLiveDelivered,
+          sandboxCode: (!shouldBeVerified && shouldProvideDevCode) ? verificationOtp : undefined
+        });
       } catch (error: any) {
         res.status(500).json({ error: error.message || 'Internal server error' });
       }

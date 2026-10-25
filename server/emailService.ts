@@ -659,29 +659,61 @@ export async function sendEmailVerificationOTP(
   email: string,
   name: string,
   code: string,
-  verificationUrl?: string
+  verificationUrl?: string,
+  extraOptions?: {
+    role?: string;
+    businessName?: string;
+    initialPassword?: string;
+  }
 ): Promise<boolean> {
   const defaultBaseUrl = process.env.APP_URL || process.env.VITE_APP_URL || 'https://autoshinebn.com';
   const fallbackUrl =
     verificationUrl ||
     `${defaultBaseUrl.replace(/\/+$/, '')}/register?verify=true&email=${encodeURIComponent(email)}&code=${encodeURIComponent(code)}`;
 
+  const role = extraOptions?.role;
+  const isOwner = role === 'OWNER';
+  const isEmployee = role === 'EMPLOYEE';
+
+  let roleBadge = 'Account Email Verification';
+  let greetingIntro = 'Thank you for signing up for Autoshine BN! Please use the 6-digit verification code below to verify your email address and activate your account:';
+
+  if (isOwner) {
+    roleBadge = 'Car Wash Owner Account Verification';
+    greetingIntro = `Welcome to Autoshine BN! An account has been created for you to manage <strong>${extraOptions?.businessName || 'your car wash business'}</strong>. Please use the 6-digit verification code below to verify your email address and activate your owner portal:`;
+  } else if (isEmployee) {
+    roleBadge = 'Car Wash Staff Account Verification';
+    greetingIntro = `Welcome to Autoshine BN! You have been registered as an authorized staff member for <strong>${extraOptions?.businessName || 'your car wash station'}</strong>. Please use the 6-digit verification code below to verify your email address and activate your account:`;
+  }
+
+  const credentialsBox = extraOptions?.initialPassword
+    ? `
+      <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; padding: 16px; border-radius: 12px; margin: 20px 0; text-align: left;">
+        <p style="margin: 0; font-size: 13px; color: #166534; font-weight: 600;">Your Initial Login Password:</p>
+        <p style="margin: 6px 0 0 0; font-family: monospace; font-size: 18px; font-weight: bold; color: #15803d;">${extraOptions.initialPassword}</p>
+        <p style="margin: 4px 0 0 0; font-size: 11px; color: #166534;">You will use this password once your email address is verified with the OTP code below.</p>
+      </div>
+    `
+    : '';
+
   const subject = `Your Verification Code: ${code} - Autoshine BN`;
   const html = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px 24px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff; color: #1e293b;">
       <div style="text-align: center; margin-bottom: 24px;">
         <h1 style="color: #0284c7; margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.025em;">Autoshine BN</h1>
-        <p style="color: #64748b; margin: 4px 0 0 0; font-size: 14px;">Account Email Verification</p>
+        <p style="color: #64748b; margin: 4px 0 0 0; font-size: 14px;">${roleBadge}</p>
       </div>
       <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 24px 0;" />
       <h2 style="color: #0f172a; font-size: 20px; font-weight: 700; margin-top: 0; margin-bottom: 12px;">Verify Your Email Address</h2>
       <p style="font-size: 15px; line-height: 1.6; color: #334155;">Hello <strong>${name}</strong>,</p>
-      <p style="font-size: 15px; line-height: 1.6; color: #334155;">Thank you for signing up for Autoshine BN! Please use the 6-digit verification code below to verify your email address and activate your account:</p>
+      <p style="font-size: 15px; line-height: 1.6; color: #334155;">${greetingIntro}</p>
       
       <div style="background-color: #f0f9ff; border: 1px solid #bae6fd; padding: 22px; border-radius: 12px; text-align: center; margin: 26px 0;">
         <span style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 38px; font-weight: 800; letter-spacing: 8px; color: #0284c7;">${code}</span>
         <p style="color: #0369a1; font-size: 12px; margin: 8px 0 0 0; font-weight: 600;">This verification code is valid for 15 minutes.</p>
       </div>
+
+      ${credentialsBox}
 
       <!-- Direct Fallback / Return Link for Closed Registration Windows -->
       <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin: 26px 0; text-align: left;">
@@ -703,7 +735,7 @@ export async function sendEmailVerificationOTP(
         </p>
       </div>
 
-      <p style="font-size: 14px; line-height: 1.6; color: #475569;">If you did not create an account on Autoshine BN, you can safely ignore this email.</p>
+      <p style="font-size: 14px; line-height: 1.6; color: #475569;">If you did not create or authorize an account on Autoshine BN, you can safely ignore this email.</p>
       <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 30px 0;" />
       <div style="text-align: center;">
         <p style="color: #94a3b8; font-size: 11px; margin: 0;">&copy; ${new Date().getFullYear()} Autoshine BN. All rights reserved.</p>
