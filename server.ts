@@ -105,7 +105,10 @@ import {
   getRedemptionByToken,
   confirmMembershipRedemption,
   getCarWashRedemptions,
-  getCustomerRedemptions
+  getCustomerRedemptions,
+  checkAndEnforceExpiredAccounts,
+  getUsersPaginated,
+  isDummyDataSeedingAllowed,
 } from './server/db.js';
 import { 
   isSupabaseAuthEnabled, 
@@ -730,6 +733,18 @@ async function startServer() {
     });
   }, 15 * 60 * 1000);
 
+  // ⏳ Run automated subscription expiry enforcement on server startup
+  checkAndEnforceExpiredAccounts().catch((err) => {
+    console.warn('[Expiry Enforcement Engine] Startup check notice:', err);
+  });
+
+  // Schedule automated subscription expiry enforcement daily (every 12 hours)
+  setInterval(() => {
+    checkAndEnforceExpiredAccounts().catch((err) => {
+      console.warn('[Expiry Enforcement Engine Daily Cron] Notice:', err);
+    });
+  }, 12 * 60 * 60 * 1000);
+
   // Bootstrap initial admin into Supabase Auth if Supabase Auth is enabled
   if (isSupabaseAuthEnabled) {
     const adminEmail = process.env.INITIAL_ADMIN_EMAIL || 'admin@carwash.com';
@@ -773,10 +788,10 @@ async function startServer() {
   // AUTH API ENDPOINTS
   // ==========================================
 
-  // Register Customer
+  // Register Customer or Carwash Owner
   app.post('/api/auth/register', authRateLimiter, async (req, res) => {
     try {
-      const { email, password, name, dateOfBirth, gender, profileImageUrl, address, phone } = req.body;
+      const { email, password, name, dateOfBirth, gender, profileImageUrl, address, phone, role, businessName } = req.body;
 
       if (!email || !password || !name) {
         res.status(400).json({ error: 'All fields (email, password, name) are required.' });
@@ -800,13 +815,18 @@ async function startServer() {
         return;
       }
 
+      const isOwnerRegistration = String(role || '').toUpperCase() === 'OWNER';
+      const initialAdminEnv = process.env.INITIAL_ADMIN_EMAIL ? process.env.INITIAL_ADMIN_EMAIL.toLowerCase().trim() : null;
+      const isInitialAdmin = initialAdminEnv ? sanitizedEmail.toLowerCase() === initialAdminEnv : false;
+      const assignedRole = isInitialAdmin ? Role.ADMIN : (isOwnerRegistration ? Role.OWNER : Role.CUSTOMER);
+
       let userId = `usr_${Math.random().toString(36).substr(2, 9)}`;
       let isAutoProvisioned = false;
 
       // Sync register with Supabase Auth if configured
       if (isSupabaseAuthEnabled) {
         try {
-          const supabaseId = await registerSupabaseUser(email, password, name);
+          const supabaseId = await registerSupabaseUser(email, password, name, assignedRole);
           if (supabaseId) {
             userId = supabaseId; // Match public User id to Supabase auth user id
           }
@@ -848,15 +868,22 @@ async function startServer() {
         }
       }
 
+      // Calculate automated trial subscription expiry for Carwash Owners
+      let ownerExpiryDate: string | null = null;
+      let effectiveTrialDays = 30;
+      if (assignedRole === Role.OWNER) {
+        const platformInfo = await getPlatformInfo();
+        effectiveTrialDays = platformInfo.defaultTrialDays && platformInfo.defaultTrialDays > 0 ? platformInfo.defaultTrialDays : 30;
+        ownerExpiryDate = new Date(Date.now() + effectiveTrialDays * 24 * 60 * 60 * 1000).toISOString();
+      }
+
       const salt = bcrypt.genSaltSync(10);
       const passwordHash = bcrypt.hashSync(password, salt);
-      const initialAdminEnv = process.env.INITIAL_ADMIN_EMAIL ? process.env.INITIAL_ADMIN_EMAIL.toLowerCase().trim() : null;
-      const isInitialAdmin = initialAdminEnv ? sanitizedEmail.toLowerCase() === initialAdminEnv : false;
       const newUser: UserWithPassword = {
         id: userId,
         email: sanitizedEmail,
         name,
-        role: isInitialAdmin ? Role.ADMIN : Role.CUSTOMER,
+        role: assignedRole,
         isActive: true,
         isEmailVerified: isInitialAdmin ? true : false,
         passwordHash,
@@ -866,9 +893,46 @@ async function startServer() {
         profileImageUrl: profileImageUrl || undefined,
         address: address || undefined,
         phone: phone || undefined,
+        expiryDate: ownerExpiryDate,
+        status: 'Active',
       };
 
       await createUser(newUser);
+
+      // If Carwash Owner self-registration, create their initial Carwash outlet profile
+      let createdCarWash: CarWash | null = null;
+      if (assignedRole === Role.OWNER) {
+        const resolvedBusinessName = (businessName && String(businessName).trim()) ? String(businessName).trim() : `${name}'s Auto Spa`;
+        const uniqueSlug = await getUniqueSlug(resolvedBusinessName);
+        createdCarWash = {
+          id: `cw_${Math.random().toString(36).substr(2, 9)}`,
+          name: resolvedBusinessName,
+          slug: uniqueSlug,
+          description: `Premium auto detailing, car wash, and vehicle care services by ${resolvedBusinessName}.`,
+          locationLat: 4.8917,
+          locationLng: 114.9401,
+          address: 'Bandar Seri Begawan, Brunei Darussalam',
+          openingHours: {
+            monday: { open: '08:00', close: '18:00', isOpen: true },
+            tuesday: { open: '08:00', close: '18:00', isOpen: true },
+            wednesday: { open: '08:00', close: '18:00', isOpen: true },
+            thursday: { open: '08:00', close: '18:00', isOpen: true },
+            friday: { open: '08:00', close: '18:00', isOpen: true },
+            saturday: { open: '09:00', close: '17:00', isOpen: true },
+            sunday: { open: '10:00', close: '16:00', isOpen: false },
+          },
+          slotDuration: 30,
+          capacityPerSlot: 2,
+          ownerId: newUser.id,
+          isActive: true,
+          ownerNavigationEnabled: true,
+          ownerQrCodeEnabled: false,
+          membershipEnabled: true,
+          createdAt: new Date().toISOString(),
+        };
+
+        await createCarWash(createdCarWash);
+      }
 
       // Generate a 6-digit email verification OTP
       const verificationOtp = Math.floor(100000 + Math.random() * 900000).toString();
@@ -876,19 +940,33 @@ async function startServer() {
       await createPasswordReset(newUser.email, verificationOtp, expiresAt);
 
       console.log('========================================================');
-      console.log(`🔐 [REGISTRATION VERIFICATION OTP]: Email: ${newUser.email} -> CODE: ${verificationOtp}`);
+      console.log(`🔐 [REGISTRATION VERIFICATION OTP]: Email: ${newUser.email} (${newUser.role}) -> CODE: ${verificationOtp}`);
+      if (ownerExpiryDate) {
+        console.log(`⏳ [TRIAL SUBSCRIPTION ASSIGNED]: ${effectiveTrialDays} days -> Expiry: ${ownerExpiryDate}`);
+      }
       console.log('========================================================');
 
       // Dispatch Email Verification OTP with direct return link back to verification page
       const appBaseUrl = getRequestAppUrl(req);
       const verificationUrl = `${appBaseUrl}/register?verify=true&email=${encodeURIComponent(newUser.email)}&code=${encodeURIComponent(verificationOtp)}`;
-      const emailSent = await sendEmailVerificationOTP(newUser.email, newUser.name, verificationOtp, verificationUrl);
+      const emailSent = await sendEmailVerificationOTP(
+        newUser.email,
+        newUser.name,
+        verificationOtp,
+        verificationUrl,
+        {
+          role: newUser.role,
+          businessName: createdCarWash?.name,
+        }
+      );
 
       await addAuditLog(
         newUser.id,
         newUser.email,
-        isAutoProvisioned ? 'USER_AUTOPROVISION' : 'USER_REGISTER',
-        `Customer account created. Verification OTP dispatched (${emailSent ? 'Delivered via Resend' : 'Sandbox fallback'}): ${newUser.name}`
+        isAutoProvisioned ? 'USER_AUTOPROVISION' : (assignedRole === Role.OWNER ? 'OWNER_SELF_REGISTER' : 'USER_REGISTER'),
+        assignedRole === Role.OWNER
+          ? `Carwash Owner self-registered with ${effectiveTrialDays}-day trial period (Expiry: ${ownerExpiryDate?.slice(0, 10)}). Carwash "${createdCarWash?.name}" initialized. Verification OTP dispatched (${emailSent ? 'Delivered via Resend' : 'Sandbox fallback'}).`
+          : `Customer account created. Verification OTP dispatched (${emailSent ? 'Delivered via Resend' : 'Sandbox fallback'}): ${newUser.name}`
       );
 
       const { passwordHash: _, ...safeUser } = newUser;
@@ -898,12 +976,16 @@ async function startServer() {
       res.status(201).json({
         requireOtp: true,
         email: newUser.email,
+        role: newUser.role,
+        expiryDate: newUser.expiryDate,
+        trialDays: assignedRole === Role.OWNER ? effectiveTrialDays : undefined,
         message: isLiveDelivered
           ? 'Account created! Please enter the 6-digit verification code sent to your email to verify your address.'
           : 'Account created! (Dev/Sandbox Mode: Enter the 6-digit verification code below to activate).',
         emailDelivered: isLiveDelivered,
         sandboxCode: shouldProvideDevCode ? verificationOtp : undefined,
-        user: safeUser
+        user: safeUser,
+        carWash: createdCarWash || undefined
       });
     } catch (error: any) {
       res.status(500).json({ error: error.message || 'Internal server error' });
@@ -1094,9 +1176,52 @@ async function startServer() {
         return;
       }
 
-      if (!user.isActive) {
+      if (!user.isActive || user.status === 'Suspended') {
+        if (user.role === Role.OWNER && user.expiryDate) {
+          const expTime = new Date(user.expiryDate).getTime();
+          if (!isNaN(expTime) && expTime < Date.now()) {
+            res.status(403).json({
+              error: `Your subscription or trial expired on ${new Date(user.expiryDate).toLocaleDateString()}. Your account and carwash operations have been suspended. Please contact the platform administrator to extend or renew your subscription.`
+            });
+            return;
+          }
+        }
         res.status(403).json({ error: 'Your account is suspended. Please contact support.' });
         return;
+      }
+
+      // Check if active Carwash Owner account has now reached expiry date
+      if (user.role === Role.OWNER && user.expiryDate) {
+        const expTime = new Date(user.expiryDate).getTime();
+        if (!isNaN(expTime) && expTime < Date.now()) {
+          await updateUser(user.id, { isActive: false, status: 'Suspended' }).catch(() => {});
+          const allWashes = await getCarWashes();
+          const ownedWashes = allWashes.filter(w => 
+            w.ownerId === user!.id || 
+            (w.ownerEmail && w.ownerEmail.toLowerCase() === user!.email.toLowerCase()) ||
+            ((w as any).owner_email && (w as any).owner_email.toLowerCase() === user!.email.toLowerCase())
+          );
+          for (const wash of ownedWashes) {
+            await updateCarWash(wash.id, { isActive: false } as any).catch(() => {});
+          }
+          await addAuditLog(user.id, user.email, 'ACCOUNT_EXPIRED_LOGIN_BLOCKED', `Login blocked for expired Carwash Owner account (Expired on ${new Date(user.expiryDate).toLocaleDateString()}). Account and carwashes suspended.`);
+          res.status(403).json({
+            error: `Your subscription or trial expired on ${new Date(user.expiryDate).toLocaleDateString()}. Your account and carwash operations have been suspended. Please contact the platform administrator to extend or renew your subscription.`
+          });
+          return;
+        }
+      }
+
+      // Check if Employee's assigned carwash station is currently suspended
+      if (user.role === Role.EMPLOYEE && user.businessId) {
+        const allWashes = await getCarWashes();
+        const assignedWash = allWashes.find(w => w.id === user.businessId);
+        if (assignedWash && !assignedWash.isActive) {
+          res.status(403).json({
+            error: `Your assigned car wash station (${assignedWash.name}) is currently suspended or inactive due to subscription status. Please contact your business owner or platform administrator.`
+          });
+          return;
+        }
       }
 
       if (initialAdminEnv && user.email.toLowerCase() === initialAdminEnv && user.role !== Role.ADMIN) {
@@ -2004,7 +2129,7 @@ async function startServer() {
     requireRoles([Role.ADMIN, Role.SPECIAL]),
     async (req: AuthenticatedRequest, res) => {
       try {
-        const { email, contact, whatsapp, address, companyName, description, adminOtpRequired } = req.body;
+        const { email, contact, whatsapp, address, companyName, description, adminOtpRequired, defaultTrialDays } = req.body;
         const updated = await updatePlatformInfo({
           email,
           contact,
@@ -2013,13 +2138,14 @@ async function startServer() {
           companyName,
           description,
           adminOtpRequired,
+          defaultTrialDays: defaultTrialDays !== undefined ? Number(defaultTrialDays) : undefined,
         });
 
         await addAuditLog(
           req.user!.id,
           req.user!.email,
           'PLATFORM_INFO_UPDATE',
-          `Updated Autoshine Global Information (Email: ${updated.email}, Contact: ${updated.contact}, WhatsApp: ${updated.whatsapp}${adminOtpRequired !== undefined ? `, Admin OTP: ${adminOtpRequired ? 'ENFORCED' : 'DISABLED'}` : ''})`
+          `Updated Autoshine Global Information (Email: ${updated.email}, Contact: ${updated.contact}, WhatsApp: ${updated.whatsapp}${adminOtpRequired !== undefined ? `, Admin OTP: ${adminOtpRequired ? 'ENFORCED' : 'DISABLED'}` : ''}${defaultTrialDays !== undefined ? `, Default Trial: ${updated.defaultTrialDays} days` : ''})`
         );
 
         res.json(updated);
@@ -4127,6 +4253,27 @@ async function startServer() {
     requireRoles([Role.ADMIN, Role.SPECIAL]),
     async (req: AuthenticatedRequest, res) => {
       try {
+        const isPaginatedRequest = req.query.page !== undefined || req.query.limit !== undefined || req.query.search !== undefined || req.query.role !== undefined || req.query.paginated === 'true';
+
+        if (isPaginatedRequest) {
+          const paginatedResult = await getUsersPaginated({
+            page: req.query.page ? Number(req.query.page) : 1,
+            limit: req.query.limit ? Number(req.query.limit) : 25,
+            search: typeof req.query.search === 'string' ? req.query.search : undefined,
+            role: typeof req.query.role === 'string' ? req.query.role : undefined,
+          });
+
+          const safeUsers = paginatedResult.users.map(({ passwordHash: _, ...u }) => u);
+          res.json({
+            users: safeUsers,
+            total: paginatedResult.total,
+            page: paginatedResult.page,
+            limit: paginatedResult.limit,
+            totalPages: paginatedResult.totalPages,
+          });
+          return;
+        }
+
         let users = await getUsers();
         const allWashes = await getCarWashes();
 
@@ -4339,17 +4486,64 @@ async function startServer() {
           return;
         }
 
-        const { role, isActive, name, email, businessId } = req.body;
+        const { role, isActive, name, email, businessId, expiryDate, status } = req.body;
+
+        let targetIsActive = isActive !== undefined ? !!isActive : targetUser.isActive;
+        let targetStatus = status !== undefined ? status : targetUser.status;
+
+        // If expiryDate is updated to null (permanent) or a future date:
+        // And account was previously suspended due to expiration, auto-reactivate
+        if (expiryDate !== undefined) {
+          if (expiryDate === null || expiryDate === '') {
+            // Permanent non-expiring
+            if (targetStatus === 'Suspended' || !targetIsActive) {
+              targetIsActive = true;
+              targetStatus = 'Active';
+            }
+          } else {
+            const newExpTime = new Date(expiryDate).getTime();
+            if (!isNaN(newExpTime) && newExpTime > Date.now()) {
+              if (targetStatus === 'Suspended' || !targetIsActive) {
+                targetIsActive = true;
+                targetStatus = 'Active';
+              }
+            } else if (!isNaN(newExpTime) && newExpTime <= Date.now()) {
+              targetIsActive = false;
+              targetStatus = 'Suspended';
+            }
+          }
+        }
+
+        if (status === 'Active') {
+          targetIsActive = true;
+        } else if (status === 'Suspended') {
+          targetIsActive = false;
+        }
 
         const updatedData: Partial<UserWithPassword> = {
           role: role !== undefined ? (role as Role) : targetUser.role,
-          isActive: isActive !== undefined ? !!isActive : targetUser.isActive,
+          isActive: targetIsActive,
+          status: targetStatus,
           name: name !== undefined ? name : targetUser.name,
           email: email !== undefined ? email.toLowerCase() : targetUser.email,
           businessId: businessId !== undefined ? businessId : targetUser.businessId,
+          expiryDate: expiryDate !== undefined ? (expiryDate ? expiryDate : null) : targetUser.expiryDate,
         };
 
         await updateUser(req.params.id, updatedData);
+
+        // If this user is an OWNER and active status changed, synchronize all their owned carwashes
+        if (targetUser.role === Role.OWNER || updatedData.role === Role.OWNER) {
+          const allWashes = await getCarWashes();
+          const ownedWashes = allWashes.filter(w => 
+            w.ownerId === targetUser.id || 
+            (w.ownerEmail && w.ownerEmail.toLowerCase() === targetUser.email.toLowerCase()) ||
+            ((w as any).owner_email && (w as any).owner_email.toLowerCase() === targetUser.email.toLowerCase())
+          );
+          for (const wash of ownedWashes) {
+            await updateCarWash(wash.id, { isActive: targetIsActive } as any).catch(() => {});
+          }
+        }
 
         // Synchronize metadata with Supabase Auth
         if (isSupabaseAuthEnabled && supabaseClient) {
@@ -4374,12 +4568,55 @@ async function startServer() {
           req.user!.id,
           req.user!.email,
           'ADMIN_USER_UPDATE',
-          `Admin updated user ${targetUser.email}. Status: [Active: ${isActive}], Role: [${role}]`
+          `Admin updated user ${targetUser.email}. Status: [Active: ${targetIsActive}, ${targetStatus}], Role: [${updatedData.role}], Expiry: [${updatedData.expiryDate || 'Permanent/No Expiry'}]`
         );
 
         res.json({ ...targetUser, ...updatedData });
       } catch (error: any) {
         res.status(500).json({ error: error.message || 'Internal server error' });
+      }
+    }
+  );
+
+  // Admin / Special: Manually trigger account expiry check & enforcement
+  app.post(
+    '/api/admin/enforce-expiry',
+    authenticateToken,
+    requireRoles([Role.ADMIN, Role.SPECIAL]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const result = await checkAndEnforceExpiredAccounts();
+        await addAuditLog(
+          req.user!.id,
+          req.user!.email,
+          'EXPIRY_MANUAL_ENFORCE',
+          `Manual subscription expiry check triggered by ${req.user!.email}. Suspended accounts: ${result.suspendedCount}`
+        );
+        res.json({ success: true, ...result });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to enforce account expiry' });
+      }
+    }
+  );
+
+  // Admin: View Environment & Dummy Seeding Status
+  app.get(
+    '/api/admin/seeding-status',
+    authenticateToken,
+    requireRoles([Role.ADMIN]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const isProduction = process.env.NODE_ENV === 'production';
+        const dummyAllowed = isDummyDataSeedingAllowed();
+        res.json({
+          environment: process.env.NODE_ENV || 'development',
+          isProduction,
+          dummyDataSeedingAllowed: dummyAllowed,
+          mode: dummyAllowed ? 'DEMO / SANDBOX (Sample data enabled in dev)' : 'PRODUCTION (Zero dummy data, clean state)',
+          skipDummyEnv: process.env.SKIP_DUMMY_DATA || process.env.SKIP_SEED || process.env.SEED_DUMMY_DATA || null,
+        });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to retrieve seeding status' });
       }
     }
   );

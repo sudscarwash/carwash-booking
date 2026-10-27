@@ -443,6 +443,19 @@ export const EmployeeDashboard: React.FC = () => {
 
   return (
     <div className="space-y-6 animate-fade-in pb-24 md:pb-6">
+      {/* Station Suspended Alert Banner */}
+      {myLocation && myLocation.isActive === false && (
+        <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 flex items-start sm:items-center gap-3 text-rose-800 text-xs sm:text-sm shadow-xs animate-pulse">
+          <InfoIcon className="w-5 h-5 text-rose-600 shrink-0 mt-0.5 sm:mt-0" />
+          <div className="flex-1">
+            <strong className="font-bold">Station Suspended: </strong>
+            <span>
+              This car wash facility ({myLocation.name}) is currently inactive or awaiting owner subscription renewal. Customers cannot place new bookings until the subscription is renewed by the owner or administrator.
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Employee Header */}
       <div className="bg-white border border-slate-200/80 rounded-2xl p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xs">
         <div className="flex items-center gap-4">
@@ -702,22 +715,48 @@ export const EmployeeDashboard: React.FC = () => {
               </div>
 
               {displayedQueueBookings.length === 0 ? (
-                <div className="text-center py-12 text-slate-400 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
-                  <CheckCircleIcon className="h-9 w-9 text-emerald-300 mx-auto mb-2 animate-bounce" />
-                  <p className="font-semibold text-sm text-slate-600">No bookings match this filter.</p>
-                  <p className="text-xs text-slate-400 mt-1">
-                    {queueSearch ? `No results found for "${queueSearch}"` : 'Bookings will update automatically in real-time.'}
-                  </p>
-                  {queueSearch && (
-                    <button
-                      type="button"
-                      onClick={() => setQueueSearch('')}
-                      className="mt-3 text-xs font-bold text-amber-600 hover:underline"
-                    >
-                      Clear Search
-                    </button>
-                  )}
-                </div>
+                filteredBookings.length === 0 ? (
+                  <div className="text-center py-12 px-4 bg-gradient-to-b from-amber-50/40 via-white to-slate-50/50 rounded-2xl border border-dashed border-amber-200/80 shadow-2xs">
+                    <div className="w-14 h-14 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-2xs">
+                      <Sparkles className="w-7 h-7 animate-pulse" />
+                    </div>
+                    <h3 className="font-extrabold text-base text-slate-800">Station Queue is Clean & Ready!</h3>
+                    <p className="text-xs text-slate-500 max-w-md mx-auto mt-1 leading-relaxed">
+                      No active bookings in queue for <strong>{myLocation ? myLocation.name : 'this location'}</strong>. As soon as customers place bookings online, their job tickets will appear here in real-time.
+                    </p>
+                    <div className="mt-4 flex items-center justify-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMbSource('WALK_IN');
+                          setShowManualBookingModal(true);
+                        }}
+                        className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-extrabold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                        id="btn-emp-empty-quick-walkin"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>Record First Walk-In / Phone Order</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-slate-400 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+                    <CheckCircleIcon className="h-9 w-9 text-emerald-300 mx-auto mb-2" />
+                    <p className="font-semibold text-sm text-slate-600">No bookings match this filter.</p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      {queueSearch ? `No results found for "${queueSearch}"` : 'Bookings will update automatically in real-time.'}
+                    </p>
+                    {queueSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setQueueSearch('')}
+                        className="mt-3 text-xs font-bold text-amber-600 hover:underline cursor-pointer"
+                      >
+                        Clear Search
+                      </button>
+                    )}
+                  </div>
+                )
               ) : (
                 <div className="space-y-3.5">
                   {displayedQueueBookings.map((bk) => (

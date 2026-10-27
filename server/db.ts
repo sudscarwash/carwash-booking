@@ -47,6 +47,21 @@ function parseHostAndPort(url?: string | null): { host: string | null; port: str
   return { host: null, port: null };
 }
 
+/**
+ * Determines whether demo/dummy sample data should be seeded into the database.
+ * Returns FALSE in production environments or when explicit flags (SKIP_DUMMY_DATA, SKIP_SEED) are set.
+ * Returns TRUE in local development / sandbox environments when explicitly allowed.
+ */
+export function isDummyDataSeedingAllowed(): boolean {
+  if (process.env.SKIP_DUMMY_DATA === 'true' || process.env.SKIP_SEED === 'true' || process.env.SEED_DUMMY_DATA === 'false') {
+    return false;
+  }
+  if (process.env.NODE_ENV === 'production' && process.env.SEED_DUMMY_DATA !== 'true') {
+    return false;
+  }
+  return true;
+}
+
 // Always initialize SQLite database safely as an emergency local fallback
 const dataDir = path.resolve(process.cwd(), 'data');
 const dbPath = path.resolve(dataDir, 'carwash.db');
@@ -66,7 +81,9 @@ const SQLITE_BOOTSTRAP_DDL = `
     address TEXT,
     businessId TEXT,
     passwordHash TEXT NOT NULL,
-    createdAt TEXT NOT NULL
+    createdAt TEXT NOT NULL,
+    expiryDate TEXT,
+    status TEXT DEFAULT 'Active'
   );
 
   CREATE TABLE IF NOT EXISTS car_washes (
@@ -166,7 +183,8 @@ const SQLITE_BOOTSTRAP_DDL = `
     companyName TEXT,
     description TEXT,
     updatedAt TEXT NOT NULL,
-    emailSettingsJson TEXT
+    emailSettingsJson TEXT,
+    defaultTrialDays INTEGER DEFAULT 30
   );
 
   CREATE TABLE IF NOT EXISTS email_logs (
@@ -366,10 +384,15 @@ function ensureSqliteTablesSync(db: Database.Database): void {
     'profileImageUrl TEXT',
     'address TEXT',
     'phone TEXT',
+    'expiryDate TEXT',
+    'status TEXT DEFAULT "Active"',
   ];
   for (const col of userCols) {
     try { db.exec(`ALTER TABLE users ADD COLUMN ${col}`); } catch {}
   }
+
+  // Ensure defaultTrialDays exists in platform_info
+  try { db.exec('ALTER TABLE platform_info ADD COLUMN defaultTrialDays INTEGER DEFAULT 30'); } catch {}
 
   // Ensure all columns exist in bookings
   const bookingCols = [
@@ -796,6 +819,10 @@ function convertQueryToPg(sql: string): string {
     claimcount: 'claim_count',
     maxRedemptionsPerMemberPerDay: 'max_redemptions_per_member_per_day',
     maxredemptionspermemberperday: 'max_redemptions_per_member_per_day',
+    expiryDate: 'expiry_date',
+    expirydate: 'expiry_date',
+    defaultTrialDays: 'default_trial_days',
+    defaulttrialdays: 'default_trial_days',
   };
 
   // Perform whole-word replacements to avoid matching partial strings
@@ -1080,6 +1107,8 @@ const mapUser = (row: any): UserWithPassword => {
     profileImageUrl: row.profileImageUrl ?? row.profile_image_url ?? row.profileimageurl ?? undefined,
     address: row.address ?? undefined,
     phone: row.phone ?? undefined,
+    expiryDate: row.expiryDate ?? row.expiry_date ?? row.expirydate ?? null,
+    status: row.status ?? (isActiveVal === 1 || isActiveVal === true || isActiveVal === '1' ? 'Active' : 'Suspended'),
   };
 };
 
@@ -1576,6 +1605,9 @@ async function executeSeedFirestore() {
     'ALTER TABLE users ADD COLUMN address TEXT',
     'ALTER TABLE users ADD COLUMN phone TEXT',
     'ALTER TABLE users ADD COLUMN isEmailVerified INTEGER DEFAULT 1',
+    'ALTER TABLE users ADD COLUMN expiryDate TEXT',
+    'ALTER TABLE users ADD COLUMN status TEXT DEFAULT \'Active\'',
+    'ALTER TABLE platform_info ADD COLUMN defaultTrialDays INTEGER DEFAULT 30',
     'ALTER TABLE car_washes ADD COLUMN phone TEXT',
     'ALTER TABLE car_washes ADD COLUMN instagram TEXT',
     'ALTER TABLE car_washes ADD COLUMN logoUrl TEXT',
@@ -1802,6 +1834,63 @@ async function executeSeedFirestore() {
     }
   } catch (err) {
     console.error('Error seeding/updating default platform info:', err);
+  }
+
+  // Seed Map Presets (Standard city coordinates for Brunei)
+  try {
+    const presetCount = await runQueryOne('SELECT COUNT(*) AS count FROM map_presets') as { count: any };
+    const countVal = presetCount ? parseInt(presetCount.count, 10) : 0;
+    if (countVal === 0) {
+      console.log('Seeding map presets...');
+      const presets = [
+        { id: 'pre_bsb', name: 'Bandar Seri Begawan', lat: 4.8917, lng: 114.9401, country: 'Brunei', isCustom: 0 },
+        { id: 'pre_gadong', name: 'Gadong BE1118', lat: 4.9015, lng: 114.9175, country: 'Brunei', isCustom: 0 },
+        { id: 'pre_kb', name: 'Kuala Belait KA1131', lat: 4.5833, lng: 114.2333, country: 'Brunei', isCustom: 0 },
+        { id: 'pre_tutong', name: 'Tutong TA1131', lat: 4.8021, lng: 114.6534, country: 'Brunei', isCustom: 0 },
+        { id: 'pre_temburong', name: 'Temburong PA1131', lat: 4.7083, lng: 115.0667, country: 'Brunei', isCustom: 0 },
+        { id: 'pre_miri', name: 'Miri (Sarawak)', lat: 4.3995, lng: 113.9914, country: 'Malaysia', isCustom: 0 },
+        { id: 'pre_sf', name: 'San Francisco', lat: 37.7749, lng: -122.4194, country: 'USA', isCustom: 0 },
+      ];
+
+      for (const p of presets) {
+        await runQueryRun(`
+          INSERT INTO map_presets (id, name, lat, lng, country, isCustom, createdAt)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `, [p.id, p.name, p.lat, p.lng, p.country, p.isCustom, new Date().toISOString()]);
+      }
+    }
+  } catch (err) {
+    console.error('Error seeding map presets:', err);
+  }
+
+  // 🛡️ PRODUCTION MODE GUARD: Prevent any dummy / demo data from being seeded into production databases
+  if (!isDummyDataSeedingAllowed()) {
+    console.log('[Database] 🛡️ PRODUCTION MODE or SKIP_DUMMY_DATA detected: Dummy demo carwashes, sample bookings, fake reviews, and test users are strictly DISABLED.');
+    
+    // Ensure essential primary administrator exists so production instance is accessible
+    try {
+      const adminCountRow = await runQueryOne("SELECT COUNT(*) AS count FROM users WHERE role = 'ADMIN'") as { count: any };
+      const adminCount = adminCountRow ? parseInt(adminCountRow.count, 10) : 0;
+      if (adminCount === 0) {
+        const initialAdminEmail = (process.env.ADMIN_EMAIL || process.env.INITIAL_ADMIN_EMAIL || 'admin@autoshinebn.com').toLowerCase().trim();
+        const initialAdminPassword = process.env.ADMIN_PASSWORD || process.env.INITIAL_ADMIN_PASSWORD || 'admin123';
+        const salt = bcrypt.genSaltSync(10);
+        await runQueryRun(`
+          INSERT INTO users (id, email, name, role, isActive, passwordHash, createdAt, isEmailVerified)
+          VALUES (?, ?, ?, 'ADMIN', 1, ?, ?, 1)
+        `, [
+          'usr_admin_prod',
+          initialAdminEmail,
+          'System Administrator',
+          bcrypt.hashSync(initialAdminPassword, salt),
+          new Date().toISOString()
+        ]);
+        console.log(`[Database] 🛡️ Production Mode: Created initial administrator account: ${initialAdminEmail}`);
+      }
+    } catch (adminErr) {
+      console.error('[Database] Error checking/creating initial production admin:', adminErr);
+    }
+    return;
   }
 
   // Seed default Brunei location
@@ -2032,33 +2121,6 @@ async function executeSeedFirestore() {
     }
   } catch (err) {
     console.error('Error ensuring Brunei location is seeded:', err);
-  }
-
-  // Seed Map Presets
-  try {
-    const presetCount = await runQueryOne('SELECT COUNT(*) AS count FROM map_presets') as { count: any };
-    const countVal = presetCount ? parseInt(presetCount.count, 10) : 0;
-    if (countVal === 0) {
-      console.log('Seeding map presets...');
-      const presets = [
-        { id: 'pre_bsb', name: 'Bandar Seri Begawan', lat: 4.8917, lng: 114.9401, country: 'Brunei', isCustom: 0 },
-        { id: 'pre_gadong', name: 'Gadong BE1118', lat: 4.9015, lng: 114.9175, country: 'Brunei', isCustom: 0 },
-        { id: 'pre_kb', name: 'Kuala Belait KA1131', lat: 4.5833, lng: 114.2333, country: 'Brunei', isCustom: 0 },
-        { id: 'pre_tutong', name: 'Tutong TA1131', lat: 4.8021, lng: 114.6534, country: 'Brunei', isCustom: 0 },
-        { id: 'pre_temburong', name: 'Temburong PA1131', lat: 4.7083, lng: 115.0667, country: 'Brunei', isCustom: 0 },
-        { id: 'pre_miri', name: 'Miri (Sarawak)', lat: 4.3995, lng: 113.9914, country: 'Malaysia', isCustom: 0 },
-        { id: 'pre_sf', name: 'San Francisco', lat: 37.7749, lng: -122.4194, country: 'USA', isCustom: 0 },
-      ];
-
-      for (const p of presets) {
-        await runQueryRun(`
-          INSERT INTO map_presets (id, name, lat, lng, country, isCustom, createdAt)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-        `, [p.id, p.name, p.lat, p.lng, p.country, p.isCustom, new Date().toISOString()]);
-      }
-    }
-  } catch (err) {
-    console.error('Error seeding map presets:', err);
   }
 
   const salt = bcrypt.genSaltSync(10);
@@ -2573,8 +2635,8 @@ export async function getUserById(id: string): Promise<UserWithPassword | null> 
 export async function createUser(user: UserWithPassword): Promise<void> {
   let assignedRole = user.role;
   const insertSql = `
-    INSERT INTO users (id, email, name, role, isActive, businessId, passwordHash, createdAt, dateOfBirth, gender, profileImageUrl, address, phone, isEmailVerified)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO users (id, email, name, role, isActive, businessId, passwordHash, createdAt, dateOfBirth, gender, profileImageUrl, address, phone, isEmailVerified, expiryDate, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
   const insertParams = [
     user.id,
@@ -2590,7 +2652,9 @@ export async function createUser(user: UserWithPassword): Promise<void> {
     user.profileImageUrl || null,
     user.address || null,
     user.phone || null,
-    user.isEmailVerified === false ? 0 : 1
+    user.isEmailVerified === false ? 0 : 1,
+    user.expiryDate || null,
+    user.status || (user.isActive ? 'Active' : 'Suspended'),
   ];
 
   try {
@@ -2609,6 +2673,8 @@ export async function createUser(user: UserWithPassword): Promise<void> {
         'ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image_url TEXT',
         'ALTER TABLE users ADD COLUMN IF NOT EXISTS address TEXT',
         'ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT',
+        'ALTER TABLE users ADD COLUMN IF NOT EXISTS expiry_date TEXT',
+        'ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT DEFAULT \'Active\'',
       ];
       for (const colSql of fixCols) {
         try { await pgPool.query(colSql); } catch (e) {}
@@ -2626,7 +2692,8 @@ export async function updateUser(id: string, data: Partial<UserWithPassword>): P
     const validColumns = new Set([
       'email', 'name', 'role', 'isActive', 'isEmailVerified',
       'phone', 'dateOfBirth', 'gender', 'profileImageUrl',
-      'address', 'businessId', 'passwordHash', 'createdAt'
+      'address', 'businessId', 'passwordHash', 'createdAt',
+      'expiryDate', 'status'
     ]);
 
     const columnMap = new Map<string, any>();
@@ -3844,6 +3911,9 @@ export async function getPlatformInfo(): Promise<PlatformInfo> {
     const row = await runQueryOne('SELECT * FROM platform_info WHERE id = ?', ['autoshine_info']);
     if (row) {
       const rawOtpVal = row.adminOtpRequired !== undefined ? row.adminOtpRequired : (row.admin_otp_required !== undefined ? row.admin_otp_required : row.adminotprequired);
+      const rawTrialDays = row.defaultTrialDays !== undefined ? row.defaultTrialDays : (row.default_trial_days !== undefined ? row.default_trial_days : row.defaulttrialdays);
+      const defaultTrialDays = typeof rawTrialDays === 'number' ? rawTrialDays : (parseInt(rawTrialDays, 10) || 30);
+
       return {
         email: row.email ?? 'info@autoshinebn.com',
         contact: row.contact ?? '+673 8974459',
@@ -3853,6 +3923,7 @@ export async function getPlatformInfo(): Promise<PlatformInfo> {
         description: row.description ?? "Brunei's premier car wash & auto detailing digital booking platform.",
         updatedAt: row.updatedAt ?? row.updated_at ?? new Date().toISOString(),
         adminOtpRequired: rawOtpVal !== undefined ? (rawOtpVal === 1 || rawOtpVal === true || rawOtpVal === '1') : true,
+        defaultTrialDays: defaultTrialDays > 0 ? defaultTrialDays : 30,
       };
     }
   } catch (error) {
@@ -3868,12 +3939,14 @@ export async function getPlatformInfo(): Promise<PlatformInfo> {
     description: "Brunei's premier car wash & auto detailing digital booking platform.",
     updatedAt: new Date().toISOString(),
     adminOtpRequired: true,
+    defaultTrialDays: 30,
   };
 }
 
 export async function updatePlatformInfo(data: Partial<PlatformInfo>): Promise<PlatformInfo> {
   try {
     const current = await getPlatformInfo();
+    const updatedTrialDays = data.defaultTrialDays !== undefined ? Number(data.defaultTrialDays) : (current.defaultTrialDays || 30);
     const updated: PlatformInfo = {
       email: data.email !== undefined ? data.email.trim() : current.email,
       contact: data.contact !== undefined ? data.contact.trim() : current.contact,
@@ -3883,12 +3956,13 @@ export async function updatePlatformInfo(data: Partial<PlatformInfo>): Promise<P
       description: data.description !== undefined ? data.description.trim() : current.description,
       updatedAt: new Date().toISOString(),
       adminOtpRequired: data.adminOtpRequired !== undefined ? !!data.adminOtpRequired : (current.adminOtpRequired ?? true),
+      defaultTrialDays: updatedTrialDays > 0 ? updatedTrialDays : 30,
     };
 
     if (usePostgres) {
       await runQueryRun(`
-        INSERT INTO platform_info (id, email, contact, whatsapp, address, company_name, description, updated_at, admin_otp_required)
-        VALUES ('autoshine_info', ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO platform_info (id, email, contact, whatsapp, address, company_name, description, updated_at, admin_otp_required, default_trial_days)
+        VALUES ('autoshine_info', ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (id) DO UPDATE SET
           email = EXCLUDED.email,
           contact = EXCLUDED.contact,
@@ -3897,7 +3971,8 @@ export async function updatePlatformInfo(data: Partial<PlatformInfo>): Promise<P
           company_name = EXCLUDED.company_name,
           description = EXCLUDED.description,
           updated_at = EXCLUDED.updated_at,
-          admin_otp_required = EXCLUDED.admin_otp_required
+          admin_otp_required = EXCLUDED.admin_otp_required,
+          default_trial_days = EXCLUDED.default_trial_days
       `, [
         updated.email,
         updated.contact,
@@ -3906,12 +3981,13 @@ export async function updatePlatformInfo(data: Partial<PlatformInfo>): Promise<P
         updated.companyName || 'Autoshine BN',
         updated.description || '',
         updated.updatedAt,
-        updated.adminOtpRequired ? 1 : 0
+        updated.adminOtpRequired ? 1 : 0,
+        updated.defaultTrialDays
       ]);
     } else {
       await runQueryRun(`
-        INSERT INTO platform_info (id, email, contact, whatsapp, address, companyName, description, updatedAt, adminOtpRequired)
-        VALUES ('autoshine_info', ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO platform_info (id, email, contact, whatsapp, address, companyName, description, updatedAt, adminOtpRequired, defaultTrialDays)
+        VALUES ('autoshine_info', ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           email = excluded.email,
           contact = excluded.contact,
@@ -3920,7 +3996,8 @@ export async function updatePlatformInfo(data: Partial<PlatformInfo>): Promise<P
           companyName = excluded.companyName,
           description = excluded.description,
           updatedAt = excluded.updatedAt,
-          adminOtpRequired = excluded.adminOtpRequired
+          adminOtpRequired = excluded.adminOtpRequired,
+          defaultTrialDays = excluded.defaultTrialDays
       `, [
         updated.email,
         updated.contact,
@@ -3929,7 +4006,8 @@ export async function updatePlatformInfo(data: Partial<PlatformInfo>): Promise<P
         updated.companyName || 'Autoshine BN',
         updated.description || '',
         updated.updatedAt,
-        updated.adminOtpRequired ? 1 : 0
+        updated.adminOtpRequired ? 1 : 0,
+        updated.defaultTrialDays
       ]);
     }
 
@@ -5409,5 +5487,152 @@ export async function getCustomerRedemptions(customerId: string): Promise<Member
     return [];
   }
 }
+
+// ==========================================
+// ⏳ SUBSCRIPTION EXPIRY & AUTOMATED ENFORCEMENT ENGINE
+// ==========================================
+
+export async function checkAndEnforceExpiredAccounts(): Promise<{ suspendedCount: number; suspendedOwnerIds: string[] }> {
+  try {
+    const nowIso = new Date().toISOString();
+    const allUsers = await getUsers();
+    const allCarWashes = await getCarWashes();
+
+    const suspendedOwnerIds: string[] = [];
+
+    for (const u of allUsers) {
+      if (u.role !== Role.OWNER) continue;
+      // Skip accounts with NULL or empty expiryDate (Permanent / No Expiry)
+      if (!u.expiryDate) continue;
+
+      // Check if current date has exceeded the expiration timestamp
+      const expiryTime = new Date(u.expiryDate).getTime();
+      const currentTime = new Date(nowIso).getTime();
+
+      if (currentTime > expiryTime) {
+        // Only trigger update if not already suspended or if any owned car wash is still active
+        const ownedWashes = allCarWashes.filter((cw) => cw.ownerId === u.id);
+        const hasActiveWashes = ownedWashes.some((cw) => cw.isActive);
+
+        if (u.status !== 'Suspended' || u.isActive || hasActiveWashes) {
+          suspendedOwnerIds.push(u.id);
+
+          // 1. Flip Owner account status to 'Suspended' and isActive to false
+          await updateUser(u.id, {
+            status: 'Suspended',
+            isActive: false,
+          });
+
+          // 2. Automatically flip operational status of all Carwashes/Outlets owned by this user to Suspended/Inactive
+          for (const cw of ownedWashes) {
+            await updateCarWash(cw.id, { isActive: false });
+          }
+
+          // 3. Log to audit trail
+          await addAuditLog(
+            u.id,
+            u.email,
+            'ACCOUNT_SUBSCRIPTION_EXPIRED',
+            `Automated Subscription Expiry Engine: Owner ${u.name} (${u.email}) trial/subscription expired on ${u.expiryDate}. Account status set to Suspended and ${ownedWashes.length} carwash outlet(s) deactivated.`
+          );
+        }
+      }
+    }
+
+    if (suspendedOwnerIds.length > 0) {
+      console.log(`[Expiry Enforcement Engine] Suspended ${suspendedOwnerIds.length} expired owner account(s):`, suspendedOwnerIds);
+    }
+
+    return {
+      suspendedCount: suspendedOwnerIds.length,
+      suspendedOwnerIds,
+    };
+  } catch (err) {
+    console.error('[Expiry Enforcement Engine Error]:', err);
+    return { suspendedCount: 0, suspendedOwnerIds: [] };
+  }
+}
+
+// High-performance search and pagination for System Marketplace Directory
+export async function getUsersPaginated(options: {
+  page?: number;
+  limit?: number;
+  search?: string;
+  role?: string;
+}): Promise<{
+  users: (UserWithPassword & { businessName?: string })[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}> {
+  try {
+    const rawUsers = await getUsers();
+    const allWashes = await getCarWashes();
+
+    // Map business name to each user
+    const hydratedUsers: (UserWithPassword & { businessName?: string })[] = rawUsers.map((u) => {
+      let bName = '';
+      if (u.role === Role.OWNER) {
+        const matching = allWashes.filter((w) => w.ownerId === u.id || (w.ownerEmail && w.ownerEmail.toLowerCase() === u.email.toLowerCase()));
+        bName = matching.map((w) => w.name).join(', ') || '';
+      } else if (u.businessId) {
+        const found = allWashes.find((w) => w.id === u.businessId);
+        bName = found ? found.name : '';
+      }
+      return {
+        ...u,
+        businessName: bName || undefined,
+      };
+    });
+
+    // Filter by role
+    let filtered = hydratedUsers;
+    if (options.role && options.role !== 'ALL') {
+      const targetRole = options.role.toUpperCase();
+      filtered = filtered.filter((u) => u.role.toUpperCase() === targetRole);
+    }
+
+    // Filter by search query (Name, Email, or Business Name)
+    if (options.search && options.search.trim()) {
+      const q = options.search.trim().toLowerCase();
+      filtered = filtered.filter((u) => {
+        const matchName = u.name?.toLowerCase().includes(q);
+        const matchEmail = u.email?.toLowerCase().includes(q);
+        const matchBusiness = u.businessName?.toLowerCase().includes(q);
+        return matchName || matchEmail || matchBusiness;
+      });
+    }
+
+    // Sort newest first
+    filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    const total = filtered.length;
+    const page = Math.max(1, options.page ? Number(options.page) : 1);
+    const limit = Math.max(1, options.limit ? Number(options.limit) : 25);
+    const totalPages = Math.ceil(total / limit) || 1;
+
+    const offset = (page - 1) * limit;
+    const paginatedUsers = filtered.slice(offset, offset + limit);
+
+    return {
+      users: paginatedUsers,
+      total,
+      page,
+      limit,
+      totalPages,
+    };
+  } catch (error) {
+    console.error('Database getUsersPaginated Error:', error);
+    return {
+      users: [],
+      total: 0,
+      page: 1,
+      limit: 25,
+      totalPages: 1,
+    };
+  }
+}
+
 
 

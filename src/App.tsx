@@ -410,6 +410,8 @@ const MainAppContent: React.FC = () => {
   const [showRegisterConfirmPassword, setShowRegisterConfirmPassword] = useState(false);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [registerRole, setRegisterRole] = useState<'CUSTOMER' | 'OWNER'>('CUSTOMER');
+  const [businessName, setBusinessName] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [gender, setGender] = useState('');
   const [profileImageUrl, setProfileImageUrl] = useState('');
@@ -466,6 +468,10 @@ const MainAppContent: React.FC = () => {
         showNotification("Please enter a valid phone number.", "error");
         return;
       }
+      if (registerRole === 'OWNER' && !businessName.trim()) {
+        showNotification("Please enter your Carwash / Business Name.", "error");
+        return;
+      }
       if (!acceptTerms) {
         showNotification("You must accept the Terms and Conditions to register.", "error");
         return;
@@ -480,6 +486,8 @@ const MainAppContent: React.FC = () => {
         gender: gender || undefined,
         profileImageUrl: profileImageUrl || undefined,
         address: address || undefined,
+        role: registerRole === 'OWNER' ? Role.OWNER : Role.CUSTOMER,
+        businessName: registerRole === 'OWNER' ? businessName.trim() : undefined,
       });
       if (res.success) {
         if (res.requireOtp) {
@@ -496,6 +504,7 @@ const MainAppContent: React.FC = () => {
           setPassword('');
           setRegisterConfirmPassword('');
           setName('');
+          setBusinessName('');
         }
       }
     } else {
@@ -1271,9 +1280,38 @@ const MainAppContent: React.FC = () => {
                       }`}
                       id="tab-signup"
                     >
-                      Register Customer
+                      Register
                     </button>
                   </div>
+
+                  {isRegisterMode && (
+                    <div className="mb-4 p-1.5 bg-slate-100 rounded-xl flex gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setRegisterRole('CUSTOMER')}
+                        className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                          registerRole === 'CUSTOMER'
+                            ? 'bg-white text-sky-700 shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                        id="register-role-customer"
+                      >
+                        👤 Customer
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setRegisterRole('OWNER')}
+                        className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                          registerRole === 'OWNER'
+                            ? 'bg-sky-600 text-white shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                        id="register-role-owner"
+                      >
+                        🚗 Carwash Owner / Operator
+                      </button>
+                    </div>
+                  )}
 
                   <form onSubmit={handleAuthSubmit} className="space-y-4">
                     {isRegisterMode && Boolean(pendingRegisterEmail) && (
@@ -1291,6 +1329,33 @@ const MainAppContent: React.FC = () => {
                         >
                           Enter Code &rarr;
                         </button>
+                      </div>
+                    )}
+                    {isRegisterMode && registerRole === 'OWNER' && (
+                      <div className="p-3.5 bg-sky-50/80 border border-sky-200/80 rounded-xl space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <label className="block text-xs font-bold text-sky-950 uppercase">
+                            Carwash / Business Name <span className="text-red-500">*</span>
+                          </label>
+                          <span className="text-[10px] font-bold px-2 py-0.5 bg-sky-200 text-sky-800 rounded-full">
+                            🌟 30-Day Free Trial
+                          </span>
+                        </div>
+                        <div className="relative">
+                          <Building className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-sky-500" />
+                          <input
+                            type="text"
+                            placeholder="e.g. Diamond Car Spa & Detailing"
+                            value={businessName}
+                            onChange={(e) => setBusinessName(e.target.value)}
+                            className="w-full pl-10 pr-3 py-2.5 bg-white border border-sky-300 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 rounded-xl outline-none text-slate-800 text-sm transition-all"
+                            required={registerRole === 'OWNER'}
+                            id="auth-business-name-input"
+                          />
+                        </div>
+                        <p className="text-[11px] text-sky-700 leading-relaxed">
+                          Includes automated trial access. Manage your station, services, and team. An OTP verification code will be sent to your email.
+                        </p>
                       </div>
                     )}
                     {isRegisterMode && (
@@ -1448,7 +1513,7 @@ const MainAppContent: React.FC = () => {
                         'Processing...'
                       ) : isRegisterMode ? (
                         <>
-                          <UserPlus className="h-4 w-4" /> Create Profile
+                          <UserPlus className="h-4 w-4" /> {registerRole === 'OWNER' ? 'Register Carwash & Start Trial' : 'Create Customer Profile'}
                         </>
                       ) : (
                         <>

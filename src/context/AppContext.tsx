@@ -59,6 +59,8 @@ interface AppContextType {
       profileImageUrl?: string;
       address?: string;
       phone?: string;
+      role?: Role;
+      businessName?: string;
     }
   ) => Promise<{ success: boolean; requireOtp?: boolean; email?: string; sandboxCode?: string }>;
   verifyRegistrationOtp: (email: string, otp: string) => Promise<boolean>;
@@ -135,6 +137,19 @@ interface AppContextType {
   adminUpdateUser: (id: string, data: any) => Promise<boolean>;
   adminUsersList: User[];
   fetchAdminUsers: () => Promise<void>;
+  fetchAdminUsersPaginated: (options?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    role?: string;
+  }) => Promise<{
+    users: User[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  } | null>;
+  enforceExpiryNow: () => Promise<{ success: boolean; suspendedCount: number }>;
   myMemberships: CustomerMembership[];
   fetchMyMemberships: () => Promise<void>;
   toggleMembershipFeature: (carWashId: string, isEnabled: boolean) => Promise<boolean>;
@@ -463,10 +478,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       let errorMsg = err.message || 'Failed to log in.';
-      // Catch and clean any remaining 403 or HTML errors
+      const isExpiredOrSuspended = typeof errorMsg === 'string' && (
+        errorMsg.toLowerCase().includes('expired') || 
+        errorMsg.toLowerCase().includes('suspended') || 
+        errorMsg.toLowerCase().includes('subscription')
+      );
+
+      // Catch and clean any remaining raw HTML or generic 403 errors (unless account is explicitly expired/suspended)
       if (
-        err.status === 403 ||
-        (typeof errorMsg === 'string' && (errorMsg.includes('<html') || errorMsg.includes('403') || errorMsg.toLowerCase().includes('forbidden')))
+        !isExpiredOrSuspended &&
+        (err.status === 403 ||
+        (typeof errorMsg === 'string' && (errorMsg.includes('<html') || errorMsg.includes('403') || errorMsg.toLowerCase().includes('forbidden'))))
       ) {
         errorMsg = 'Email verification required: A 6-digit verification code has been sent to your email. Please check your inbox (or spam folder) and enter your code to activate your account.';
         const targetEmail = email.trim();
@@ -558,6 +580,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       profileImageUrl?: string;
       address?: string;
       phone?: string;
+      role?: Role;
+      businessName?: string;
     }
   ): Promise<{ success: boolean; requireOtp?: boolean; email?: string; sandboxCode?: string }> => {
     try {
@@ -972,11 +996,53 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!token || (user?.role !== Role.ADMIN && user?.role !== Role.SPECIAL)) return;
     try {
       const data = await apiFetch('/api/admin/users');
-      setAdminUsersList(data);
+      setAdminUsersList(Array.isArray(data) ? data : (data.users || []));
     } catch (err: any) {
       if (err?.message !== 'Failed to fetch') {
         console.warn('Failed to fetch admin users:', err?.message || err);
       }
+    }
+  };
+
+  const fetchAdminUsersPaginated = async (options: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    role?: string;
+  } = {}) => {
+    if (!token || (user?.role !== Role.ADMIN && user?.role !== Role.SPECIAL)) return null;
+    try {
+      const params = new URLSearchParams();
+      if (options.page) params.set('page', String(options.page));
+      if (options.limit) params.set('limit', String(options.limit));
+      if (options.search) params.set('search', options.search);
+      if (options.role) params.set('role', options.role);
+      params.set('paginated', 'true');
+
+      const data = await apiFetch(`/api/admin/users?${params.toString()}`);
+      if (data && Array.isArray(data.users)) {
+        setAdminUsersList(data.users);
+      }
+      return data;
+    } catch (err: any) {
+      if (err?.message !== 'Failed to fetch') {
+        console.warn('Failed to fetch paginated admin users:', err?.message || err);
+      }
+      return null;
+    }
+  };
+
+  const enforceExpiryNow = async (): Promise<{ success: boolean; suspendedCount: number }> => {
+    if (!token || (user?.role !== Role.ADMIN && user?.role !== Role.SPECIAL)) return { success: false, suspendedCount: 0 };
+    try {
+      const data = await apiFetch('/api/admin/enforce-expiry', { method: 'POST' });
+      showNotification(`Account expiry check complete! Suspended ${data.suspendedCount} expired account(s).`, 'info');
+      fetchAdminUsers();
+      fetchLocations();
+      return data;
+    } catch (err: any) {
+      showNotification(err.message || 'Failed to trigger expiry enforcement', 'error');
+      return { success: false, suspendedCount: 0 };
     }
   };
 
@@ -1657,6 +1723,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         adminUpdateUser,
         adminUsersList,
         fetchAdminUsers,
+        fetchAdminUsersPaginated,
+        enforceExpiryNow,
         myMemberships,
         fetchMyMemberships,
         toggleMembershipFeature,

@@ -10,7 +10,8 @@ import {
   ShieldAlert, ShieldCheck, Users, Activity, Sliders, Check, X,
   Plus, Edit, UserPlus, FileText, Ban, CheckCircle, Info, Lock, Key, Sparkles, MapPin, Navigation,
   Database, Mail, AlertTriangle, RefreshCw, Server, Send, Eye, Trash2, Terminal, Building, Phone, Star,
-  Search, Filter, Award, Gift, Bell, BellOff, Shield, Zap, Settings, HelpCircle, CheckCircle2
+  Search, Filter, Award, Gift, Bell, BellOff, Shield, Zap, Settings, HelpCircle, CheckCircle2,
+  Calendar, Clock, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { Role, User, MapPreset, Review, CarWash } from '../types.js';
 import { isValidEmail } from '../lib/validation.js';
@@ -22,6 +23,9 @@ export const AdminDashboard: React.FC = () => {
   const {
     user,
     adminUsersList,
+    fetchAdminUsers,
+    fetchAdminUsersPaginated,
+    enforceExpiryNow,
     bookings,
     locations,
     logs,
@@ -53,11 +57,22 @@ export const AdminDashboard: React.FC = () => {
   const [editRole, setEditRole] = useState<Role>(Role.CUSTOMER);
   const [editIsActive, setEditIsActive] = useState(true);
   const [editBusinessId, setEditBusinessId] = useState('');
+  const [editExpiryDate, setEditExpiryDate] = useState<string>('');
+  const [editNoExpiry, setEditNoExpiry] = useState<boolean>(true);
+  const [editStatus, setEditStatus] = useState<string>('Active');
 
-  // User Filter State
+  // Directory Pagination, Search & Expiry Management States
   const [adminUserAlphaFilter, setAdminUserAlphaFilter] = useState<string>('ALL');
   const [adminUserRoleFilter, setAdminUserRoleFilter] = useState<string>('ALL');
   const [adminUserSearch, setAdminUserSearch] = useState<string>('');
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [totalPages, setTotalPages] = useState<number>(1);
+  const [totalUsers, setTotalUsers] = useState<number>(0);
+  const [paginatedUsers, setPaginatedUsers] = useState<User[]>([]);
+  const [usersLoading, setUsersLoading] = useState<boolean>(false);
+  const [isEnforcingExpiry, setIsEnforcingExpiry] = useState<boolean>(false);
+  const [inlineExpiryDrafts, setInlineExpiryDrafts] = useState<Record<string, string>>({});
 
   // Onboard Business and Owner State
   const [showOnboardModal, setShowOnboardModal] = useState(false);
@@ -164,6 +179,7 @@ export const AdminDashboard: React.FC = () => {
   const [infoCompanyName, setInfoCompanyName] = useState('Autoshine BN');
   const [infoDesc, setInfoDesc] = useState('');
   const [infoAdminOtpRequired, setInfoAdminOtpRequired] = useState(true);
+  const [infoDefaultTrialDays, setInfoDefaultTrialDays] = useState<number>(30);
   const [infoSaving, setInfoSaving] = useState(false);
   const [togglingOtp, setTogglingOtp] = useState(false);
 
@@ -176,6 +192,7 @@ export const AdminDashboard: React.FC = () => {
       setInfoCompanyName(platformInfo.companyName || 'Autoshine BN');
       setInfoDesc(platformInfo.description || '');
       setInfoAdminOtpRequired(platformInfo.adminOtpRequired !== false);
+      setInfoDefaultTrialDays(platformInfo.defaultTrialDays !== undefined ? platformInfo.defaultTrialDays : 30);
     }
   }, [platformInfo]);
 
@@ -190,6 +207,7 @@ export const AdminDashboard: React.FC = () => {
       companyName: infoCompanyName.trim(),
       description: infoDesc.trim(),
       adminOtpRequired: infoAdminOtpRequired,
+      defaultTrialDays: Number(infoDefaultTrialDays) || 30,
     });
     setInfoSaving(false);
   };
@@ -727,6 +745,42 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
+  const loadPaginatedUsers = async (page = currentPage, limit = pageSize, search = adminUserSearch, role = adminUserRoleFilter) => {
+    setUsersLoading(true);
+    try {
+      const res = await fetchAdminUsersPaginated({
+        page,
+        limit,
+        search: search.trim() || undefined,
+        role: role !== 'ALL' ? role : undefined,
+      });
+      if (res) {
+        setPaginatedUsers(res.users);
+        setTotalPages(res.totalPages || 1);
+        setTotalUsers(res.total || 0);
+        setCurrentPage(res.page || 1);
+      }
+    } finally {
+      setUsersLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSubTab === 'users') {
+      loadPaginatedUsers(currentPage, pageSize, adminUserSearch, adminUserRoleFilter);
+    }
+  }, [activeSubTab, currentPage, pageSize, adminUserRoleFilter]);
+
+  // Debounced search trigger for high performance filtering
+  useEffect(() => {
+    if (activeSubTab !== 'users') return;
+    const timer = setTimeout(() => {
+      setCurrentPage(1);
+      loadPaginatedUsers(1, pageSize, adminUserSearch, adminUserRoleFilter);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [adminUserSearch]);
+
   const handleOpenEdit = (u: User) => {
     setEditingUser(u);
     setEditName(u.name);
@@ -734,31 +788,68 @@ export const AdminDashboard: React.FC = () => {
     setEditRole(u.role);
     setEditIsActive(u.isActive);
     setEditBusinessId(u.businessId || '');
+    setEditExpiryDate(u.expiryDate ? u.expiryDate.substring(0, 10) : '');
+    setEditNoExpiry(!u.expiryDate);
+    setEditStatus(u.status || (u.isActive ? 'Active' : 'Suspended'));
   };
 
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingUser) return;
 
+    let targetExpiry: string | null | undefined = undefined;
+    if (editRole === Role.OWNER) {
+      targetExpiry = editNoExpiry ? null : (editExpiryDate ? new Date(editExpiryDate + 'T23:59:59.999Z').toISOString() : null);
+    }
+
     const data = {
       name: editName,
       email: editEmail,
       role: editRole,
       isActive: editIsActive,
+      status: editStatus,
+      expiryDate: targetExpiry,
       businessId: editRole === Role.EMPLOYEE ? editBusinessId : undefined
     };
 
     const success = await adminUpdateUser(editingUser.id, data);
     if (success) {
       setEditingUser(null);
+      loadPaginatedUsers(currentPage, pageSize, adminUserSearch, adminUserRoleFilter);
     }
   };
 
   const handleToggleUserStatus = async (userToToggle: User) => {
     const data = {
-      isActive: !userToToggle.isActive
+      isActive: !userToToggle.isActive,
+      status: !userToToggle.isActive ? 'Active' : 'Suspended'
     };
-    await adminUpdateUser(userToToggle.id, data);
+    const success = await adminUpdateUser(userToToggle.id, data);
+    if (success) {
+      loadPaginatedUsers(currentPage, pageSize, adminUserSearch, adminUserRoleFilter);
+    }
+  };
+
+  const handleUpdateOperatorExpiry = async (operatorId: string, expiryDate: string | null) => {
+    const isFutureOrPermanent = !expiryDate || new Date(expiryDate).getTime() > Date.now();
+    const success = await adminUpdateUser(operatorId, {
+      expiryDate,
+      status: isFutureOrPermanent ? 'Active' : 'Suspended',
+      isActive: isFutureOrPermanent,
+    });
+    if (success) {
+      loadPaginatedUsers(currentPage, pageSize, adminUserSearch, adminUserRoleFilter);
+    }
+  };
+
+  const handleManualEnforceExpiry = async () => {
+    setIsEnforcingExpiry(true);
+    try {
+      await enforceExpiryNow();
+      await loadPaginatedUsers(currentPage, pageSize, adminUserSearch, adminUserRoleFilter);
+    } finally {
+      setIsEnforcingExpiry(false);
+    }
   };
 
   return (
@@ -927,214 +1018,421 @@ export const AdminDashboard: React.FC = () => {
         )}
       </div>
 
-      {/* Sub Tab: Users */}
+      {/* Sub Tab: Users - System Marketplace Directory */}
       {activeSubTab === 'users' && (() => {
-        const filteredAdminUsers = adminUsersList
-          .map((u) => {
-            const uName = (u.name || '').trim();
-            let firstLetter = uName.charAt(0).toUpperCase();
-            if (!/^[A-Z]$/i.test(firstLetter)) {
-              firstLetter = '#';
-            }
-            return { ...u, firstLetter };
-          })
-          .sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base', numeric: true }))
-          .filter((u) => {
-            if (adminUserRoleFilter !== 'ALL' && u.role !== adminUserRoleFilter) return false;
-            if (adminUserAlphaFilter !== 'ALL') {
-              if (adminUserAlphaFilter === '#') {
-                if (u.firstLetter !== '#') return false;
-              } else {
-                if (u.firstLetter !== adminUserAlphaFilter) return false;
-              }
-            }
-            if (adminUserSearch.trim()) {
-              const q = adminUserSearch.toLowerCase();
-              const matchName = u.name?.toLowerCase().includes(q);
-              const matchEmail = u.email?.toLowerCase().includes(q);
-              if (!matchName && !matchEmail) return false;
-            }
-            return true;
-          });
+        const displayedUsers = paginatedUsers.length > 0 ? paginatedUsers : adminUsersList;
+        const countTotal = totalUsers > 0 ? totalUsers : adminUsersList.length;
 
         return (
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-5">
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-5" id="system-marketplace-directory">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <h2 className="text-base sm:text-lg font-bold text-slate-800">Platform Accounts</h2>
-                <p className="text-xs text-slate-400">Total accounts registered in the database ({adminUsersList.length} total)</p>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-base sm:text-lg font-bold text-slate-800">System Marketplace Directory</h2>
+                  <span className="text-[10px] font-bold px-2 py-0.5 bg-red-50 text-red-700 border border-red-200 rounded-full font-mono">
+                    {countTotal} Total Accounts
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Manage marketplace operators, trial &amp; subscription expiry dates, and platform credentials.
+                </p>
               </div>
-              <button
-                onClick={() => setShowCreateModal(true)}
-                className="bg-red-600 hover:bg-red-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-md transition-colors flex items-center gap-1.5 cursor-pointer"
-                id="admin-create-user-trigger"
-              >
-                <UserPlus className="h-4 w-4" /> Create User Profile
-              </button>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={isEnforcingExpiry}
+                  onClick={handleManualEnforceExpiry}
+                  className="bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white text-xs font-bold px-3.5 py-2.5 rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                  title="Check all operator expiry dates and immediately suspend expired accounts and their carwashes"
+                  id="admin-enforce-expiry-btn"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${isEnforcingExpiry ? 'animate-spin text-amber-400' : 'text-slate-300'}`} />
+                  <span>{isEnforcingExpiry ? 'Checking Expirations...' : 'Run Expiry Check'}</span>
+                </button>
+
+                <button
+                  onClick={() => setShowCreateModal(true)}
+                  className="bg-red-600 hover:bg-red-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-md transition-colors flex items-center gap-1.5 cursor-pointer"
+                  id="admin-create-user-trigger"
+                >
+                  <UserPlus className="h-4 w-4" /> Create User Profile
+                </button>
+              </div>
             </div>
 
-            {/* Filter controls row */}
+            {/* Filter & Search controls row */}
             <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-                {/* Role Filter buttons */}
-                <div className="flex items-center gap-1 overflow-x-auto pb-1 text-xs font-bold">
-                  <span className="text-slate-400 uppercase tracking-wider text-[10px] mr-1">Role:</span>
-                  {['ALL', Role.CUSTOMER, Role.OWNER, Role.EMPLOYEE, Role.SPECIAL, Role.ADMIN].map((r) => (
-                    <button
-                      key={r}
-                      type="button"
-                      onClick={() => setAdminUserRoleFilter(r)}
-                      className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer whitespace-nowrap text-[11px] ${
-                        adminUserRoleFilter === r
-                          ? 'bg-slate-900 text-white font-extrabold'
-                          : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'
-                      }`}
-                    >
-                      {r === 'ALL' ? 'All Roles' : r}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Search input */}
-                <div className="relative w-full md:w-64">
+                {/* Search input with backend query optimization */}
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                   <input
                     type="text"
-                    placeholder="Search name or email..."
+                    placeholder="Search operators by Name, Email, or Business Name..."
                     value={adminUserSearch}
                     onChange={(e) => setAdminUserSearch(e.target.value)}
-                    className="w-full pl-3 pr-8 py-1.5 bg-white border border-slate-200 rounded-xl text-xs outline-none focus:border-red-500"
+                    className="w-full pl-9 pr-8 py-2 bg-white border border-slate-200 rounded-xl text-xs outline-none focus:border-red-500 font-medium shadow-2xs"
+                    id="admin-user-search-input"
                   />
                   {adminUserSearch && (
                     <button
                       type="button"
                       onClick={() => setAdminUserSearch('')}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs cursor-pointer p-1"
                     >
                       ✕
                     </button>
                   )}
                 </div>
+
+                {/* Items Per Page Selector */}
+                <div className="flex items-center gap-2 shrink-0 text-xs">
+                  <span className="text-slate-500 font-semibold text-[11px]">Per Page:</span>
+                  <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 shadow-3xs">
+                    {[10, 25, 50].map((size) => (
+                      <button
+                        key={size}
+                        type="button"
+                        onClick={() => {
+                          setPageSize(size);
+                          setCurrentPage(1);
+                        }}
+                        className={`px-2 py-0.5 rounded-lg text-xs font-bold cursor-pointer transition-colors ${
+                          pageSize === size
+                            ? 'bg-slate-900 text-white shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        {size}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
 
-              {/* A-Z Letter Bar */}
-              <div className="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap pb-2 pt-1 max-w-full touch-pan-x scrollbar-thin">
-                <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] mr-1 shrink-0">A-Z Index:</span>
-                {['ALL', '#', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')].map((letter) => {
-                  const count = letter === 'ALL'
-                    ? adminUsersList.length
-                    : letter === '#'
-                    ? adminUsersList.filter((u) => !/^[A-Z]$/i.test((u.name || '').trim().charAt(0))).length
-                    : adminUsersList.filter((u) => (u.name || '').trim().charAt(0).toUpperCase() === letter).length;
-
-                  const isSel = adminUserAlphaFilter === letter;
-
-                  return (
-                    <button
-                      key={letter}
-                      type="button"
-                      onClick={() => setAdminUserAlphaFilter(letter)}
-                      className={`min-w-7 h-7 px-1.5 rounded-lg text-[11px] font-extrabold transition-all cursor-pointer flex items-center justify-center gap-0.5 ${
-                        isSel
-                          ? 'bg-red-600 text-white shadow-xs'
-                          : count > 0
-                          ? 'bg-white hover:bg-slate-200 text-slate-800 border border-slate-200'
-                          : 'bg-slate-100 text-slate-300 cursor-not-allowed opacity-50'
-                      }`}
-                    >
-                      <span>{letter}</span>
-                    </button>
-                  );
-                })}
+              {/* Role Filter buttons */}
+              <div className="flex items-center gap-1 overflow-x-auto pb-1 text-xs font-bold pt-1">
+                <span className="text-slate-400 uppercase tracking-wider text-[10px] mr-1">Role:</span>
+                {['ALL', Role.OWNER, Role.CUSTOMER, Role.EMPLOYEE, Role.SPECIAL, Role.ADMIN].map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => {
+                      setAdminUserRoleFilter(r);
+                      setCurrentPage(1);
+                    }}
+                    className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer whitespace-nowrap text-[11px] ${
+                      adminUserRoleFilter === r
+                        ? 'bg-red-600 text-white font-extrabold shadow-2xs'
+                        : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'
+                    }`}
+                  >
+                    {r === 'ALL' ? 'All Roles' : r === Role.OWNER ? '🚗 Carwash Owners' : r}
+                  </button>
+                ))}
               </div>
             </div>
 
+            {/* Users Directory Table */}
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse" id="admin-users-table">
                 <thead>
                   <tr className="border-b border-slate-100 text-xs font-bold text-slate-400 uppercase tracking-wider">
-                    <th className="py-3 px-4">User Details</th>
-                    <th className="py-3 px-4">Email</th>
-                    <th className="py-3 px-4">Role Badge</th>
+                    <th className="py-3 px-4">Operator / User</th>
+                    <th className="py-3 px-4">Role</th>
                     <th className="py-3 px-4">Status</th>
-                    <th className="py-3 px-4">Created Date</th>
-                    <th className="py-3 px-4 text-right">Operations</th>
+                    <th className="py-3 px-4 min-w-[240px]">Account Expiry Date</th>
+                    <th className="py-3 px-4">Registered</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50 text-xs sm:text-sm">
-                  {filteredAdminUsers.length === 0 ? (
+                  {usersLoading ? (
                     <tr>
-                      <td colSpan={6} className="py-8 text-center text-slate-400 font-bold">
-                        No users found matching current filters.
+                      <td colSpan={6} className="py-12 text-center text-slate-400 font-medium">
+                        <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2 text-slate-300" />
+                        Loading marketplace directory...
+                      </td>
+                    </tr>
+                  ) : displayedUsers.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-10 text-center text-slate-400 font-bold">
+                        No operators or accounts found matching current query.
                       </td>
                     </tr>
                   ) : (
-                    filteredAdminUsers.map((u) => (
-                      <tr key={u.id} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="py-4 px-4 font-semibold text-slate-800">
-                          <div className="flex items-center gap-2">
-                            <span className={`w-2 h-2 rounded-full ${u.isActive ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                            {u.name}
-                          </div>
-                        </td>
-                        <td className="py-4 px-4 font-mono text-slate-500">{u.email}</td>
-                        <td className="py-4 px-4">
-                          <span className={`inline-flex px-2 py-0.5 rounded text-xs font-bold font-mono border ${
-                            u.role === Role.ADMIN
-                              ? 'bg-red-50 border-red-200 text-red-700'
-                              : u.role === Role.OWNER
-                              ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
-                              : u.role === Role.EMPLOYEE
-                              ? 'bg-amber-50 border-amber-200 text-amber-700'
-                              : u.role === Role.SPECIAL
-                              ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                              : 'bg-sky-50 border-sky-200 text-sky-700'
-                          }`}>
-                            {u.role}
-                          </span>
-                        </td>
-                        <td className="py-4 px-4">
-                          <div className="flex flex-col gap-1">
-                            <span className={`inline-flex items-center gap-1 text-[11px] font-bold ${
-                              u.isActive ? 'text-emerald-600' : 'text-rose-500'
+                    displayedUsers.map((u) => {
+                      const isOwner = u.role === Role.OWNER;
+                      const hasExpiry = Boolean(u.expiryDate);
+                      const isExpired = hasExpiry && new Date(u.expiryDate!).getTime() < Date.now();
+                      const daysRemaining = hasExpiry
+                        ? Math.ceil((new Date(u.expiryDate!).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+                        : null;
+
+                      const draftVal = inlineExpiryDrafts[u.id] !== undefined
+                        ? inlineExpiryDrafts[u.id]
+                        : (u.expiryDate ? u.expiryDate.substring(0, 10) : '');
+
+                      return (
+                        <tr key={u.id} className="hover:bg-slate-50/60 transition-colors">
+                          {/* User & Business details */}
+                          <td className="py-3.5 px-4 font-semibold text-slate-800">
+                            <div className="flex items-start gap-2.5">
+                              <span className={`w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 ${
+                                isExpired || !u.isActive ? 'bg-rose-500' : 'bg-emerald-500'
+                              }`} />
+                              <div>
+                                <div className="font-bold text-slate-900 text-xs sm:text-sm">{u.name}</div>
+                                <div className="text-[11px] font-mono text-slate-500 mt-0.5">{u.email}</div>
+                                {Boolean(u.businessName) && (
+                                  <div className="flex items-center gap-1 text-[11px] text-sky-800 font-semibold mt-1 bg-sky-50 px-2 py-0.5 rounded border border-sky-200/80 w-fit">
+                                    <Building className="h-3 w-3 text-sky-600 shrink-0" />
+                                    <span>{u.businessName}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* Role Badge */}
+                          <td className="py-3.5 px-4">
+                            <span className={`inline-flex px-2 py-0.5 rounded text-xs font-bold font-mono border ${
+                              u.role === Role.ADMIN
+                                ? 'bg-red-50 border-red-200 text-red-700'
+                                : u.role === Role.OWNER
+                                ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                                : u.role === Role.EMPLOYEE
+                                ? 'bg-amber-50 border-amber-200 text-amber-700'
+                                : u.role === Role.SPECIAL
+                                ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                                : 'bg-sky-50 border-sky-200 text-sky-700'
                             }`}>
-                              {u.isActive ? <ShieldCheck className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
-                              {u.isActive ? 'ACTIVE' : 'LOCKED'}
+                              {u.role}
                             </span>
-                            {u.isEmailVerified === false && (
-                              <span className="inline-flex items-center text-[10px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded font-mono font-bold w-fit">
-                                UNVERIFIED
-                              </span>
+                          </td>
+
+                          {/* Status */}
+                          <td className="py-3.5 px-4">
+                            <div className="flex flex-col gap-1">
+                              {isExpired ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-black text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200 w-fit uppercase">
+                                  <Ban className="h-3 w-3" /> EXPIRED
+                                </span>
+                              ) : u.isActive ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 w-fit uppercase">
+                                  <ShieldCheck className="h-3 w-3" /> ACTIVE
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-black text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 w-fit uppercase">
+                                  <Ban className="h-3 w-3" /> SUSPENDED
+                                </span>
+                              )}
+                              {u.isEmailVerified === false && (
+                                <span className="text-[9px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.2 rounded font-mono font-bold w-fit">
+                                  UNVERIFIED
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Granular Expiry Date Management (Carwash Owners) */}
+                          <td className="py-3.5 px-4">
+                            {isOwner ? (
+                              <div className="space-y-1.5 bg-slate-50/80 p-2.5 rounded-xl border border-slate-200/80 max-w-xs">
+                                <div className="flex items-center justify-between text-[11px]">
+                                  {isExpired ? (
+                                    <span className="font-bold text-rose-700 flex items-center gap-1">
+                                      <AlertTriangle className="h-3.5 w-3.5 text-rose-600" />
+                                      Expired on {new Date(u.expiryDate!).toLocaleDateString()}
+                                    </span>
+                                  ) : hasExpiry ? (
+                                    <span className={`font-bold flex items-center gap-1 ${
+                                      daysRemaining !== null && daysRemaining <= 7 ? 'text-amber-700' : 'text-emerald-700'
+                                    }`}>
+                                      <Clock className="h-3.5 w-3.5" />
+                                      {daysRemaining !== null && daysRemaining <= 0
+                                        ? 'Expires today'
+                                        : `${daysRemaining} days remaining`}
+                                    </span>
+                                  ) : (
+                                    <span className="font-bold text-slate-600 flex items-center gap-1">
+                                      ♾️ Permanent (No Expiry)
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center gap-1.5">
+                                  <input
+                                    type="date"
+                                    value={draftVal}
+                                    onChange={(e) => {
+                                      setInlineExpiryDrafts((prev) => ({
+                                        ...prev,
+                                        [u.id]: e.target.value,
+                                      }));
+                                    }}
+                                    className="px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs font-mono text-slate-800 outline-none focus:border-indigo-500 w-36 shadow-2xs"
+                                    title="Select Account Expiry Date"
+                                  />
+
+                                  {draftVal !== (u.expiryDate ? u.expiryDate.substring(0, 10) : '') && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (draftVal) {
+                                          handleUpdateOperatorExpiry(u.id, new Date(draftVal + 'T23:59:59.999Z').toISOString());
+                                        }
+                                      }}
+                                      className="px-2 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-bold cursor-pointer shadow-xs transition-colors"
+                                      title="Save Expiry Date"
+                                    >
+                                      Save
+                                    </button>
+                                  )}
+
+                                  {/* Non-Expiring / Permanent Toggle */}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (hasExpiry) {
+                                        // Set to permanent
+                                        handleUpdateOperatorExpiry(u.id, null);
+                                        setInlineExpiryDrafts((prev) => {
+                                          const copy = { ...prev };
+                                          delete copy[u.id];
+                                          return copy;
+                                        });
+                                      } else {
+                                        // Set 30 days trial
+                                        const d = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().substring(0, 10);
+                                        handleUpdateOperatorExpiry(u.id, new Date(d + 'T23:59:59.999Z').toISOString());
+                                      }
+                                    }}
+                                    className={`px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer border transition-colors ${
+                                      !hasExpiry
+                                        ? 'bg-slate-200 text-slate-800 border-slate-300 hover:bg-slate-300'
+                                        : 'bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-50'
+                                    }`}
+                                    title="Toggle between permanent access and expiration date"
+                                  >
+                                    {!hasExpiry ? 'Add Expiry' : 'No Expiry'}
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 font-mono text-xs">— (Permanent)</span>
                             )}
-                          </div>
-                        </td>
-                        <td className="py-4 px-4 text-slate-400 font-mono text-xs">{u.createdAt ? u.createdAt.substring(0, 10) : 'N/A'}</td>
-                        <td className="py-4 px-4 text-right space-x-2">
-                          <button
-                            onClick={() => handleOpenEdit(u)}
-                            className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
-                            title="Edit User Profile"
-                            id={`edit-user-btn-${u.id}`}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => handleToggleUserStatus(u)}
-                            className={`p-1 font-bold text-xs rounded transition-all cursor-pointer ${
-                              u.isActive
-                                ? 'text-rose-500 hover:bg-rose-50'
-                                : 'text-emerald-500 hover:bg-emerald-50'
-                            }`}
-                            title={u.isActive ? 'Lock User account' : 'Unlock User account'}
-                            id={`lock-user-btn-${u.id}`}
-                          >
-                            {u.isActive ? 'Suspend' : 'Activate'}
-                          </button>
-                        </td>
-                      </tr>
-                    ))
+                          </td>
+
+                          {/* Created Date */}
+                          <td className="py-3.5 px-4 text-slate-500 font-mono text-xs">
+                            {u.createdAt ? u.createdAt.substring(0, 10) : 'N/A'}
+                          </td>
+
+                          {/* Operations */}
+                          <td className="py-3.5 px-4 text-right space-x-2">
+                            <button
+                              onClick={() => handleOpenEdit(u)}
+                              className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg cursor-pointer transition-colors"
+                              title="Edit User Profile"
+                              id={`edit-user-btn-${u.id}`}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => handleToggleUserStatus(u)}
+                              className={`p-1.5 font-bold text-xs rounded-lg transition-colors cursor-pointer ${
+                                u.isActive
+                                  ? 'text-rose-600 hover:bg-rose-50'
+                                  : 'text-emerald-600 hover:bg-emerald-50'
+                              }`}
+                              title={u.isActive ? 'Suspend User account' : 'Reactivate User account'}
+                              id={`lock-user-btn-${u.id}`}
+                            >
+                              {u.isActive ? 'Suspend' : 'Activate'}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
+            </div>
+
+            {/* Numerical Pagination Controls */}
+            <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="text-xs text-slate-500 font-medium">
+                Showing{' '}
+                <strong className="text-slate-800">
+                  {totalUsers > 0 ? (currentPage - 1) * pageSize + 1 : 0}
+                </strong>{' '}
+                to{' '}
+                <strong className="text-slate-800">
+                  {Math.min(currentPage * pageSize, totalUsers || displayedUsers.length)}
+                </strong>{' '}
+                of <strong className="text-slate-800">{countTotal}</strong> accounts
+              </div>
+
+              {totalPages > 1 && (
+                <div className="flex items-center gap-1.5 self-center sm:self-auto">
+                  <button
+                    type="button"
+                    disabled={currentPage <= 1}
+                    onClick={() => {
+                      const p = Math.max(1, currentPage - 1);
+                      setCurrentPage(p);
+                      loadPaginatedUsers(p, pageSize, adminUserSearch, adminUserRoleFilter);
+                    }}
+                    className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors flex items-center gap-1"
+                  >
+                    <ChevronLeft className="h-3.5 w-3.5" /> Previous
+                  </button>
+
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+                      .filter((p) => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 2)
+                      .map((pageNum, idx, arr) => {
+                        const prev = arr[idx - 1];
+                        return (
+                          <React.Fragment key={pageNum}>
+                            {prev && pageNum - prev > 1 && (
+                              <span className="px-1 text-slate-400 text-xs">...</span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCurrentPage(pageNum);
+                                loadPaginatedUsers(pageNum, pageSize, adminUserSearch, adminUserRoleFilter);
+                              }}
+                              className={`w-7 h-7 rounded-xl text-xs font-bold cursor-pointer transition-colors ${
+                                currentPage === pageNum
+                                  ? 'bg-red-600 text-white shadow-xs'
+                                  : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+                              }`}
+                            >
+                              {pageNum}
+                            </button>
+                          </React.Fragment>
+                        );
+                      })}
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={currentPage >= totalPages}
+                    onClick={() => {
+                      const p = Math.min(totalPages, currentPage + 1);
+                      setCurrentPage(p);
+                      loadPaginatedUsers(p, pageSize, adminUserSearch, adminUserRoleFilter);
+                    }}
+                    className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors flex items-center gap-1"
+                  >
+                    Next <ChevronRight className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         );
@@ -2430,6 +2728,48 @@ export const AdminDashboard: React.FC = () => {
                   />
                 </div>
 
+                {/* Global Subscription & Trial Expiry Setting */}
+                <div className="p-4 bg-sky-50/70 border border-sky-200/80 rounded-2xl space-y-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 bg-sky-100 rounded-xl text-sky-700">
+                      <Clock className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs sm:text-sm font-bold text-slate-800">
+                        Default Registration Trial Period
+                      </h4>
+                      <p className="text-[11px] text-slate-500">
+                        Initial trial duration automatically assigned to new Carwash Owners registering via public sign-up.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-sky-150 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div className="space-y-1">
+                      <label className="block text-xs font-bold text-slate-700 uppercase">
+                        Trial Duration (Days)
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min={1}
+                          max={365}
+                          value={infoDefaultTrialDays}
+                          onChange={(e) => setInfoDefaultTrialDays(Math.max(1, parseInt(e.target.value) || 1))}
+                          className="w-28 px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-bold text-slate-800 outline-none focus:border-sky-500 font-mono shadow-2xs"
+                          id="admin-default-trial-days-input"
+                        />
+                        <span className="text-xs font-semibold text-slate-600">days</span>
+                      </div>
+                    </div>
+
+                    <div className="p-2.5 bg-white/80 border border-sky-100 rounded-xl text-[11px] text-slate-600 leading-relaxed max-w-sm">
+                      <span className="font-bold text-slate-800">Isolation Rule: </span>
+                      Changing this setting applies exclusively to <em>future</em> public registrations. Existing operators will retain their current expiration date or permanent status untouched.
+                    </div>
+                  </div>
+                </div>
+
                 {/* Administrator 2FA Security Enforcement Card */}
                 <div className="p-4 bg-rose-50/60 border border-rose-200 rounded-2xl space-y-3">
                   <div className="flex items-center justify-between">
@@ -3283,12 +3623,56 @@ export const AdminDashboard: React.FC = () => {
                 </div>
               )}
 
+              {editRole === Role.OWNER && (
+                <div className="p-3 bg-indigo-50/60 border border-indigo-200/80 rounded-xl space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-bold text-indigo-950 uppercase">
+                      Account Expiry Date
+                    </label>
+                    <span className="text-[10px] font-mono font-bold text-indigo-700 bg-white px-2 py-0.5 rounded border border-indigo-200">
+                      {editNoExpiry ? 'Permanent / No Expiry' : (editExpiryDate || 'Not Set')}
+                    </span>
+                  </div>
+
+                  <input
+                    type="date"
+                    disabled={editNoExpiry}
+                    value={editExpiryDate}
+                    onChange={(e) => setEditExpiryDate(e.target.value)}
+                    className="w-full px-3 py-2 border border-indigo-200 rounded-xl text-xs font-mono bg-white disabled:bg-slate-100 disabled:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+
+                  <label className="flex items-center gap-2 cursor-pointer select-none pt-1">
+                    <input
+                      type="checkbox"
+                      checked={editNoExpiry}
+                      onChange={(e) => {
+                        setEditNoExpiry(e.target.checked);
+                        if (e.target.checked) {
+                          setEditExpiryDate('');
+                        } else if (!editExpiryDate) {
+                          const in30Days = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().substring(0, 10);
+                          setEditExpiryDate(in30Days);
+                        }
+                      }}
+                      className="h-4 w-4 accent-indigo-600 rounded cursor-pointer"
+                    />
+                    <span className="text-xs font-semibold text-indigo-900">
+                      Permanent Access (No Expiry Date / NULL)
+                    </span>
+                  </label>
+                </div>
+              )}
+
               <div className="flex items-center gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
                 <input
                   type="checkbox"
                   checked={editIsActive}
-                  onChange={(e) => setEditIsActive(e.target.checked)}
-                  className="h-4 w-4 accent-red-600 rounded"
+                  onChange={(e) => {
+                    setEditIsActive(e.target.checked);
+                    setEditStatus(e.target.checked ? 'Active' : 'Suspended');
+                  }}
+                  className="h-4 w-4 accent-red-600 rounded cursor-pointer"
                 />
                 <span className="font-semibold text-slate-700 text-xs">Active Account Status</span>
               </div>

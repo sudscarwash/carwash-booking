@@ -34,6 +34,9 @@ export interface User {
   address?: string;
   phone?: string;
   isEmailVerified?: boolean;
+  expiryDate?: string | null; // ISO date string for subscription expiry; null = permanent / no expiry
+  status?: 'Active' | 'Suspended' | 'Pending' | string;
+  businessName?: string; // Hydrated business name for owners/employees
 }
 
 export interface UserWithPassword extends User {
@@ -81,6 +84,7 @@ export interface PlatformInfo {
   description?: string;
   updatedAt?: string;
   adminOtpRequired?: boolean;
+  defaultTrialDays?: number; // Global default trial period for self-registered Carwash Owners (e.g. 30 days)
 }
 
 export interface CarWash {
