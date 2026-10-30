@@ -253,6 +253,10 @@ const MainAppContent: React.FC = () => {
     setCurrentPathname(path);
   };
 
+  // Track previous authenticated user ID and role to distinguish login transitions from direct URL manipulations
+  const previousUserIdRef = useRef<string | null>(null);
+  const previousUserRoleRef = useRef<Role | null>(null);
+
   // Sync route on login / role change / auth mode change
   useEffect(() => {
     const path = window.location.pathname;
@@ -271,12 +275,27 @@ const MainAppContent: React.FC = () => {
     }
 
     if (user) {
+      const isLoginOrRoleSwitch = previousUserIdRef.current !== user.id || previousUserRoleRef.current !== user.role;
+      previousUserIdRef.current = user.id;
+      previousUserRoleRef.current = user.role;
+
       if (user.role === Role.SPECIAL) {
+        // If user just logged in or switched role, always route directly to their home dashboard (/special)
+        if (isLoginOrRoleSwitch || path === '/' || path === '/login' || path === '/register' || path === '/directory' || path === '/owner-expiry') {
+          const targetPath = '/special';
+          if (window.location.pathname !== targetPath) {
+            window.history.replaceState({ path: targetPath }, '', targetPath);
+          }
+          setCurrentPathname(targetPath);
+          return;
+        }
+
+        // If user was already logged in as Special User and directly typed/manipulated the URL to a forbidden path
         if (isSpecialForbiddenPath(path)) {
-          // Keep currentPathname pointing to forbidden route so 403 Forbidden is rendered
           setCurrentPathname(path);
           return;
         }
+
         const targetPath = '/special';
         if (window.location.pathname !== targetPath) {
           window.history.replaceState({ path: targetPath }, '', targetPath);
@@ -295,6 +314,8 @@ const MainAppContent: React.FC = () => {
       }
       setCurrentPathname(targetPath);
     } else {
+      previousUserIdRef.current = null;
+      previousUserRoleRef.current = null;
       const searchParams = new URLSearchParams(window.location.search);
       const isVerifyRoute =
         path === '/verify-email' ||
@@ -791,7 +812,17 @@ const MainAppContent: React.FC = () => {
           onBrowseAll={() => {
             setPublicOperatorSlug(null);
             setShowAuthModalForOperator(false);
-            const target = user ? (user.role === Role.OWNER ? '/owner' : '/customer') : '/login';
+            const target = user
+              ? user.role === Role.ADMIN
+                ? '/admin'
+                : user.role === Role.OWNER
+                ? '/owner'
+                : user.role === Role.SPECIAL
+                ? '/special'
+                : user.role === Role.EMPLOYEE
+                ? '/employee'
+                : '/customer'
+              : '/login';
             window.history.replaceState({ path: target }, '', target);
           }}
           onLoginClick={() => {

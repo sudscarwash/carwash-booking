@@ -673,6 +673,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAdminUsersList([]);
     localStorage.removeItem('cw_user');
     localStorage.removeItem('cw_token');
+    if (typeof window !== 'undefined') {
+      window.history.replaceState({ path: '/login' }, '', '/login');
+    }
     showNotification('Logged out successfully.', 'success');
   };
 
