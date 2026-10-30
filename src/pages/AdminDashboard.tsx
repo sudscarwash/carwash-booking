@@ -241,6 +241,7 @@ export const AdminDashboard: React.FC = () => {
     notifyWashCompleted: boolean;
     notifyBookingCancelled: boolean;
     notifyDailyOwnerDigest: boolean;
+    notifySubscriptionExpiry?: boolean;
     activeProvider: 'RESEND' | 'GMAIL_SMTP' | 'SANDBOX_CONSOLE';
     dailyQuotaLimit: number;
     reservedAuthQuota: number;
@@ -1034,7 +1035,7 @@ export const AdminDashboard: React.FC = () => {
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Manage marketplace operators, trial &amp; subscription expiry dates, and platform credentials.
+                  Manage marketplace operators, subscription &amp; access expiry dates, and platform credentials.
                 </p>
               </div>
 
@@ -1608,6 +1609,33 @@ export const AdminDashboard: React.FC = () => {
                   >
                     <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
                       emailSettings?.notifyDailyOwnerDigest && emailSettings?.masterEnabled ? 'translate-x-5' : 'translate-x-0'
+                    }`} />
+                  </button>
+                </div>
+
+                {/* 5. Expiry Notification Emails Toggle */}
+                <div className="p-3.5 bg-slate-50 hover:bg-slate-50/80 border border-slate-200/80 rounded-2xl flex items-center justify-between gap-3 transition-colors" id="admin-expiry-email-toggle-card">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-800">Enable Expiry Notification Emails</span>
+                      <span className="bg-amber-100 text-amber-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider">Automated Alerts</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      When enabled, dispatches automated emails to Carwash Owners upon subscription expiration. When disabled, emails are suppressed and logged as skipped while preserving database suspension and UI banners.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleUpdateEmailSetting({ notifySubscriptionExpiry: !(emailSettings?.notifySubscriptionExpiry !== false) })}
+                    disabled={savingEmailSettings || !emailSettings?.masterEnabled}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 ${
+                      (emailSettings?.notifySubscriptionExpiry !== false) && emailSettings?.masterEnabled ? 'bg-sky-600' : 'bg-slate-300'
+                    }`}
+                    id="admin-toggle-expiry-emails-btn"
+                    title="Toggle Expiry Notification Emails"
+                  >
+                    <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      (emailSettings?.notifySubscriptionExpiry !== false) && emailSettings?.masterEnabled ? 'translate-x-5' : 'translate-x-0'
                     }`} />
                   </button>
                 </div>
@@ -2736,10 +2764,10 @@ export const AdminDashboard: React.FC = () => {
                     </div>
                     <div>
                       <h4 className="text-xs sm:text-sm font-bold text-slate-800">
-                        Default Registration Trial Period
+                        Default Registration Access Period
                       </h4>
                       <p className="text-[11px] text-slate-500">
-                        Initial trial duration automatically assigned to new Carwash Owners registering via public sign-up.
+                        Initial subscription access duration automatically assigned to new Carwash Owners registering via public sign-up.
                       </p>
                     </div>
                   </div>
@@ -2747,7 +2775,7 @@ export const AdminDashboard: React.FC = () => {
                   <div className="pt-2 border-t border-sky-150 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                     <div className="space-y-1">
                       <label className="block text-xs font-bold text-slate-700 uppercase">
-                        Trial Duration (Days)
+                        Access Period Duration (Days)
                       </label>
                       <div className="flex items-center gap-2">
                         <input

@@ -7,7 +7,7 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
 import nodemailer from 'nodemailer';
-import { getDbEmailSettings, saveDbEmailSettings } from './db.js';
+import { getDbEmailSettings, saveDbEmailSettings, saveDbEmailLog } from './db.js';
 
 dotenv.config();
 
@@ -35,6 +35,7 @@ export interface EmailNotificationSettings {
   notifyWashCompleted: boolean;
   notifyBookingCancelled: boolean;
   notifyDailyOwnerDigest: boolean;
+  notifySubscriptionExpiry?: boolean; // Controls automated expiry notification emails
   // Active email delivery provider
   activeProvider: EmailProvider;
   // Daily Quota Tracking & Circuit Breaker Limits
@@ -142,6 +143,7 @@ const DEFAULT_SETTINGS: EmailNotificationSettings = {
   notifyWashCompleted: true,     // Default on: "Car Ready for Pick Up" has highest customer value
   notifyBookingCancelled: true,  // Default on: Urgent cancellation alerts
   notifyDailyOwnerDigest: false,
+  notifySubscriptionExpiry: true, // Default on: Automated subscription expiry notifications
   activeProvider: defaultProductionProvider,
   dailyQuotaLimit: (defaultProductionProvider === 'GMAIL_SMTP' || process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASS) ? 500 : 100,
   reservedAuthQuota: 25,
@@ -336,6 +338,23 @@ export function recordEmailLog(entry: Omit<EmailLogEntry, 'id' | 'timestamp'>) {
     fs.writeFileSync(LOGS_FILE_PATH, JSON.stringify(emailLogsMemory, null, 2), 'utf-8');
   } catch (err) {
     console.error('[EmailService] Failed to persist email logs to disk:', err);
+  }
+
+  // Persist to database table email_logs
+  try {
+    saveDbEmailLog({
+      id: log.id,
+      recipient: log.to,
+      sender: log.from,
+      subject: log.subject,
+      html: log.html,
+      status: log.status,
+      provider: log.provider,
+      errorDetails: log.errorDetails,
+      timestamp: log.timestamp,
+    }).catch((e: any) => console.warn('[EmailService] DB log persistence notice:', e?.message || e));
+  } catch (dbErr) {
+    console.warn('[EmailService] saveDbEmailLog call error:', dbErr);
   }
 }
 
@@ -1438,3 +1457,81 @@ export async function sendBookingCancelledEmail(options: {
 
   return sendEmail(options.customerEmail, subject, html, false);
 }
+
+/**
+ * Automated Account & Subscription Expiry Suspension Notification
+ * Dispatched to Carwash Owners when their subscription access period expires
+ */
+export async function sendOwnerSubscriptionExpiredEmail(options: {
+  email: string;
+  name: string;
+  expiryDate?: string | null;
+  carWashNames?: string[];
+}): Promise<boolean> {
+  const subject = 'Your subscription/access period has expired - Operations Suspended';
+  const formattedExpiry = options.expiryDate ? new Date(options.expiryDate).toLocaleDateString() : 'recently';
+  const washesList = options.carWashNames && options.carWashNames.length > 0
+    ? options.carWashNames.map(n => `<li style="margin-bottom: 4px;"><strong>${n}</strong></li>`).join('')
+    : '';
+
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; border: 1px solid #fee2e2; border-radius: 16px; background-color: #ffffff; color: #1e293b;">
+      <div style="text-align: center; margin-bottom: 24px;">
+        <h1 style="color: #dc2626; margin: 0; font-size: 26px; font-weight: 800; letter-spacing: -0.025em;">Autoshine BN</h1>
+        <p style="color: #64748b; margin: 4px 0 0 0; font-size: 13px;">Carwash Subscription & Access Notification</p>
+      </div>
+      <hr style="border: none; border-top: 1px solid #fee2e2; margin: 20px 0;" />
+
+      <h2 style="color: #991b1b; font-size: 18px; font-weight: 700; margin-top: 0; margin-bottom: 12px;">Account Access Expired</h2>
+      <p style="font-size: 15px; line-height: 1.6; color: #334155;">Hello <strong>${options.name}</strong>,</p>
+      <p style="font-size: 15px; line-height: 1.6; color: #b91c1c; font-weight: 600;">
+        Your subscription/access period has expired, and your carwash operations have been temporarily suspended. Please contact support to renew your access.
+      </p>
+
+      <div style="background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; padding: 16px; margin: 20px 0;">
+        <p style="margin: 0; font-size: 13px; color: #991b1b; font-weight: 700;">Account Expiration Summary:</p>
+        <p style="margin: 6px 0 0 0; font-size: 14px; color: #7f1d1d;">Expired Date: <strong>${formattedExpiry}</strong></p>
+        <p style="margin: 4px 0 0 0; font-size: 14px; color: #7f1d1d;">Account Status: <strong>Suspended (Hidden from Marketplace)</strong></p>
+        ${washesList ? `
+          <div style="margin-top: 10px; font-size: 13px; color: #7f1d1d;">
+            <strong>Suspended Carwash Locations:</strong>
+            <ul style="margin: 6px 0 0 0; padding-left: 20px;">${washesList}</ul>
+          </div>
+        ` : ''}
+      </div>
+
+      <p style="font-size: 14px; line-height: 1.6; color: #475569;">
+        To reactivate your carwash listings and resume accepting customer bookings, please contact platform support or your account administrator to extend your subscription.
+      </p>
+
+      <div style="text-align: center; margin-top: 24px;">
+        <a href="mailto:support@autoshinebn.com" style="display: inline-block; background-color: #dc2626; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 10px; font-weight: 700; font-size: 14px;">Contact Support to Renew</a>
+      </div>
+
+      <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 24px 0;" />
+      <div style="text-align: center;">
+        <p style="color: #94a3b8; font-size: 11px; margin: 0;">&copy; ${new Date().getFullYear()} Autoshine BN. All rights reserved.</p>
+      </div>
+    </div>
+  `;
+
+  // Check if Expiry Notification Emails toggle is enabled
+  const settings = getEmailSettings();
+  if (settings.notifySubscriptionExpiry === false) {
+    console.log(`[EmailService] 🛑 Expiry notification email suppressed for ${options.email} (Setting: Enable Expiry Notification Emails is OFF)`);
+    recordEmailLog({
+      to: options.email,
+      from: 'AutoShine BN <notifications@autoshinebn.com>',
+      subject,
+      html,
+      status: 'SKIPPED',
+      provider: settings.activeProvider,
+      errorDetails: 'Skipped/Suppressed by Admin Setting: Enable Expiry Notification Emails toggle is OFF.',
+    });
+    return false;
+  }
+
+  // Treat subscription expiry as critical account notification so it bypasses quota pause
+  return sendEmail(options.email, subject, html, true);
+}
+

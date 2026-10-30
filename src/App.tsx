@@ -14,6 +14,7 @@ import { OwnerDashboard } from './pages/OwnerDashboard.js';
 import { EmployeeDashboard } from './pages/EmployeeDashboard.js';
 import { AdminDashboard } from './pages/AdminDashboard.js';
 import { SpecialUserDashboard } from './pages/SpecialUserDashboard.js';
+import { SpecialUser403Forbidden } from './components/SpecialUser403Forbidden.js';
 import { TermsAndConditionsContent } from './components/TermsAndConditionsContent.js';
 import { PublicOperatorView } from './components/PublicOperatorView.js';
 import { BookingFlowModal } from './components/BookingFlowModal.js';
@@ -22,6 +23,22 @@ import { isValidEmail } from './lib/validation.js';
 import { useModalBack } from './utils/useBackHandler.js';
 import { Lock, Mail, UserPlus, LogIn, Sparkles, Compass, Sliders, Briefcase, Shield, ShieldAlert, KeyRound, Check, CheckCircle, ExternalLink, Info, X, AlertTriangle, LogOut, Eye, EyeOff, Building, Phone, MapPin, Bell } from 'lucide-react';
 import autoshineLogo from './assets/images/autoshine_logo.jpg';
+
+const isSpecialForbiddenPath = (pathname: string): boolean => {
+  const cleanPath = pathname.toLowerCase();
+  return (
+    cleanPath.startsWith('/admin') ||
+    cleanPath.startsWith('/employee') ||
+    cleanPath.startsWith('/staff') ||
+    cleanPath.startsWith('/customer') ||
+    cleanPath.startsWith('/customers') ||
+    cleanPath.startsWith('/owner') ||
+    cleanPath.startsWith('/special-users') ||
+    cleanPath.startsWith('/reviews') ||
+    cleanPath.startsWith('/bookings') ||
+    cleanPath.startsWith('/users')
+  );
+};
 
 const MainAppContent: React.FC = () => {
   const {
@@ -44,6 +61,18 @@ const MainAppContent: React.FC = () => {
     deviceNotificationPermission,
     requestDeviceNotificationPermission,
   } = useApp();
+
+  const [currentPathname, setCurrentPathname] = useState<string>(() =>
+    typeof window !== 'undefined' ? window.location.pathname : ''
+  );
+
+  useEffect(() => {
+    const handleLocationChange = () => {
+      setCurrentPathname(window.location.pathname);
+    };
+    window.addEventListener('popstate', handleLocationChange);
+    return () => window.removeEventListener('popstate', handleLocationChange);
+  }, []);
 
   const [hasDismissedPrompt, setHasDismissedPrompt] = useState(() => {
     return sessionStorage.getItem('cw_dismiss_notif_banner') === 'true';
@@ -221,6 +250,7 @@ const MainAppContent: React.FC = () => {
         window.history.pushState({ path }, '', path);
       }
     }
+    setCurrentPathname(path);
   };
 
   // Sync route on login / role change / auth mode change
@@ -241,15 +271,29 @@ const MainAppContent: React.FC = () => {
     }
 
     if (user) {
+      if (user.role === Role.SPECIAL) {
+        if (isSpecialForbiddenPath(path)) {
+          // Keep currentPathname pointing to forbidden route so 403 Forbidden is rendered
+          setCurrentPathname(path);
+          return;
+        }
+        const targetPath = '/special';
+        if (window.location.pathname !== targetPath) {
+          window.history.replaceState({ path: targetPath }, '', targetPath);
+        }
+        setCurrentPathname(targetPath);
+        return;
+      }
+
       let targetPath = '/customer';
       if (user.role === Role.ADMIN) targetPath = '/admin';
       else if (user.role === Role.OWNER) targetPath = '/owner';
       else if (user.role === Role.EMPLOYEE) targetPath = '/employee';
-      else if (user.role === Role.SPECIAL) targetPath = '/special';
 
       if (window.location.pathname !== targetPath) {
         window.history.replaceState({ path: targetPath }, '', targetPath);
       }
+      setCurrentPathname(targetPath);
     } else {
       const searchParams = new URLSearchParams(window.location.search);
       const isVerifyRoute =
@@ -695,8 +739,18 @@ const MainAppContent: React.FC = () => {
         return <OwnerDashboard />;
       case Role.EMPLOYEE:
         return <EmployeeDashboard />;
-      case Role.SPECIAL:
+      case Role.SPECIAL: {
+        const activePath = currentPathname || (typeof window !== 'undefined' ? window.location.pathname : '');
+        if (isSpecialForbiddenPath(activePath)) {
+          return (
+            <SpecialUser403Forbidden
+              attemptedPath={activePath}
+              onReturn={() => navigate('/special', true)}
+            />
+          );
+        }
         return <SpecialUserDashboard />;
+      }
       default:
         return <CustomerDashboard />;
     }
@@ -1338,7 +1392,7 @@ const MainAppContent: React.FC = () => {
                             Carwash / Business Name <span className="text-red-500">*</span>
                           </label>
                           <span className="text-[10px] font-bold px-2 py-0.5 bg-sky-200 text-sky-800 rounded-full">
-                            🌟 30-Day Free Trial
+                            🌟 30-Day Access Period
                           </span>
                         </div>
                         <div className="relative">
@@ -1354,7 +1408,7 @@ const MainAppContent: React.FC = () => {
                           />
                         </div>
                         <p className="text-[11px] text-sky-700 leading-relaxed">
-                          Includes automated trial access. Manage your station, services, and team. An OTP verification code will be sent to your email.
+                          Includes automated subscription access period. Manage your station, services, and team. An OTP verification code will be sent to your email.
                         </p>
                       </div>
                     )}
@@ -1513,7 +1567,7 @@ const MainAppContent: React.FC = () => {
                         'Processing...'
                       ) : isRegisterMode ? (
                         <>
-                          <UserPlus className="h-4 w-4" /> {registerRole === 'OWNER' ? 'Register Carwash & Start Trial' : 'Create Customer Profile'}
+                          <UserPlus className="h-4 w-4" /> {registerRole === 'OWNER' ? 'Register Carwash & Activate Subscription' : 'Create Customer Profile'}
                         </>
                       ) : (
                         <>

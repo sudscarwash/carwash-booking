@@ -41,6 +41,8 @@ import {
   updateCarWash,
   deleteCarWash,
   getBookings,
+  getBookingsForCarWashes,
+  getBookingsForCustomer,
   getBookingById,
   createBooking,
   updateBooking,
@@ -376,6 +378,17 @@ const sendEmailVerificationOTP = async (
 const sendAdminLoginOtp = emailServiceSafe.sendAdminLoginOtp || (async () => false);
 const sendEmail = emailServiceSafe.sendEmail || (async () => false);
 const isEmailDeliveryActive = emailServiceSafe.isEmailDeliveryActive || (() => false);
+const sendOwnerSubscriptionExpiredEmail = async (options: {
+  email: string;
+  name: string;
+  expiryDate?: string | null;
+  carWashNames?: string[];
+}): Promise<boolean> => {
+  if (typeof emailServiceSafe.sendOwnerSubscriptionExpiredEmail === 'function') {
+    return emailServiceSafe.sendOwnerSubscriptionExpiredEmail(options);
+  }
+  return false;
+};
 
 const getEmailLogs = async (): Promise<any[]> => {
   const mergedMap = new Map<string, any>();
@@ -995,7 +1008,8 @@ async function startServer() {
   // Verify Registration OTP Code
   app.post('/api/auth/verify-registration-otp', authRateLimiter, async (req, res) => {
     try {
-      const { email, otp } = req.body;
+      const email = req.body.email;
+      const otp = req.body.otp || req.body.code;
       if (!email || !otp) {
         res.status(400).json({ error: 'Email and verification code are required.' });
         return;
@@ -1181,7 +1195,7 @@ async function startServer() {
           const expTime = new Date(user.expiryDate).getTime();
           if (!isNaN(expTime) && expTime < Date.now()) {
             res.status(403).json({
-              error: `Your subscription or trial expired on ${new Date(user.expiryDate).toLocaleDateString()}. Your account and carwash operations have been suspended. Please contact the platform administrator to extend or renew your subscription.`
+              error: `Your subscription / access period expired on ${new Date(user.expiryDate).toLocaleDateString()}. Your account and carwash operations have been suspended. Please contact support to renew your access.`
             });
             return;
           }
@@ -1206,7 +1220,7 @@ async function startServer() {
           }
           await addAuditLog(user.id, user.email, 'ACCOUNT_EXPIRED_LOGIN_BLOCKED', `Login blocked for expired Carwash Owner account (Expired on ${new Date(user.expiryDate).toLocaleDateString()}). Account and carwashes suspended.`);
           res.status(403).json({
-            error: `Your subscription or trial expired on ${new Date(user.expiryDate).toLocaleDateString()}. Your account and carwash operations have been suspended. Please contact the platform administrator to extend or renew your subscription.`
+            error: `Your subscription / access period expired on ${new Date(user.expiryDate).toLocaleDateString()}. Your account and carwash operations have been suspended. Please contact support to renew your access.`
           });
           return;
         }
@@ -2493,28 +2507,27 @@ async function startServer() {
   app.get('/api/bookings', authenticateToken, async (req: AuthenticatedRequest, res) => {
     try {
       const user = req.user!;
-      const bookings = await getBookings();
       const carWashes = await getCarWashes();
 
       let bookingsList: Booking[] = [];
 
       if (user.role === Role.ADMIN) {
-        bookingsList = bookings;
+        bookingsList = await getBookings();
       } else if (user.role === Role.OWNER) {
         // Find car washes owned by this user
         const ownedIds = carWashes.filter((cw) => cw.ownerId === user.id).map((cw) => cw.id);
-        bookingsList = bookings.filter((b) => ownedIds.includes(b.carWashId));
+        bookingsList = await getBookingsForCarWashes(ownedIds);
       } else if (user.role === Role.EMPLOYEE) {
         // Find bookings for the assigned businessId
         const employeeUser = await getUserById(user.id);
         if (employeeUser && employeeUser.businessId) {
-          bookingsList = bookings.filter((b) => b.carWashId === employeeUser.businessId);
+          bookingsList = await getBookingsForCarWashes([employeeUser.businessId]);
         } else {
           bookingsList = [];
         }
       } else {
         // Customer or Special User (customer view): only their own bookings
-        bookingsList = bookings.filter((b) => b.customerId === user.id);
+        bookingsList = await getBookingsForCustomer(user.id);
       }
 
       // Populate booking with car wash name and address for convenience in frontend
@@ -3651,6 +3664,19 @@ async function startServer() {
   // OWNER / BUSINESS MANAGE ENDPOINTS
   // ==========================================
 
+  // Route Guard: Return 403 Forbidden if a Special User attempts to access Employee, Customer, or Special User routes via direct URL manipulation
+  app.use(
+    ['/api/employee*', '/api/owner/employees*', '/api/customer*', '/api/owner/customers*', '/api/special-users*'],
+    authenticateToken,
+    (req: AuthenticatedRequest, res, next) => {
+      if (req.user?.role === Role.SPECIAL) {
+        res.status(403).json({ error: '403 Forbidden: Special Users are strictly restricted exclusively to Carwash Owner Expiry Management.' });
+        return;
+      }
+      next();
+    }
+  );
+
   // List employees for owner business
   app.get(
     '/api/owner/employees',
@@ -3880,10 +3906,10 @@ async function startServer() {
   app.get(
     '/api/owner/customers',
     authenticateToken,
-    requireRoles([Role.OWNER, Role.ADMIN, Role.SPECIAL]),
+    requireRoles([Role.OWNER, Role.ADMIN]),
     async (req: AuthenticatedRequest, res) => {
       try {
-        const isAdmin = req.user!.role === Role.ADMIN || req.user!.role === Role.SPECIAL;
+        const isAdmin = req.user!.role === Role.ADMIN;
         const carWashId = req.query.carWashId as string | undefined;
         const customers = await getCustomersForOwner(req.user!.id, isAdmin, carWashId);
         res.json(customers);
@@ -3987,7 +4013,7 @@ async function startServer() {
     requireRoles([Role.SPECIAL, Role.ADMIN]),
     async (req: AuthenticatedRequest, res) => {
       try {
-        const { ownerEmail, ownerPassword, ownerName, businessName, businessAddress, businessLat, businessLng, businessDesc } = req.body;
+        const { ownerEmail, ownerPassword, ownerName, businessName, businessAddress, businessLat, businessLng, businessDesc, expiryDate } = req.body;
 
         if (!ownerEmail || !ownerPassword || !ownerName || !businessName || !businessAddress) {
           res.status(400).json({ error: 'Missing required details for onboarding.' });
@@ -4004,6 +4030,16 @@ async function startServer() {
         if (existingUser) {
           res.status(400).json({ error: 'Owner email already registered.' });
           return;
+        }
+
+        // Determine assigned initial subscription access expiry
+        let assignedExpiryDate: string | null = null;
+        if (expiryDate !== undefined) {
+          assignedExpiryDate = expiryDate ? expiryDate : null;
+        } else {
+          const platformInfo = await getPlatformInfo();
+          const effectiveDays = platformInfo.defaultTrialDays && platformInfo.defaultTrialDays > 0 ? platformInfo.defaultTrialDays : 30;
+          assignedExpiryDate = new Date(Date.now() + effectiveDays * 24 * 60 * 60 * 1000).toISOString();
         }
 
         // 1. Create Owner User
@@ -4029,6 +4065,8 @@ async function startServer() {
           name: ownerName,
           role: Role.OWNER,
           isActive: true,
+          status: 'Active',
+          expiryDate: assignedExpiryDate,
           isEmailVerified: false,
           passwordHash,
           createdAt: new Date().toISOString(),
@@ -4098,7 +4136,7 @@ async function startServer() {
           req.user!.id,
           req.user!.email,
           'SPECIAL_ONBOARD_OWNER',
-          `Special User onboarded Owner: ${ownerName} (${ownerEmail}) and business: ${businessName}. Verification OTP dispatched (${emailSent ? 'Delivered via Resend' : 'Sandbox fallback'}).`
+          `Special User onboarded Owner: ${ownerName} (${ownerEmail}) with expiry [${assignedExpiryDate || 'Permanent / No Expiry'}] and business: ${businessName}. Verification OTP dispatched (${emailSent ? 'Delivered via Resend' : 'Sandbox fallback'}).`
         );
 
         const { passwordHash: _, ...safeOwner } = newOwner;
@@ -4246,24 +4284,44 @@ async function startServer() {
     }
   );
 
-  // Admin: View all users
+  // Admin & Special User: View users (Special User is strictly restricted to Carwash Owners)
   app.get(
     '/api/admin/users',
     authenticateToken,
     requireRoles([Role.ADMIN, Role.SPECIAL]),
     async (req: AuthenticatedRequest, res) => {
       try {
+        const isSpecialUser = req.user!.role === Role.SPECIAL;
+
+        // 1. Route Guard & Data Isolation: If Special User explicitly requests non-owner role, return 403 Forbidden
+        if (isSpecialUser && req.query.role && typeof req.query.role === 'string') {
+          const requestedRole = req.query.role.toUpperCase();
+          if (requestedRole !== 'ALL' && requestedRole !== Role.OWNER) {
+            res.status(403).json({ error: '403 Forbidden: Special Users are strictly restricted exclusively to Carwash Owner accounts.' });
+            return;
+          }
+        }
+
         const isPaginatedRequest = req.query.page !== undefined || req.query.limit !== undefined || req.query.search !== undefined || req.query.role !== undefined || req.query.paginated === 'true';
 
         if (isPaginatedRequest) {
+          // Special Users are strictly constrained to Role.OWNER
+          const effectiveRole = isSpecialUser 
+            ? Role.OWNER 
+            : (typeof req.query.role === 'string' ? req.query.role : undefined);
+
           const paginatedResult = await getUsersPaginated({
             page: req.query.page ? Number(req.query.page) : 1,
             limit: req.query.limit ? Number(req.query.limit) : 25,
             search: typeof req.query.search === 'string' ? req.query.search : undefined,
-            role: typeof req.query.role === 'string' ? req.query.role : undefined,
+            role: effectiveRole,
           });
 
-          const safeUsers = paginatedResult.users.map(({ passwordHash: _, ...u }) => u);
+          let safeUsers = paginatedResult.users.map(({ passwordHash: _, ...u }) => u);
+          if (isSpecialUser) {
+            safeUsers = safeUsers.filter((u) => u.role === Role.OWNER);
+          }
+
           res.json({
             users: safeUsers,
             total: paginatedResult.total,
@@ -4338,7 +4396,10 @@ async function startServer() {
           }
         }
 
-        const safeUsers = users.map(({ passwordHash: _, ...u }) => u);
+        let safeUsers = users.map(({ passwordHash: _, ...u }) => u);
+        if (isSpecialUser) {
+          safeUsers = safeUsers.filter((u) => u.role === Role.OWNER);
+        }
         res.json(safeUsers);
       } catch (error: any) {
         res.status(500).json({ error: error.message || 'Internal server error' });
@@ -4466,11 +4527,38 @@ async function startServer() {
     }
   );
 
-  // Admin: Update user role or status (active/suspended)
+  // Admin & Special User: Get user by ID (Special User strictly restricted to Carwash Owners)
+  app.get(
+    '/api/admin/users/:id',
+    authenticateToken,
+    requireRoles([Role.ADMIN, Role.SPECIAL]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const targetUser = await getUserById(req.params.id);
+        if (!targetUser) {
+          res.status(404).json({ error: 'User not found.' });
+          return;
+        }
+
+        // Route Guard & Data Isolation: Special Users can strictly only view Carwash Owners
+        if (req.user!.role === Role.SPECIAL && targetUser.role !== Role.OWNER) {
+          res.status(403).json({ error: '403 Forbidden: Special Users are strictly restricted exclusively to Carwash Owner accounts.' });
+          return;
+        }
+
+        const { passwordHash: _, ...safeUser } = targetUser;
+        res.json(safeUser);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Internal server error' });
+      }
+    }
+  );
+
+  // Admin & Special User: Update user role or status (active/suspended) & expiry date
   app.put(
     '/api/admin/users/:id',
     authenticateToken,
-    requireRoles([Role.ADMIN]),
+    requireRoles([Role.ADMIN, Role.SPECIAL]),
     async (req: AuthenticatedRequest, res) => {
       try {
         const targetUser = await getUserById(req.params.id);
@@ -4482,8 +4570,20 @@ async function startServer() {
 
         // Prevent self modification of role or lock
         if (targetUser.id === req.user!.id) {
-          res.status(400).json({ error: 'You cannot suspend or change your own admin account.' });
+          res.status(400).json({ error: 'You cannot suspend or change your own account.' });
           return;
+        }
+
+        // Route Guard & Data Isolation: Special Users can strictly only manage Carwash Owner accounts
+        if (req.user!.role === Role.SPECIAL) {
+          if (targetUser.role !== Role.OWNER) {
+            res.status(403).json({ error: '403 Forbidden: Special Users are strictly restricted exclusively to Carwash Owner accounts.' });
+            return;
+          }
+          if (req.body.role && req.body.role !== Role.OWNER) {
+            res.status(403).json({ error: '403 Forbidden: Special Users cannot assign roles other than Carwash Owner.' });
+            return;
+          }
         }
 
         const { role, isActive, name, email, businessId, expiryDate, status } = req.body;
@@ -4516,8 +4616,10 @@ async function startServer() {
 
         if (status === 'Active') {
           targetIsActive = true;
+          targetStatus = 'Active';
         } else if (status === 'Suspended') {
           targetIsActive = false;
+          targetStatus = 'Suspended';
         }
 
         const updatedData: Partial<UserWithPassword> = {
@@ -4543,6 +4645,18 @@ async function startServer() {
           for (const wash of ownedWashes) {
             await updateCarWash(wash.id, { isActive: targetIsActive } as any).catch(() => {});
           }
+
+          // If owner account transitioned to Suspended due to expiry date, dispatch expiration email (respects toggle)
+          if (targetStatus === 'Suspended' && (targetUser.status !== 'Suspended' || targetUser.isActive)) {
+            if (updatedData.expiryDate && new Date(updatedData.expiryDate).getTime() <= Date.now()) {
+              sendOwnerSubscriptionExpiredEmail({
+                email: targetUser.email,
+                name: targetUser.name,
+                expiryDate: updatedData.expiryDate,
+                carWashNames: ownedWashes.map(w => w.name),
+              }).catch(e => console.error('[Expiry Email Notice]:', e));
+            }
+          }
         }
 
         // Synchronize metadata with Supabase Auth
@@ -4564,14 +4678,53 @@ async function startServer() {
           }
         }
 
+        const actorRoleLabel = req.user!.role === Role.SPECIAL ? 'Special User' : 'Admin';
         await addAuditLog(
           req.user!.id,
           req.user!.email,
-          'ADMIN_USER_UPDATE',
-          `Admin updated user ${targetUser.email}. Status: [Active: ${targetIsActive}, ${targetStatus}], Role: [${updatedData.role}], Expiry: [${updatedData.expiryDate || 'Permanent/No Expiry'}]`
+          req.user!.role === Role.SPECIAL ? 'SPECIAL_USER_UPDATE' : 'ADMIN_USER_UPDATE',
+          `${actorRoleLabel} updated user ${targetUser.email}. Status: [Active: ${targetIsActive}, ${targetStatus}], Role: [${updatedData.role}], Expiry: [${updatedData.expiryDate || 'Permanent/No Expiry'}]`
         );
 
         res.json({ ...targetUser, ...updatedData });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Internal server error' });
+      }
+    }
+  );
+
+  // Admin: Delete user (Special Users are forbidden from deleting accounts)
+  app.delete(
+    '/api/admin/users/:id',
+    authenticateToken,
+    requireRoles([Role.ADMIN, Role.SPECIAL]),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        if (req.user!.role === Role.SPECIAL) {
+          res.status(403).json({ error: '403 Forbidden: Special Users are strictly not authorized to delete user accounts.' });
+          return;
+        }
+
+        const targetUser = await getUserById(req.params.id);
+        if (!targetUser) {
+          res.status(404).json({ error: 'User not found.' });
+          return;
+        }
+
+        if (targetUser.id === req.user!.id) {
+          res.status(400).json({ error: 'You cannot delete your own account.' });
+          return;
+        }
+
+        await deleteUser(req.params.id);
+        await addAuditLog(
+          req.user!.id,
+          req.user!.email,
+          'ADMIN_USER_DELETE',
+          `Deleted user ${targetUser.name} (${targetUser.email}, role: ${targetUser.role})`
+        );
+
+        res.json({ success: true, message: 'User deleted successfully.' });
       } catch (error: any) {
         res.status(500).json({ error: error.message || 'Internal server error' });
       }
@@ -5210,7 +5363,7 @@ async function startServer() {
   app.post(
     '/api/membership/adjust-points',
     authenticateToken,
-    requireRoles([Role.OWNER, Role.ADMIN, Role.SPECIAL]),
+    requireRoles([Role.OWNER, Role.ADMIN]),
     async (req: AuthenticatedRequest, res) => {
       try {
         const { membershipId, pointsDelta, reason } = req.body;
@@ -5582,7 +5735,7 @@ async function startServer() {
   app.get(
     '/api/membership/members/:carWashId',
     authenticateToken,
-    requireRoles([Role.OWNER, Role.EMPLOYEE, Role.ADMIN, Role.SPECIAL]),
+    requireRoles([Role.OWNER, Role.EMPLOYEE, Role.ADMIN]),
     async (req: AuthenticatedRequest, res) => {
       try {
         const carWashId = req.params.carWashId;
@@ -5617,7 +5770,7 @@ async function startServer() {
   app.get(
     '/api/membership/redemptions/:carWashId',
     authenticateToken,
-    requireRoles([Role.OWNER, Role.EMPLOYEE, Role.ADMIN, Role.SPECIAL]),
+    requireRoles([Role.OWNER, Role.EMPLOYEE, Role.ADMIN]),
     async (req: AuthenticatedRequest, res) => {
       try {
         const carWashId = req.params.carWashId;

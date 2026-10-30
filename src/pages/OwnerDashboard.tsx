@@ -211,6 +211,68 @@ export const OwnerDashboard: React.FC = () => {
   // Loyalty & Rewards membership feature enabled by default
   const isMembershipEnabled = selectedBusiness ? (selectedBusiness.membershipEnabled !== false) : true;
 
+  // Subscription Timeline & Expiry Calculation for Carwash Owner
+  const subscriptionTimeline = useMemo(() => {
+    if (!user || user.role !== Role.OWNER) return null;
+
+    // Check if account is marked Suspended or !user.isActive
+    const isSuspended = user.status === 'Suspended' || !user.isActive;
+
+    if (!user.expiryDate) {
+      // Permanent (No Expiry)
+      return {
+        state: isSuspended ? ('expired' as const) : ('normal' as const),
+        formattedDate: 'Permanent Access',
+        daysLeft: null,
+        isPermanent: true,
+      };
+    }
+
+    const expiryTime = new Date(user.expiryDate).getTime();
+    if (isNaN(expiryTime)) {
+      return {
+        state: isSuspended ? ('expired' as const) : ('normal' as const),
+        formattedDate: 'Permanent Access',
+        daysLeft: null,
+        isPermanent: true,
+      };
+    }
+
+    const now = Date.now();
+    const diffMs = expiryTime - now;
+    const daysLeft = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+    const formattedDate = new Date(user.expiryDate).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+
+    if (diffMs <= 0 || isSuspended) {
+      return {
+        state: 'expired' as const,
+        formattedDate,
+        daysLeft: Math.min(0, daysLeft),
+        isPermanent: false,
+      };
+    }
+
+    if (daysLeft <= 7) {
+      return {
+        state: 'warning' as const,
+        formattedDate,
+        daysLeft: Math.max(0, daysLeft),
+        isPermanent: false,
+      };
+    }
+
+    return {
+      state: 'normal' as const,
+      formattedDate,
+      daysLeft,
+      isPermanent: false,
+    };
+  }, [user]);
+
   useEffect(() => {
     if (!isOwnerQrCodeAllowed && activeTab === 'qrcode') {
       setActiveTab('overview');
@@ -2030,6 +2092,97 @@ export const OwnerDashboard: React.FC = () => {
           </select>
         </div>
       </div>
+
+      {/* 💳 Persistent In-App Subscription Timeline Banner */}
+      {subscriptionTimeline && (
+        <>
+          {/* Expired / Suspended State: Restrictive Red banner */}
+          {subscriptionTimeline.state === 'expired' && (
+            <div
+              className="bg-red-50 border-2 border-red-500 text-red-950 rounded-3xl p-5 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-fade-in"
+              id="owner-subscription-banner-expired"
+            >
+              <div className="flex items-start sm:items-center gap-3.5">
+                <div className="p-2.5 bg-red-100 rounded-2xl text-red-700 shrink-0">
+                  <AlertTriangle className="h-6 w-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm sm:text-base font-black text-red-950 uppercase tracking-wide">
+                      Account Suspended
+                    </h3>
+                    <span className="text-[10px] font-black px-2 py-0.5 bg-red-200 text-red-900 rounded-full font-mono">
+                      Access Expired
+                    </span>
+                  </div>
+                  <p className="text-xs sm:text-sm text-red-900 mt-1 font-semibold leading-relaxed">
+                    Account Suspended: Your access expired on {subscriptionTimeline.formattedDate}. Your carwash services are currently hidden from customers. Please update your subscription.
+                  </p>
+                </div>
+              </div>
+              <a
+                href="mailto:support@autoshinebn.com?subject=Reactivate%20Suspended%20Carwash%20Subscription"
+                className="px-4 py-2.5 bg-red-600 hover:bg-red-500 text-white text-xs font-black rounded-xl shadow-xs transition-colors shrink-0 text-center cursor-pointer"
+              >
+                Contact Support to Renew
+              </a>
+            </div>
+          )}
+
+          {/* Warning State (<= 7 days left): Prominent Yellow/Orange banner */}
+          {subscriptionTimeline.state === 'warning' && (
+            <div
+              className="bg-amber-50 border-2 border-amber-400 text-amber-950 rounded-3xl p-5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-fade-in"
+              id="owner-subscription-banner-warning"
+            >
+              <div className="flex items-start sm:items-center gap-3.5">
+                <div className="p-2.5 bg-amber-100 rounded-2xl text-amber-700 shrink-0">
+                  <Clock className="h-6 w-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm sm:text-base font-extrabold text-amber-950">
+                      Subscription Expiring Soon
+                    </h3>
+                    <span className="text-[10px] font-black px-2 py-0.5 bg-amber-200 text-amber-900 rounded-full font-mono">
+                      {subscriptionTimeline.daysLeft} Day{subscriptionTimeline.daysLeft === 1 ? '' : 's'} Remaining
+                    </span>
+                  </div>
+                  <p className="text-xs sm:text-sm text-amber-900 mt-1 font-medium leading-relaxed">
+                    Attention: Your account access expires in {subscriptionTimeline.daysLeft} day{subscriptionTimeline.daysLeft === 1 ? '' : 's'} on {subscriptionTimeline.formattedDate}. Please renew to prevent service interruption.
+                  </p>
+                </div>
+              </div>
+              <a
+                href="mailto:support@autoshinebn.com?subject=Subscription%20Renewal%20Request"
+                className="px-4 py-2.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-xl shadow-xs transition-colors shrink-0 text-center cursor-pointer"
+              >
+                Renew Subscription
+              </a>
+            </div>
+          )}
+
+          {/* Normal State (> 7 days left): Subtle message */}
+          {subscriptionTimeline.state === 'normal' && (
+            <div
+              className="bg-emerald-50/70 border border-emerald-200/80 rounded-2xl px-4 py-2.5 text-xs text-emerald-900 flex items-center justify-between shadow-2xs animate-fade-in"
+              id="owner-subscription-banner-normal"
+            >
+              <div className="flex items-center gap-2 font-medium">
+                <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" />
+                <span>
+                  {subscriptionTimeline.isPermanent
+                    ? 'Account Access: Permanent (No Expiry)'
+                    : `Account Access Active until ${subscriptionTimeline.formattedDate}`}
+                </span>
+              </div>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-100/70 px-2.5 py-0.5 rounded-full font-mono">
+                Subscription Active
+              </span>
+            </div>
+          )}
+        </>
+      )}
 
       {/* ⚠️ Business Suspension / Offboarding Alert */}
       {selectedBusiness && !selectedBusiness.isActive && (

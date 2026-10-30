@@ -3068,6 +3068,50 @@ export async function getBookings(): Promise<Booking[]> {
   }
 }
 
+export async function getBookingsForCarWashes(carWashIds: string[]): Promise<Booking[]> {
+  if (!carWashIds || carWashIds.length === 0) return [];
+  try {
+    const placeholders = carWashIds.map(() => '?').join(',');
+    const rows = await runQueryAll(`
+      SELECT 
+        b.*, 
+        u.phone AS user_phone, 
+        u.name AS user_name, 
+        u.email AS user_email 
+      FROM bookings b 
+      LEFT JOIN users u ON b.customerId = u.id 
+      WHERE b.carWashId IN (${placeholders})
+      ORDER BY b.createdAt DESC
+    `, carWashIds);
+    return rows.map(mapBooking);
+  } catch (error) {
+    console.error('Database getBookingsForCarWashes Error:', error);
+    return [];
+  }
+}
+
+export async function getBookingsForCustomer(customerId: string): Promise<Booking[]> {
+  if (!customerId) return [];
+  try {
+    const rows = await runQueryAll(`
+      SELECT 
+        b.*, 
+        u.phone AS user_phone, 
+        u.name AS user_name, 
+        u.email AS user_email 
+      FROM bookings b 
+      LEFT JOIN users u ON b.customerId = u.id 
+      WHERE b.customerId = ?
+      ORDER BY b.createdAt DESC
+    `, [customerId]);
+    return rows.map(mapBooking);
+  } catch (error) {
+    console.error('Database getBookingsForCustomer Error:', error);
+    return [];
+  }
+}
+
+
 export async function getBookingById(id: string): Promise<Booking | null> {
   try {
     const row = await runQueryOne(`
@@ -5533,8 +5577,21 @@ export async function checkAndEnforceExpiredAccounts(): Promise<{ suspendedCount
             u.id,
             u.email,
             'ACCOUNT_SUBSCRIPTION_EXPIRED',
-            `Automated Subscription Expiry Engine: Owner ${u.name} (${u.email}) trial/subscription expired on ${u.expiryDate}. Account status set to Suspended and ${ownedWashes.length} carwash outlet(s) deactivated.`
+            `Automated Subscription Expiry Engine: Owner ${u.name} (${u.email}) subscription access period expired on ${u.expiryDate}. Account status set to Suspended and ${ownedWashes.length} carwash outlet(s) deactivated.`
           );
+
+          // 4. Dispatch automated expiration notification email
+          try {
+            const { sendOwnerSubscriptionExpiredEmail } = await import('./emailService.js');
+            await sendOwnerSubscriptionExpiredEmail({
+              email: u.email,
+              name: u.name,
+              expiryDate: u.expiryDate,
+              carWashNames: ownedWashes.map((w) => w.name),
+            });
+          } catch (emailErr) {
+            console.error(`[Subscription Expiry Email Error for ${u.email}]:`, emailErr);
+          }
         }
       }
     }
