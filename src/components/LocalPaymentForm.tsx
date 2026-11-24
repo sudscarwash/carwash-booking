@@ -296,38 +296,38 @@ export const LocalPaymentForm: React.FC<LocalPaymentFormProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm max-w-xl mx-auto" id="local-payment-form">
+    <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-6 shadow-sm max-w-xl mx-auto" id="local-payment-form">
       {/* Title Header */}
-      <div className="flex items-center gap-3 border-b border-gray-100 pb-4 mb-6">
-        <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
+      <div className="flex items-center gap-3 border-b border-gray-100 pb-4 mb-5 sm:mb-6">
+        <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl shrink-0">
           <Receipt className="w-5 h-5" />
         </div>
-        <div>
-          <h2 className="text-lg font-bold text-gray-900 tracking-tight">Manual Local Bank Payment</h2>
+        <div className="min-w-0">
+          <h2 className="text-base sm:text-lg font-bold text-gray-900 tracking-tight">Manual Local Bank Payment</h2>
           <p className="text-xs text-gray-500">Pay via QuickPay/Qpay QR Codes (Brunei Darussalam)</p>
         </div>
       </div>
 
       {/* Booking Summary Box */}
-      <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 mb-6 text-sm">
+      <div className="bg-slate-50 border border-slate-100 rounded-xl p-3.5 sm:p-4 mb-5 sm:mb-6 text-xs sm:text-sm">
         <span className="text-xs font-semibold uppercase tracking-wider text-slate-400 block mb-2">Booking Summary</span>
-        <div className="grid grid-cols-2 gap-y-1.5 text-gray-700">
+        <div className="grid grid-cols-1 min-[360px]:grid-cols-2 gap-y-1 gap-x-2 text-gray-700">
           <div>Facility:</div>
-          <div className="font-semibold text-gray-900 text-right">{carWash.name}</div>
+          <div className="font-semibold text-gray-900 min-[360px]:text-right break-words">{carWash.name}</div>
           <div>Date:</div>
-          <div className="font-semibold text-gray-900 text-right">{date}</div>
+          <div className="font-semibold text-gray-900 min-[360px]:text-right break-words">{date}</div>
           <div>Time Slot:</div>
-          <div className="font-semibold text-gray-900 text-right">{timeSlot}</div>
+          <div className="font-semibold text-gray-900 min-[360px]:text-right break-words">{timeSlot}</div>
           {serviceName && (
             <>
               <div>Service:</div>
-              <div className="font-semibold text-sky-700 text-right">{serviceName}</div>
+              <div className="font-semibold text-sky-700 min-[360px]:text-right break-words">{serviceName}</div>
             </>
           )}
           {price !== undefined && (
             <>
               <div>Service Price:</div>
-              <div className="font-extrabold text-emerald-700 text-right">BND ${price.toFixed(2)}</div>
+              <div className="font-extrabold text-emerald-700 min-[360px]:text-right">BND ${price.toFixed(2)}</div>
             </>
           )}
         </div>
@@ -377,7 +377,7 @@ export const LocalPaymentForm: React.FC<LocalPaymentFormProps> = ({
                   <div className="relative group text-center flex flex-col items-center">
                     <img 
                       src={selectedOption.qrImageUrl} 
-                      className="w-44 h-44 object-contain rounded-xl border border-slate-200 p-1 bg-white hover:scale-105 transition-transform cursor-zoom-in" 
+                      className="w-40 h-40 sm:w-44 sm:h-44 object-contain rounded-xl border border-slate-200 p-1 bg-white hover:scale-105 transition-transform cursor-zoom-in" 
                       alt={`${selectedOption.providerName} QR Code`}
                       title="Click to view full image"
                       onClick={() => window.open(selectedOption.qrImageUrl, '_blank')}
@@ -387,7 +387,7 @@ export const LocalPaymentForm: React.FC<LocalPaymentFormProps> = ({
                     </span>
                   </div>
                 ) : (
-                  <svg width="150" height="150" viewBox="0 0 100 100" className="w-36 h-36">
+                  <svg width="150" height="150" viewBox="0 0 100 100" className="w-36 h-36 sm:w-40 sm:h-40">
                     {/* Outer Frame */}
                     <rect width="100" height="100" fill="#FFFFFF" rx="8" />
                     {/* QR Pattern Simulation */}
@@ -528,19 +528,19 @@ export const LocalPaymentForm: React.FC<LocalPaymentFormProps> = ({
         )}
 
         {/* Actions Submit / Cancel */}
-        <div className="flex items-center gap-3 pt-2">
+        <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 pt-2">
           <button
             type="button"
             onClick={onCancel}
             disabled={isSubmitting}
-            className="flex-1 py-2.5 border border-gray-200 text-gray-700 text-sm font-semibold rounded-xl hover:bg-gray-50 transition-all disabled:opacity-50"
+            className="w-full sm:flex-1 py-2.5 border border-gray-200 text-gray-700 text-sm font-semibold rounded-xl hover:bg-gray-50 transition-all disabled:opacity-50"
           >
             Cancel Booking
           </button>
           <button
             type="submit"
             disabled={isSubmitting || !paymentBank}
-            className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+            className="w-full sm:flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {isSubmitting ? (
               <>

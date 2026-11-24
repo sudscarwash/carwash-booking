@@ -457,12 +457,12 @@ export const EmployeeDashboard: React.FC = () => {
       )}
 
       {/* Employee Header */}
-      <div className="bg-white border border-slate-200/80 rounded-2xl p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xs">
-        <div className="flex items-center gap-4">
-          <div className="bg-amber-50 text-amber-600 p-3.5 rounded-2xl border border-amber-100">
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-6 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 shadow-xs">
+        <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+          <div className="bg-amber-50 text-amber-600 p-3 sm:p-3.5 rounded-2xl border border-amber-100 shrink-0">
             <BriefcaseIcon className="h-6 w-6" />
           </div>
-          <div>
+          <div className="min-w-0">
             <h1 className="text-xl sm:text-2xl font-extrabold text-slate-800 tracking-tight">
               Operator Station
             </h1>
@@ -472,16 +472,16 @@ export const EmployeeDashboard: React.FC = () => {
           </div>
         </div>
 
-        <div className="bg-slate-50 border border-slate-100 rounded-xl px-4 py-2 text-xs flex items-center gap-3">
-          <div>
+        <div className="bg-slate-50 border border-slate-100 rounded-xl px-3.5 sm:px-4 py-2.5 sm:py-2 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full lg:w-auto">
+          <div className="min-w-0">
             <span className="text-slate-400 block uppercase font-bold tracking-wider text-[9px]">Station Reference</span>
-            <div className="flex items-center gap-1.5">
-              <strong className="text-slate-700">{myLocation ? myLocation.name : 'Unassigned Station'}</strong>
+            <div className="flex items-center gap-1.5 min-w-0">
+              <strong className="text-slate-700 truncate">{myLocation ? myLocation.name : 'Unassigned Station'}</strong>
               {myLocation && (
                 <button
                   type="button"
                   onClick={() => setShowStationInfoModal(true)}
-                  className="text-slate-400 hover:text-amber-600 p-0.5 rounded transition-colors cursor-pointer"
+                  className="text-slate-400 hover:text-amber-600 p-0.5 rounded transition-colors cursor-pointer shrink-0"
                   title="View Branch Details & Operational Parameters"
                   id="btn-emp-view-station-info"
                 >
@@ -490,18 +490,18 @@ export const EmployeeDashboard: React.FC = () => {
               )}
             </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 shrink-0 w-full sm:w-auto">
             <button
               type="button"
               onClick={() => {
                 setActiveTab('loyalty');
                 window.scrollTo({ top: 0, behavior: 'smooth' });
               }}
-              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+              className="flex-1 sm:flex-initial justify-center px-3 py-2 sm:py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
               title="Scan member QR or validate customer vouchers"
               id="btn-emp-quick-scan-loyalty"
             >
-              <QrCode className="w-3.5 h-3.5" />
+              <QrCode className="w-3.5 h-3.5 shrink-0" />
               <span>Scan QR / Loyalty</span>
             </button>
             <button
@@ -510,9 +510,9 @@ export const EmployeeDashboard: React.FC = () => {
                 setMbDate(selectedCalendarDate || getTodayDateString());
                 setShowManualBookingModal(true);
               }}
-              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-extrabold text-xs rounded-xl transition-all shadow-xs flex items-center gap-1 cursor-pointer"
+              className="flex-1 sm:flex-initial justify-center px-3 py-2 sm:py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-extrabold text-xs rounded-xl transition-all shadow-xs flex items-center gap-1 cursor-pointer whitespace-nowrap"
             >
-              <Plus className="w-3.5 h-3.5" />
+              <Plus className="w-3.5 h-3.5 shrink-0" />
               <span>+ Quick Walk-In</span>
             </button>
           </div>
@@ -520,21 +520,21 @@ export const EmployeeDashboard: React.FC = () => {
       </div>
 
       {/* Responsive Bottom Navigation Bar - Streamlined to Queue & Calendar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200/80 px-4 py-2 flex justify-around items-center z-40 md:hidden shadow-[0_-4px_12px_rgba(0,0,0,0.03)] rounded-t-2xl">
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200/80 px-1.5 sm:px-4 py-2 flex justify-around items-center z-40 md:hidden shadow-[0_-4px_12px_rgba(0,0,0,0.03)] rounded-t-2xl">
         <button
           onClick={() => {
             setActiveTab('queue');
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
-          className={`flex-1 flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition-all cursor-pointer ${
+          className={`flex-1 min-w-0 flex flex-col items-center gap-1 py-1 px-1 sm:px-3 rounded-xl transition-all cursor-pointer ${
             activeTab === 'queue'
               ? 'text-amber-600 font-extrabold scale-105'
               : 'text-slate-400 font-medium hover:text-slate-600'
           }`}
           id="btn-emp-nav-queue"
         >
-          <ClockIcon className="w-5 h-5" />
-          <span className="text-[10px]">Wash Queue ({filteredBookings.length})</span>
+          <ClockIcon className="w-5 h-5 shrink-0" />
+          <span className="text-[10px] truncate max-w-full">Wash Queue ({filteredBookings.length})</span>
         </button>
 
         <button
@@ -542,15 +542,15 @@ export const EmployeeDashboard: React.FC = () => {
             setActiveTab('calendar');
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
-          className={`flex-1 flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition-all cursor-pointer ${
+          className={`flex-1 min-w-0 flex flex-col items-center gap-1 py-1 px-1 sm:px-3 rounded-xl transition-all cursor-pointer ${
             activeTab === 'calendar'
               ? 'text-amber-600 font-extrabold scale-105'
               : 'text-slate-400 font-medium hover:text-slate-600'
           }`}
           id="btn-emp-nav-calendar"
         >
-          <CalendarDays className="w-5 h-5" />
-          <span className="text-[10px]">Calendar & Slots</span>
+          <CalendarDays className="w-5 h-5 shrink-0" />
+          <span className="text-[10px] truncate max-w-full">Calendar & Slots</span>
         </button>
 
         <button
@@ -558,15 +558,15 @@ export const EmployeeDashboard: React.FC = () => {
             setActiveTab('loyalty');
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
-          className={`flex-1 flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition-all cursor-pointer ${
+          className={`flex-1 min-w-0 flex flex-col items-center gap-1 py-1 px-1 sm:px-3 rounded-xl transition-all cursor-pointer ${
             activeTab === 'loyalty'
               ? 'text-indigo-600 font-extrabold scale-105'
               : 'text-slate-400 font-medium hover:text-slate-600'
           }`}
           id="btn-emp-nav-loyalty"
         >
-          <Coins className="w-5 h-5" />
-          <span className="text-[10px]">Loyalty &amp; Points</span>
+          <Coins className="w-5 h-5 shrink-0" />
+          <span className="text-[10px] truncate max-w-full">Loyalty &amp; Points</span>
         </button>
       </div>
 
@@ -860,14 +860,14 @@ export const EmployeeDashboard: React.FC = () => {
                         </div>
 
                         {/* Service Item & Pricing Bar */}
-                        <div className="flex items-center justify-between gap-2 bg-slate-50 border border-slate-150 rounded-xl px-3 py-2 text-xs sm:text-sm">
+                        <div className="flex flex-col min-[380px]:flex-row min-[380px]:items-center justify-between gap-2 bg-slate-50 border border-slate-150 rounded-xl px-3 py-2 text-xs sm:text-sm">
                           <div className="flex items-center gap-2 min-w-0">
                             <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
                             <span className="font-bold text-slate-800 truncate">
                               {bk.serviceName || 'Standard Car Wash & Vacuum'}
                             </span>
                           </div>
-                          <div className="flex items-center gap-2 shrink-0">
+                          <div className="flex items-center justify-between min-[380px]:justify-end gap-2 shrink-0">
                             <span className="font-mono font-black text-slate-900 text-xs sm:text-sm">
                               ${Number(bk.price || 15).toFixed(2)}
                             </span>
@@ -1005,18 +1005,18 @@ export const EmployeeDashboard: React.FC = () => {
                         )}
 
                         {(bk.status === BookingStatus.COMPLETED || bk.status === BookingStatus.CANCELLED || bk.status === BookingStatus.REJECTED) && (
-                          <div className="flex items-center justify-between gap-2 py-1">
+                          <div className="flex flex-wrap items-center justify-between gap-2 py-1">
                             <span className="text-xs font-mono text-slate-500 font-semibold flex items-center gap-1.5">
                               {bk.status === BookingStatus.COMPLETED ? (
                                 <>
-                                  <CheckCheck className="w-4 h-4 text-emerald-600" />
+                                  <CheckCheck className="w-4 h-4 text-emerald-600 shrink-0" />
                                   <span>Wash completed & settled</span>
                                 </>
                               ) : (
                                 <span className="text-slate-400 italic">No further actions required</span>
                               )}
                             </span>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 ml-auto">
                               <button
                                 type="button"
                                 onClick={() => {
@@ -1124,11 +1124,11 @@ export const EmployeeDashboard: React.FC = () => {
             {/* Month Grid & Day Detail Grid Layout */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               {/* Calendar Grid (7 cols) */}
-              <div className="lg:col-span-7 bg-white border border-slate-200/80 rounded-3xl p-4 sm:p-5 shadow-xs space-y-4">
+              <div className="lg:col-span-7 bg-white border border-slate-200/80 rounded-3xl p-3 sm:p-5 shadow-xs space-y-4">
                 {/* Calendar Month Header */}
-                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-extrabold text-slate-800 text-base">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100 gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <h3 className="font-extrabold text-slate-800 text-sm sm:text-base truncate">
                       {calendarCurrentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
                     </h3>
                     <button
@@ -1137,13 +1137,13 @@ export const EmployeeDashboard: React.FC = () => {
                         setCalendarCurrentMonth(new Date());
                         setSelectedCalendarDate(getTodayDateString());
                       }}
-                      className="px-2 py-0.5 bg-amber-50 text-amber-700 hover:bg-amber-100 text-[10px] font-extrabold rounded-md border border-amber-100 transition-all cursor-pointer"
+                      className="px-2 py-0.5 bg-amber-50 text-amber-700 hover:bg-amber-100 text-[10px] font-extrabold rounded-md border border-amber-100 transition-all cursor-pointer shrink-0"
                     >
                       Today
                     </button>
                   </div>
 
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 shrink-0">
                     <button
                       type="button"
                       onClick={() => {
@@ -1217,7 +1217,7 @@ export const EmployeeDashboard: React.FC = () => {
                       <div
                         key={dateKey}
                         onClick={() => setSelectedCalendarDate(dateKey)}
-                        className={`h-14 sm:h-20 p-1 sm:p-1.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between select-none relative ${
+                        className={`h-14 sm:h-20 p-1 sm:p-1.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between select-none relative overflow-hidden ${
                           isSelected
                             ? 'border-amber-600 bg-amber-50/70 shadow-xs ring-2 ring-amber-500/20'
                             : isToday
@@ -1225,14 +1225,17 @@ export const EmployeeDashboard: React.FC = () => {
                             : 'border-slate-200/80 bg-white hover:border-amber-300 hover:bg-slate-50/80'
                         }`}
                       >
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between gap-0.5">
                           <span className={`text-[11px] sm:text-xs font-black ${
                             isSelected ? 'text-amber-900' : isToday ? 'text-sky-700' : 'text-slate-700'
                           }`}>
                             {d}
                           </span>
                           {isToday && (
-                            <span className="text-[9px] font-extrabold text-sky-700 bg-sky-100 px-1 rounded uppercase">Today</span>
+                            <>
+                              <span className="hidden sm:inline text-[9px] font-extrabold text-sky-700 bg-sky-100 px-1 rounded uppercase">Today</span>
+                              <span className="sm:hidden w-1.5 h-1.5 rounded-full bg-sky-500 shrink-0" title="Today" />
+                            </>
                           )}
                         </div>
 
@@ -1241,10 +1244,11 @@ export const EmployeeDashboard: React.FC = () => {
                             <span className={`block text-[9px] sm:text-[10px] font-extrabold px-0.5 sm:px-1 py-0.2 sm:py-0.5 rounded text-center truncate ${
                               isSelected ? 'bg-amber-600 text-white' : 'bg-slate-800 text-white'
                             }`}>
-                              {totalCount} {totalCount === 1 ? 'Wash' : 'Washes'}
+                              <span className="sm:hidden">{totalCount}</span>
+                              <span className="hidden sm:inline">{totalCount} {totalCount === 1 ? 'Wash' : 'Washes'}</span>
                             </span>
 
-                            <div className="flex items-center justify-center gap-0.5 text-[8px] font-bold">
+                            <div className="hidden sm:flex items-center justify-center gap-0.5 text-[8px] font-bold">
                               {onlineCount > 0 && <span className="text-sky-600" title={`${onlineCount} Online`}>🌐{onlineCount}</span>}
                               {phoneCount > 0 && <span className="text-amber-600" title={`${phoneCount} Phone`}>📞{phoneCount}</span>}
                               {walkInCount > 0 && <span className="text-emerald-600" title={`${walkInCount} Walk-In`}>🚗{walkInCount}</span>}
@@ -1257,14 +1261,14 @@ export const EmployeeDashboard: React.FC = () => {
                     );
                   }
 
-                  return <div className="grid grid-cols-7 gap-1.5 sm:gap-2">{cells}</div>;
+                  return <div className="grid grid-cols-7 gap-1 sm:gap-2">{cells}</div>;
                 })()}
               </div>
 
               {/* Day Detail & Slots Breakdown Panel (5 cols) */}
               <div className="lg:col-span-5 space-y-4">
-                <div className="bg-white border border-slate-200/80 rounded-3xl p-5 shadow-xs space-y-4">
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="bg-white border border-slate-200/80 rounded-3xl p-4 sm:p-5 shadow-xs space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
                     <div>
                       <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Selected Calendar Day</span>
                       <strong className="text-sm sm:text-base font-extrabold text-slate-800">
@@ -1278,7 +1282,7 @@ export const EmployeeDashboard: React.FC = () => {
                         setMbDate(selectedCalendarDate);
                         setShowManualBookingModal(true);
                       }}
-                      className="px-2.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-extrabold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1 cursor-pointer"
+                      className="px-2.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-extrabold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1 cursor-pointer shrink-0"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>+ Walk-In</span>
@@ -1344,7 +1348,7 @@ export const EmployeeDashboard: React.FC = () => {
                                     <span>Slot: <strong>{bk.timeSlot}</strong></span>
                                   </p>
                                   {bk.customerPhone && bk.customerPhone.trim() !== '' && bk.customerPhone.trim().toUpperCase() !== 'NA' && bk.customerPhone.trim().toUpperCase() !== 'N/A' ? (
-                                    <div className="flex items-center justify-between gap-1 py-0.5 font-mono">
+                                    <div className="flex flex-wrap items-center justify-between gap-1.5 py-0.5 font-mono">
                                       <span className="flex items-center gap-1.5 text-slate-700 font-bold">
                                         <Phone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                                         <span className="text-[10px] text-slate-400 font-sans uppercase font-bold">Phone:</span>
@@ -1381,7 +1385,7 @@ export const EmployeeDashboard: React.FC = () => {
                                 </div>
 
                                 {/* Status Toggle Actions */}
-                                <div className="flex items-center justify-end gap-1.5 pt-1 border-t border-slate-200/60">
+                                <div className="flex flex-wrap items-center justify-end gap-1.5 pt-1 border-t border-slate-200/60">
                                   <button
                                     type="button"
                                     onClick={() => {
@@ -1442,63 +1446,65 @@ export const EmployeeDashboard: React.FC = () => {
 
       {/* Quick Walk-In & Phone Booking Modal */}
       {showManualBookingModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 space-y-5 my-auto max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-2xl sm:rounded-3xl max-w-lg w-full shadow-2xl border border-slate-100 my-auto max-h-[92vh] sm:max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="px-4 sm:px-6 pt-4 sm:pt-5 pb-3 border-b border-slate-100 flex items-start sm:items-center justify-between gap-2 shrink-0 bg-white">
+              <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="p-1.5 bg-amber-100 text-amber-700 rounded-lg">
+                  <span className="p-1.5 bg-amber-100 text-amber-700 rounded-lg shrink-0">
                     <Plus className="w-4 h-4" />
                   </span>
-                  <h3 className="font-extrabold text-slate-800 text-base">Record Walk-In / Phone Booking</h3>
+                  <h3 className="font-extrabold text-slate-800 text-sm sm:text-base truncate">Record Walk-In / Phone Booking</h3>
                 </div>
-                <p className="text-xs text-slate-500 mt-0.5">Quickly log walk-in customers or phone reservations at your station.</p>
+                <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5">Quickly log walk-in customers or phone reservations at your station.</p>
               </div>
 
               <button
                 type="button"
                 onClick={() => setShowManualBookingModal(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg transition-colors cursor-pointer"
+                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer shrink-0"
+                aria-label="Close modal"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleManualBookingSubmit} className="space-y-4 text-left">
+            <form onSubmit={handleManualBookingSubmit} className="flex-1 min-h-0 flex flex-col overflow-hidden text-left">
+              <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-4">
               {/* Booking Source Pills */}
               <div>
                 <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
                   Booking Source *
                 </label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 min-[380px]:grid-cols-3 gap-2">
                   <button
                     type="button"
                     onClick={() => setMbSource('WALK_IN')}
-                    className={`py-2 px-3 rounded-xl border text-xs font-extrabold flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+                    className={`py-2 px-2.5 rounded-xl border text-xs font-extrabold flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
                       mbSource === 'WALK_IN'
                         ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
                         : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
                     }`}
                   >
-                    <Car className="w-3.5 h-3.5" />
+                    <Car className="w-3.5 h-3.5 shrink-0" />
                     <span>🚗 Walk-In</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setMbSource('PHONE')}
-                    className={`py-2 px-3 rounded-xl border text-xs font-extrabold flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+                    className={`py-2 px-2.5 rounded-xl border text-xs font-extrabold flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
                       mbSource === 'PHONE'
                         ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
                         : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
                     }`}
                   >
-                    <Phone className="w-3.5 h-3.5" />
+                    <Phone className="w-3.5 h-3.5 shrink-0" />
                     <span>📞 Phone</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setMbSource('ONLINE')}
-                    className={`py-2 px-3 rounded-xl border text-xs font-extrabold flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+                    className={`py-2 px-2.5 rounded-xl border text-xs font-extrabold flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
                       mbSource === 'ONLINE'
                         ? 'bg-sky-600 text-white border-sky-600 shadow-xs'
                         : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
@@ -1584,7 +1590,7 @@ export const EmployeeDashboard: React.FC = () => {
 
               {/* Time Slot Selection */}
               <div>
-                <div className="flex items-center justify-between mb-1.5">
+                <div className="flex flex-wrap items-center justify-between gap-1.5 mb-1.5">
                   <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider">
                     Time Slot Selection *
                   </label>
@@ -1600,7 +1606,7 @@ export const EmployeeDashboard: React.FC = () => {
 
                 <div className="space-y-2">
                   {/* Selection Summary Header */}
-                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 flex items-center justify-between text-xs">
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
                     <div>
                       <span className="text-[10px] text-slate-400 font-bold uppercase block">Selected Time Slot</span>
                       <strong className={`font-mono text-xs sm:text-sm ${mbSelectedSlots.length > 0 ? 'text-amber-700 font-extrabold' : 'text-slate-600'}`}>
@@ -1619,7 +1625,7 @@ export const EmployeeDashboard: React.FC = () => {
                   </div>
 
                   {/* Interactive Slots Grid */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-1.5 border border-slate-200 rounded-2xl bg-slate-50/50">
+                  <div className="grid grid-cols-1 min-[340px]:grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-1.5 border border-slate-200 rounded-2xl bg-slate-50/50">
                     {mbAvailableSlots.length === 0 ? (
                       <div className="col-span-full p-4 text-center text-slate-400 text-xs">
                         No predefined slots available for this date. Defaulting to Immediate Walk-In.
@@ -1728,10 +1734,10 @@ export const EmployeeDashboard: React.FC = () => {
                     </div>
                   )}
 
-                  <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-xs font-extrabold">
+                  <div className="pt-2 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs font-extrabold">
                     <span className="text-slate-500">Calculated Charge Total:</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-slate-400 font-normal">
+                    <div className="flex items-center justify-between sm:justify-end gap-2">
+                      <span className="text-[11px] sm:text-xs text-slate-400 font-normal">
                         (or override price manually)
                       </span>
                       <input
@@ -1739,7 +1745,7 @@ export const EmployeeDashboard: React.FC = () => {
                         step="0.01"
                         value={mbPrice}
                         onChange={(e) => setMbPrice(e.target.value)}
-                        className="w-24 px-2 py-1 border border-slate-300 rounded-lg text-right font-mono font-black text-slate-900 bg-white"
+                        className="w-24 px-2 py-1 border border-slate-300 rounded-lg text-right font-mono font-black text-slate-900 bg-white shrink-0"
                       />
                     </div>
                   </div>
@@ -1764,11 +1770,11 @@ export const EmployeeDashboard: React.FC = () => {
 
               {/* On-Site Settlement Method */}
               <div>
-                <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1.5 flex items-center justify-between">
+                <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1.5 flex flex-wrap items-center justify-between gap-1">
                   <span>Payment Settlement Method</span>
                   <span className="text-[10px] text-slate-400 font-normal lowercase">(collected at counter)</span>
                 </label>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={() => setMbPaymentMode('Cash')}
@@ -1832,20 +1838,21 @@ export const EmployeeDashboard: React.FC = () => {
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm outline-none focus:border-amber-500 font-medium"
                 />
               </div>
+              </div>
 
               {/* Actions */}
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <div className="px-4 sm:px-6 py-3 sm:py-4 flex flex-col-reverse sm:flex-row sm:items-center justify-end gap-2 border-t border-slate-100 bg-slate-50/70 shrink-0">
                 <button
                   type="button"
                   onClick={() => setShowManualBookingModal(false)}
-                  className="px-4 py-2 border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-bold rounded-xl transition-all cursor-pointer"
+                  className="w-full sm:w-auto px-4 py-2.5 sm:py-2 border border-slate-200 text-slate-600 hover:bg-slate-50 bg-white text-xs font-bold rounded-xl transition-all cursor-pointer text-center"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={mbIsSubmitting}
-                  className="px-5 py-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-extrabold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  className="w-full sm:w-auto px-5 py-2.5 sm:py-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-extrabold rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
                 >
                   <CheckCheck className="w-4 h-4" />
                   <span>{mbIsSubmitting ? 'Recording...' : 'Confirm & Save Booking'}</span>
@@ -1893,32 +1900,32 @@ export const EmployeeDashboard: React.FC = () => {
 
       {/* Lightweight Station Details Modal */}
       {showStationInfoModal && myLocation && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-amber-50 text-amber-600 rounded-xl border border-amber-100">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-2xl sm:rounded-3xl max-w-md w-full shadow-2xl border border-slate-100 flex flex-col max-h-[90vh] overflow-hidden">
+            <div className="px-4 sm:px-6 pt-4 sm:pt-5 pb-3 border-b border-slate-100 flex items-center justify-between gap-2 shrink-0">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="p-2 bg-amber-50 text-amber-600 rounded-xl border border-amber-100 shrink-0">
                   <MapPinIcon className="w-5 h-5" />
                 </div>
-                <div>
-                  <h3 className="font-extrabold text-slate-800 text-base">{myLocation.name}</h3>
+                <div className="min-w-0">
+                  <h3 className="font-extrabold text-slate-800 text-sm sm:text-base truncate">{myLocation.name}</h3>
                   <p className="text-[11px] text-slate-400">Assigned Branch Specifications</p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setShowStationInfoModal(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer shrink-0"
                 id="btn-close-station-info-modal"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="space-y-3 text-left text-xs">
+            <div className="p-4 sm:p-6 space-y-3 text-left text-xs overflow-y-auto flex-1 min-h-0">
               <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3.5 space-y-1">
                 <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Physical Address</span>
-                <p className="text-slate-800 font-semibold leading-relaxed">{myLocation.address}</p>
+                <p className="text-slate-800 font-semibold leading-relaxed break-words">{myLocation.address}</p>
                 {myLocation.locationLat && myLocation.locationLng && (
                   <a
                     href={`https://www.google.com/maps?q=${myLocation.locationLat},${myLocation.locationLng}`}
@@ -1931,7 +1938,7 @@ export const EmployeeDashboard: React.FC = () => {
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-1 min-[360px]:grid-cols-2 gap-2.5">
                 <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3">
                   <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Slot Duration</span>
                   <strong className="text-slate-800 font-mono text-sm block mt-0.5">{myLocation.slotDuration || 30} mins</strong>
@@ -1972,7 +1979,7 @@ export const EmployeeDashboard: React.FC = () => {
               )}
             </div>
 
-            <div className="pt-2 border-t border-slate-100 flex justify-end">
+            <div className="px-4 sm:px-6 py-3 border-t border-slate-100 flex justify-end shrink-0 bg-slate-50/70">
               <button
                 type="button"
                 onClick={() => setShowStationInfoModal(false)}

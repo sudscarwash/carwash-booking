@@ -925,7 +925,7 @@ const MainAppContent: React.FC = () => {
             </div>
           )}
 
-          <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8">
             <ErrorBoundary>
               {renderDashboardByRole(user.role)}
             </ErrorBoundary>
@@ -977,10 +977,10 @@ const MainAppContent: React.FC = () => {
                     </div>
                     <div>
                       <h3 className="text-lg font-bold text-slate-800">Admin 2FA Security Passkey</h3>
-                      <div className="flex items-center gap-1.5 mt-0.5">
+                      <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                         <Mail className="h-3.5 w-3.5 text-rose-600 shrink-0" />
                         <span className="text-xs text-slate-500">Security code dispatched to: </span>
-                        <strong className="text-xs font-mono font-bold text-rose-950 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                        <strong className="text-xs font-mono font-bold text-rose-950 bg-rose-50 px-2 py-0.5 rounded border border-rose-200 break-all">
                           {pendingAdminEmail || 'admin@carwash.com'}
                         </strong>
                       </div>
@@ -1071,10 +1071,10 @@ const MainAppContent: React.FC = () => {
                     </div>
                     <div>
                       <h3 className="text-lg font-bold text-slate-800">Verify Your Email Address</h3>
-                      <div className="flex items-center gap-1.5 mt-0.5">
+                      <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                         <Mail className="h-3.5 w-3.5 text-sky-600 shrink-0" />
                         <span className="text-xs text-slate-500">OTP code dispatched to: </span>
-                        <strong className="text-xs font-mono font-bold text-sky-950 bg-sky-50 px-2 py-0.5 rounded border border-sky-200">
+                        <strong className="text-xs font-mono font-bold text-sky-950 bg-sky-50 px-2 py-0.5 rounded border border-sky-200 break-all">
                           {pendingRegisterEmail || email || 'your email'}
                         </strong>
                       </div>
@@ -1215,10 +1215,10 @@ const MainAppContent: React.FC = () => {
               ) : isResetMode ? (
                 <div>
                   <h3 className="text-lg font-bold text-slate-800 mb-1">Reset Password</h3>
-                  <div className="flex items-center gap-1.5 mb-3">
+                  <div className="flex flex-wrap items-center gap-1.5 mb-3">
                     <Mail className="h-3.5 w-3.5 text-sky-600 shrink-0" />
                     <span className="text-xs text-slate-500">Reset code dispatched to: </span>
-                    <strong className="text-xs font-mono font-bold text-sky-950 bg-sky-50 px-2 py-0.5 rounded border border-sky-200">
+                    <strong className="text-xs font-mono font-bold text-sky-950 bg-sky-50 px-2 py-0.5 rounded border border-sky-200 break-all">
                       {email || 'your email'}
                     </strong>
                   </div>
@@ -1370,11 +1370,11 @@ const MainAppContent: React.FC = () => {
                   </div>
 
                   {isRegisterMode && (
-                    <div className="mb-4 p-1.5 bg-slate-100 rounded-xl flex gap-1.5">
+                    <div className="mb-4 p-1.5 bg-slate-100 rounded-xl grid grid-cols-1 min-[360px]:grid-cols-2 sm:flex gap-1.5">
                       <button
                         type="button"
                         onClick={() => setRegisterRole('CUSTOMER')}
-                        className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                        className={`flex-1 py-2 px-2.5 sm:px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                           registerRole === 'CUSTOMER'
                             ? 'bg-white text-sky-700 shadow-xs'
                             : 'text-slate-600 hover:text-slate-900'
@@ -1386,7 +1386,7 @@ const MainAppContent: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => setRegisterRole('OWNER')}
-                        className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                        className={`flex-1 py-2 px-2.5 sm:px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                           registerRole === 'OWNER'
                             ? 'bg-sky-600 text-white shadow-xs'
                             : 'text-slate-600 hover:text-slate-900'
@@ -1418,11 +1418,11 @@ const MainAppContent: React.FC = () => {
                     )}
                     {isRegisterMode && registerRole === 'OWNER' && (
                       <div className="p-3.5 bg-sky-50/80 border border-sky-200/80 rounded-xl space-y-2.5">
-                        <div className="flex items-center justify-between">
+                        <div className="flex flex-wrap items-center justify-between gap-1.5">
                           <label className="block text-xs font-bold text-sky-950 uppercase">
                             Carwash / Business Name <span className="text-red-500">*</span>
                           </label>
-                          <span className="text-[10px] font-bold px-2 py-0.5 bg-sky-200 text-sky-800 rounded-full">
+                          <span className="text-[10px] font-bold px-2 py-0.5 bg-sky-200 text-sky-800 rounded-full shrink-0">
                             🌟 30-Day Access Period
                           </span>
                         </div>
@@ -1759,42 +1759,42 @@ const MainAppContent: React.FC = () => {
       )}
 
       {showTermsModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden border border-slate-150 animate-fade-in text-left">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl sm:rounded-3xl w-full max-w-2xl max-h-[90vh] sm:max-h-[85vh] flex flex-col shadow-2xl overflow-hidden border border-slate-150 animate-fade-in text-left">
             {/* Header */}
-            <div className="px-6 py-5 border-b border-slate-150 flex items-center justify-between bg-slate-50">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 overflow-hidden rounded-xl bg-[#0058E6] flex items-center justify-center shadow-xs">
+            <div className="px-4 sm:px-6 py-4 sm:py-5 border-b border-slate-150 flex items-center justify-between gap-2 bg-slate-50 shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="h-10 w-10 overflow-hidden rounded-xl bg-[#0058E6] flex items-center justify-center shadow-xs shrink-0">
                   <img src={autoshineLogo} alt="Autoshine BN" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
                 </div>
-                <div>
-                  <h3 className="text-base font-black text-slate-800 tracking-tight">Terms &amp; Conditions of Use</h3>
-                  <p className="text-[10px] text-sky-600 font-mono font-bold tracking-wider uppercase -mt-0.5">Autoshine BN • Effective 1st September 2026</p>
+                <div className="min-w-0">
+                  <h3 className="text-sm sm:text-base font-black text-slate-800 tracking-tight truncate">Terms &amp; Conditions of Use</h3>
+                  <p className="text-[10px] text-sky-600 font-mono font-bold tracking-wider uppercase -mt-0.5 truncate">Autoshine BN • Effective 1st September 2026</p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setShowTermsModal(false)}
-                className="p-1.5 hover:bg-slate-150 rounded-xl transition-colors cursor-pointer text-slate-400 hover:text-slate-600 animate-none flex items-center justify-center border-none"
+                className="p-1.5 hover:bg-slate-150 rounded-xl transition-colors cursor-pointer text-slate-400 hover:text-slate-600 animate-none flex items-center justify-center border-none shrink-0"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
             {/* Scrollable Content */}
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6">
               <TermsAndConditionsContent />
             </div>
 
             {/* Footer */}
-            <div className="px-6 py-4 bg-slate-50 border-t border-slate-150 flex justify-end">
+            <div className="px-4 sm:px-6 py-3 sm:py-4 bg-slate-50 border-t border-slate-150 flex justify-end shrink-0">
               <button
                 type="button"
                 onClick={() => {
                   setAcceptTerms(true);
                   setShowTermsModal(false);
                 }}
-                className="px-5 py-2.5 bg-sky-600 hover:bg-sky-500 text-white font-bold text-sm rounded-xl shadow-sm transition-colors cursor-pointer"
+                className="w-full sm:w-auto px-5 py-2.5 bg-sky-600 hover:bg-sky-500 text-white font-bold text-sm rounded-xl shadow-sm transition-colors cursor-pointer text-center"
               >
                 I Agree &amp; Accept
               </button>
@@ -1805,8 +1805,8 @@ const MainAppContent: React.FC = () => {
 
       {/* 🚪 Exit / Leave Confirmation Modal */}
       {showExitConfirmModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-[999] animate-fade-in">
-          <div className="relative bg-white rounded-3xl max-w-sm w-full border border-slate-200 shadow-2xl p-6 text-center space-y-4">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-[999] animate-fade-in">
+          <div className="relative bg-white rounded-2xl sm:rounded-3xl max-w-sm w-full border border-slate-200 shadow-2xl p-5 sm:p-6 max-h-[90vh] overflow-y-auto text-center space-y-4">
             <div className="w-14 h-14 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto shadow-inner">
               <AlertTriangle className="w-8 h-8" />
             </div>
@@ -1818,7 +1818,7 @@ const MainAppContent: React.FC = () => {
               </p>
             </div>
 
-            <div className="flex items-center gap-2 pt-2">
+            <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => setShowExitConfirmModal(false)}

@@ -157,23 +157,23 @@ export const CameraQrScannerModal: React.FC<CameraQrScannerModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in">
-      <div className="bg-slate-900 border border-slate-700/80 rounded-3xl max-w-md w-full overflow-hidden shadow-2xl flex flex-col text-white">
+    <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 z-50 animate-fade-in">
+      <div className="bg-slate-900 border border-slate-700/80 rounded-2xl sm:rounded-3xl max-w-md w-full max-h-[92vh] overflow-hidden shadow-2xl flex flex-col text-white">
         {/* Header */}
-        <div className="p-4 sm:p-5 flex items-center justify-between border-b border-slate-800">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-indigo-600/30 border border-indigo-500/40 text-indigo-400 flex items-center justify-center">
+        <div className="p-3.5 sm:p-5 flex items-center justify-between gap-2 border-b border-slate-800 shrink-0">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-indigo-600/30 border border-indigo-500/40 text-indigo-400 flex items-center justify-center shrink-0">
               <Camera className="w-5 h-5" />
             </div>
-            <div>
-              <h3 className="text-sm sm:text-base font-extrabold text-white">{title}</h3>
+            <div className="min-w-0">
+              <h3 className="text-sm sm:text-base font-extrabold text-white truncate">{title}</h3>
               <p className="text-[11px] text-slate-400 line-clamp-1">{subtitle}</p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
             title="Close scanner"
           >
             <X className="w-5 h-5" />
@@ -181,7 +181,7 @@ export const CameraQrScannerModal: React.FC<CameraQrScannerModalProps> = ({
         </div>
 
         {/* Camera Viewport */}
-        <div className="relative aspect-4/3 sm:aspect-square bg-black flex items-center justify-center overflow-hidden">
+        <div className="relative aspect-4/3 sm:aspect-square bg-black flex items-center justify-center overflow-hidden min-h-0 flex-1">
           {/* Video Stream */}
           <video
             ref={videoRef}
@@ -196,7 +196,7 @@ export const CameraQrScannerModal: React.FC<CameraQrScannerModalProps> = ({
           {/* Scanner Overlay / Aiming Reticle */}
           {isScanning && !cameraError && (
             <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-              <div className="relative w-56 h-56 border-2 border-indigo-400/80 rounded-2xl shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]">
+              <div className="relative w-44 h-44 sm:w-56 sm:h-56 border-2 border-indigo-400/80 rounded-2xl shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]">
                 {/* Corner Accents */}
                 <span className="absolute top-0 left-0 w-5 h-5 border-t-4 border-l-4 border-emerald-400 rounded-tl-lg" />
                 <span className="absolute top-0 right-0 w-5 h-5 border-t-4 border-r-4 border-emerald-400 rounded-tr-lg" />
@@ -238,8 +238,8 @@ export const CameraQrScannerModal: React.FC<CameraQrScannerModalProps> = ({
         </div>
 
         {/* Footer Controls */}
-        <div className="p-4 bg-slate-900 border-t border-slate-800 flex items-center justify-between gap-3">
-          <p className="text-[11px] text-slate-400 flex-1">
+        <div className="p-3.5 sm:p-4 bg-slate-900 border-t border-slate-800 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2.5 sm:gap-3 shrink-0">
+          <p className="text-[11px] text-slate-400 flex-1 min-w-0">
             Center customer QR code inside target box. Scans automatically.
           </p>
 

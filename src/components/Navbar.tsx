@@ -122,18 +122,18 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
   return (
     <>
       <header className="bg-white border-b border-slate-200/80 sticky top-0 z-40 backdrop-blur-md bg-white/95">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-16 gap-2">
           {/* Logo Brand branding */}
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 flex items-center justify-center overflow-hidden rounded-xl bg-[#0058E6] shadow-xs">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="h-9 w-9 sm:h-10 sm:w-10 shrink-0 flex items-center justify-center overflow-hidden rounded-xl bg-[#0058E6] shadow-xs">
               <img src={autoshineLogo} alt="Autoshine BN Logo" className="h-full w-full object-contain" referrerPolicy="no-referrer" />
             </div>
-            <div>
-              <span className="text-base font-black text-slate-800 tracking-tight block">
+            <div className="min-w-0">
+              <span className="text-sm sm:text-base font-black text-slate-800 tracking-tight block truncate">
                 Autoshine BN
               </span>
-              <span className="text-[10px] text-sky-600 font-mono tracking-wider block -mt-1 uppercase font-bold">
+              <span className="text-[9px] sm:text-[10px] text-sky-600 font-mono tracking-wider block -mt-0.5 sm:-mt-1 uppercase font-bold truncate">
                 Cleaner Car. Better Ride.
               </span>
             </div>
@@ -141,7 +141,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
 
           {/* User information & controls */}
           {user && (
-            <div className="flex items-center gap-3 relative z-50">
+            <div className="flex items-center gap-2 sm:gap-3 relative z-50 shrink-0">
               {/* Notification Bell Trigger */}
               <div className="relative">
                 <button
@@ -372,16 +372,16 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
 
     {/* Change Password Modal */}
     {isChangePasswordOpen && (
-      <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4" id="change-password-modal-backdrop">
-        <div className="bg-white rounded-3xl shadow-xl max-w-md w-full border border-slate-200 overflow-hidden animate-in fade-in zoom-in duration-200" id="change-password-modal-card">
+      <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-2 sm:p-4" id="change-password-modal-backdrop">
+        <div className="bg-white rounded-3xl shadow-xl max-w-md w-full border border-slate-200 flex flex-col max-h-[92vh] overflow-hidden animate-in fade-in zoom-in duration-200" id="change-password-modal-card">
           {/* Modal Header */}
-          <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 bg-sky-100 text-sky-700 rounded-xl">
+          <div className="px-4 sm:px-6 py-4 sm:py-5 border-b border-slate-100 flex items-center justify-between bg-slate-50 shrink-0">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="p-2 bg-sky-100 text-sky-700 rounded-xl shrink-0">
                 <Lock className="h-4 w-4" />
               </div>
-              <div>
-                <h3 className="font-bold text-slate-800 text-sm sm:text-base">Change Your Password</h3>
+              <div className="min-w-0">
+                <h3 className="font-bold text-slate-800 text-sm sm:text-base truncate">Change Your Password</h3>
                 <p className="text-[10px] text-slate-400 font-mono uppercase">All roles access</p>
               </div>
             </div>
@@ -393,7 +393,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
                 setNewPassword('');
                 setConfirmNewPassword('');
               }}
-              className="p-1.5 hover:bg-slate-200 text-slate-400 hover:text-slate-600 rounded-lg transition-colors cursor-pointer"
+              className="p-1.5 hover:bg-slate-200 text-slate-400 hover:text-slate-600 rounded-lg transition-colors cursor-pointer shrink-0"
               id="close-change-password-modal"
             >
               <X className="h-4 w-4" />
@@ -401,7 +401,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
           </div>
 
           {/* Modal Body */}
-          <form onSubmit={handleChangePasswordSubmit} className="p-6 space-y-4">
+          <form onSubmit={handleChangePasswordSubmit} className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1 min-h-0">
             {errorMsg && (
               <div className="p-3 bg-rose-50 border border-rose-100 text-rose-800 rounded-xl text-xs font-semibold flex items-center gap-2" id="change-password-error">
                 <span className="w-1.5 h-1.5 rounded-full bg-rose-600 shrink-0"></span>
@@ -454,7 +454,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
               />
             </div>
 
-            <div className="flex gap-3 pt-2">
+            <div className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-3 pt-2">
               <button
                 type="button"
                 onClick={() => {

@@ -380,22 +380,22 @@ export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeVi
         </div>
 
         {/* Tab Switcher */}
-        <div className="flex bg-white/10 p-1 rounded-2xl border border-white/15">
+        <div className="grid grid-cols-1 min-[360px]:grid-cols-2 sm:flex bg-white/10 p-1 rounded-2xl border border-white/15 w-full sm:w-auto gap-1 sm:gap-0">
           <button
             onClick={() => setActiveTab('award')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+            className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
               activeTab === 'award' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-300 hover:text-white'
             }`}
           >
-            <Coins className="h-4 w-4" /> Award Walk-In Points
+            <Coins className="h-4 w-4 shrink-0" /> Award Walk-In Points
           </button>
           <button
             onClick={() => setActiveTab('redeem')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+            className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
               activeTab === 'redeem' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-300 hover:text-white'
             }`}
           >
-            <Gift className="h-4 w-4" /> Validate Voucher
+            <Gift className="h-4 w-4 shrink-0" /> Validate Voucher
           </button>
         </div>
       </div>
@@ -495,8 +495,8 @@ export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeVi
                 <form onSubmit={handleAwardPoints} className="space-y-4">
                   {/* Service Selection Header */}
                   <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <div>
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                      <div className="min-w-0">
                         <label className="block text-xs font-bold text-slate-800">
                           Select Completed Services (Choose Several)
                         </label>
@@ -504,7 +504,7 @@ export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeVi
                           Check all services provided to the customer today. Points auto-calculate.
                         </p>
                       </div>
-                      <div className="flex items-center gap-1.5 text-[10px] font-bold">
+                      <div className="flex items-center gap-1.5 text-[10px] font-bold shrink-0">
                         <button
                           type="button"
                           onClick={handleSelectAllServices}
@@ -707,19 +707,19 @@ export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeVi
                 <div className="flex-1 h-px bg-slate-200" />
               </div>
 
-              <form onSubmit={handleCheckVoucher} className="flex gap-2">
+              <form onSubmit={handleCheckVoucher} className="flex flex-col sm:flex-row gap-2">
                 <input
                   type="text"
                   value={voucherCodeInput}
                   onChange={(e) => setVoucherCodeInput(e.target.value.toUpperCase())}
                   placeholder="Enter Voucher Code (e.g. RED-5258)..."
-                  className="flex-1 px-4 py-3 border border-slate-200 rounded-2xl text-sm font-mono font-bold tracking-wider focus:outline-none focus:ring-2 focus:ring-indigo-500 uppercase bg-slate-50 focus:bg-white"
+                  className="flex-1 min-w-0 px-4 py-3 border border-slate-200 rounded-2xl text-sm font-mono font-bold tracking-wider focus:outline-none focus:ring-2 focus:ring-indigo-500 uppercase bg-slate-50 focus:bg-white"
                   required
                 />
                 <button
                   type="submit"
                   disabled={checkingVoucher}
-                  className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-2xl transition-colors flex items-center gap-1.5 cursor-pointer shadow-md"
+                  className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-2xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-md shrink-0"
                 >
                   {checkingVoucher ? <RefreshCw className="h-4 w-4 animate-spin" /> : 'Inspect Voucher'}
                 </button>
@@ -734,8 +734,8 @@ export const LoyaltyMembershipEmployeeView: React.FC<LoyaltyMembershipEmployeeVi
             )}
 
             {checkedVoucher && (
-              <div className="p-6 bg-slate-50 border border-slate-200 rounded-3xl space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <div className="p-4 sm:p-6 bg-slate-50 border border-slate-200 rounded-3xl space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-200">
                   <div>
                     <span className="text-[10px] uppercase font-bold text-slate-400 block">Voucher Code</span>
                     <span className="font-mono font-black text-lg text-slate-800 tracking-wider">

@@ -380,7 +380,7 @@ export const OwnerMembershipManager: React.FC<OwnerMembershipManagerProps> = ({
         <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0">
           <button
             onClick={() => setActiveTab('overview')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
               activeTab === 'overview'
                 ? 'bg-indigo-600 text-white shadow-xs'
                 : 'text-slate-600 hover:bg-slate-100'
@@ -390,7 +390,7 @@ export const OwnerMembershipManager: React.FC<OwnerMembershipManagerProps> = ({
           </button>
           <button
             onClick={() => setActiveTab('settings')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
               activeTab === 'settings'
                 ? 'bg-indigo-600 text-white shadow-xs'
                 : 'text-slate-600 hover:bg-slate-100'
@@ -400,7 +400,7 @@ export const OwnerMembershipManager: React.FC<OwnerMembershipManagerProps> = ({
           </button>
           <button
             onClick={() => setActiveTab('rules')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
               activeTab === 'rules'
                 ? 'bg-indigo-600 text-white shadow-xs'
                 : 'text-slate-600 hover:bg-slate-100'
@@ -410,7 +410,7 @@ export const OwnerMembershipManager: React.FC<OwnerMembershipManagerProps> = ({
           </button>
           <button
             onClick={() => setActiveTab('rewards')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
               activeTab === 'rewards'
                 ? 'bg-indigo-600 text-white shadow-xs'
                 : 'text-slate-600 hover:bg-slate-100'
@@ -420,7 +420,7 @@ export const OwnerMembershipManager: React.FC<OwnerMembershipManagerProps> = ({
           </button>
           <button
             onClick={() => setActiveTab('members')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
               activeTab === 'members'
                 ? 'bg-indigo-600 text-white shadow-xs'
                 : 'text-slate-600 hover:bg-slate-100'
@@ -430,7 +430,7 @@ export const OwnerMembershipManager: React.FC<OwnerMembershipManagerProps> = ({
           </button>
           <button
             onClick={() => setActiveTab('redemptions')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
               activeTab === 'redemptions'
                 ? 'bg-indigo-600 text-white shadow-xs'
                 : 'text-slate-600 hover:bg-slate-100'
@@ -591,7 +591,7 @@ export const OwnerMembershipManager: React.FC<OwnerMembershipManagerProps> = ({
           </div>
 
           {/* Active Status Switch */}
-          <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between">
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h4 className="text-xs font-extrabold text-slate-900">Programme Active Status</h4>
               <p className="text-[11px] text-slate-500">
@@ -601,7 +601,7 @@ export const OwnerMembershipManager: React.FC<OwnerMembershipManagerProps> = ({
             <button
               type="button"
               onClick={() => setIsProgrammeActive((prev) => !prev)}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 self-start sm:self-auto ${
                 isProgrammeActive
                   ? 'bg-emerald-600 text-white shadow-xs'
                   : 'bg-slate-200 text-slate-700'
@@ -647,7 +647,7 @@ export const OwnerMembershipManager: React.FC<OwnerMembershipManagerProps> = ({
                 return (
                   <div
                     key={svc.id}
-                    className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl flex items-center justify-between gap-4"
+                    className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4"
                   >
                     <div>
                       <div className="flex items-center gap-2">
@@ -713,14 +713,14 @@ export const OwnerMembershipManager: React.FC<OwnerMembershipManagerProps> = ({
       {/* TAB 4: REWARDS CATALOG */}
       {activeTab === 'rewards' && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between bg-white p-5 rounded-3xl border border-slate-200/90">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-5 rounded-3xl border border-slate-200/90">
             <div>
               <h3 className="text-sm font-extrabold text-slate-900">Redeemable Rewards Catalog</h3>
               <p className="text-xs text-slate-500">Create perks that members can exchange their points for.</p>
             </div>
             <button
               onClick={() => setShowAddRewardModal(true)}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer self-start sm:self-auto shrink-0"
             >
               <Plus className="w-4 h-4" />
               <span>Create Reward</span>
@@ -781,11 +781,11 @@ export const OwnerMembershipManager: React.FC<OwnerMembershipManagerProps> = ({
 
           {/* Create Reward Modal */}
           {showAddRewardModal && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4">
-              <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95">
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-2 sm:p-4">
+              <div className="bg-white rounded-3xl p-5 sm:p-6 max-w-md w-full shadow-2xl border border-slate-200 space-y-4 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95">
                 <div className="flex justify-between items-center border-b border-slate-150 pb-3">
                   <h3 className="font-extrabold text-slate-900 text-sm">Create New Reward</h3>
-                  <button onClick={() => setShowAddRewardModal(false)} className="text-slate-400 hover:text-slate-600">
+                  <button onClick={() => setShowAddRewardModal(false)} className="text-slate-400 hover:text-slate-600 p-1">
                     <AlertCircle className="w-4 h-4" />
                   </button>
                 </div>
@@ -803,7 +803,7 @@ export const OwnerMembershipManager: React.FC<OwnerMembershipManagerProps> = ({
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block font-bold text-slate-700 mb-1">Points Required *</label>
                       <input
@@ -842,18 +842,18 @@ export const OwnerMembershipManager: React.FC<OwnerMembershipManagerProps> = ({
                     />
                   </div>
 
-                  <div className="flex gap-2 pt-3">
+                  <div className="flex flex-col-reverse sm:flex-row gap-2 pt-3">
                     <button
                       type="button"
                       onClick={() => setShowAddRewardModal(false)}
-                      className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer"
+                      className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
                       disabled={isCreatingReward}
-                      className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-md cursor-pointer disabled:opacity-50"
+                      className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-md cursor-pointer disabled:opacity-50"
                     >
                       {isCreatingReward ? 'Creating...' : 'Save Reward'}
                     </button>
@@ -942,8 +942,8 @@ export const OwnerMembershipManager: React.FC<OwnerMembershipManagerProps> = ({
 
           {/* Manual Adjustment Modal */}
           {selectedMemberForAdjustment && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4">
-              <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95">
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-2 sm:p-4">
+              <div className="bg-white rounded-3xl p-5 sm:p-6 max-w-sm w-full shadow-2xl border border-slate-200 space-y-4 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95">
                 <div className="text-center space-y-1">
                   <h3 className="font-extrabold text-slate-900 text-sm">Audited Point Adjustment</h3>
                   <p className="text-xs text-slate-600">
@@ -976,11 +976,11 @@ export const OwnerMembershipManager: React.FC<OwnerMembershipManagerProps> = ({
                     />
                   </div>
 
-                  <div className="flex gap-2 pt-2">
+                  <div className="flex flex-col-reverse sm:flex-row gap-2 pt-2">
                     <button
                       type="button"
                       onClick={() => setSelectedMemberForAdjustment(null)}
-                      className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer"
+                      className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer"
                     >
                       Cancel
                     </button>
@@ -988,7 +988,7 @@ export const OwnerMembershipManager: React.FC<OwnerMembershipManagerProps> = ({
                       type="button"
                       onClick={handleConfirmAdjust}
                       disabled={isAdjusting}
-                      className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-md cursor-pointer disabled:opacity-50"
+                      className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-md cursor-pointer disabled:opacity-50"
                     >
                       {isAdjusting ? 'Recording...' : 'Confirm'}
                     </button>

@@ -846,21 +846,21 @@ export const CustomerDashboard: React.FC = () => {
   return (
     <div className="animate-fade-in pb-24 px-4 max-w-4xl mx-auto space-y-6 pt-4">
       {/* 📱 Sticky Bottom Mobile/Desktop Subjects Navigation Bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/80 shadow-lg px-4 py-2.5 flex items-center justify-around sm:justify-center sm:gap-12 md:gap-16">
+      <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/80 shadow-lg px-1.5 sm:px-4 py-2 sm:py-2.5 flex items-center justify-around sm:justify-center sm:gap-12 md:gap-16">
         <button
           onClick={() => {
             setActiveTab('book');
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
-          className={`flex flex-col items-center gap-1 py-1 px-4 rounded-xl transition-all cursor-pointer ${
+          className={`flex flex-col items-center gap-1 py-1 px-2 sm:px-4 flex-1 sm:flex-initial min-w-0 rounded-xl transition-all cursor-pointer ${
             activeTab === 'book'
-              ? 'text-sky-600 font-extrabold scale-110'
+              ? 'text-sky-600 font-extrabold scale-105 sm:scale-110'
               : 'text-slate-400 font-medium hover:text-slate-600'
           }`}
           id="btn-nav-book"
         >
           <Search className="w-5.5 h-5.5" />
-          <span className="text-[10px]">Find & Book</span>
+          <span className="text-[10px] truncate max-w-full">Find &amp; Book</span>
         </button>
 
         <button
@@ -868,18 +868,18 @@ export const CustomerDashboard: React.FC = () => {
             setActiveTab('bookings');
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
-          className={`flex flex-col items-center gap-1 py-1 px-4 rounded-xl transition-all cursor-pointer relative ${
+          className={`flex flex-col items-center gap-1 py-1 px-2 sm:px-4 flex-1 sm:flex-initial min-w-0 rounded-xl transition-all cursor-pointer relative ${
             activeTab === 'bookings'
-              ? 'text-sky-600 font-extrabold scale-110'
+              ? 'text-sky-600 font-extrabold scale-105 sm:scale-110'
               : 'text-slate-400 font-medium hover:text-slate-600'
           }`}
           id="btn-nav-bookings"
         >
           <History className="w-5.5 h-5.5" />
           {bookings.filter(b => b.status === BookingStatus.PENDING).length > 0 && (
-            <span className="absolute top-1 right-5 w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
+            <span className="absolute top-1 right-3 sm:right-5 w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
           )}
-          <span className="text-[10px]">My Bookings</span>
+          <span className="text-[10px] truncate max-w-full">My Bookings</span>
         </button>
 
         {isLoyaltyVisibleToCustomer && (
@@ -888,20 +888,20 @@ export const CustomerDashboard: React.FC = () => {
               setActiveTab('rewards');
               window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
-            className={`flex flex-col items-center gap-1 py-1 px-4 rounded-xl transition-all cursor-pointer relative ${
+            className={`flex flex-col items-center gap-1 py-1 px-2 sm:px-4 flex-1 sm:flex-initial min-w-0 rounded-xl transition-all cursor-pointer relative ${
               activeTab === 'rewards'
-                ? 'text-indigo-600 font-extrabold scale-110'
+                ? 'text-indigo-600 font-extrabold scale-105 sm:scale-110'
                 : 'text-slate-400 font-medium hover:text-slate-600'
             }`}
             id="btn-nav-rewards"
           >
             <Award className="w-5.5 h-5.5" />
             {totalRewardPoints > 0 && (
-              <span className="absolute -top-1 -right-1 bg-amber-400 text-slate-950 font-black text-[9px] px-1.5 py-0.2 rounded-full border border-white shadow-xs">
+              <span className="absolute -top-1 right-1 sm:-right-1 bg-amber-400 text-slate-950 font-black text-[9px] px-1.5 py-0.2 rounded-full border border-white shadow-xs">
                 {totalRewardPoints}
               </span>
             )}
-            <span className="text-[10px]">Rewards Club</span>
+            <span className="text-[10px] truncate max-w-full">Rewards Club</span>
           </button>
         )}
 
@@ -910,15 +910,15 @@ export const CustomerDashboard: React.FC = () => {
             setActiveTab('profile');
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
-          className={`flex flex-col items-center gap-1 py-1 px-4 rounded-xl transition-all cursor-pointer ${
+          className={`flex flex-col items-center gap-1 py-1 px-2 sm:px-4 flex-1 sm:flex-initial min-w-0 rounded-xl transition-all cursor-pointer ${
             activeTab === 'profile'
-              ? 'text-sky-600 font-extrabold scale-110'
+              ? 'text-sky-600 font-extrabold scale-105 sm:scale-110'
               : 'text-slate-400 font-medium hover:text-slate-600'
           }`}
           id="btn-nav-profile"
         >
           <User className="w-5.5 h-5.5" />
-          <span className="text-[10px]">My Profile</span>
+          <span className="text-[10px] truncate max-w-full">My Profile</span>
         </button>
       </div>
 
@@ -1306,14 +1306,14 @@ export const CustomerDashboard: React.FC = () => {
                               setUserLat(loc.locationLat);
                               setUserLng(loc.locationLng);
                             }}
-                            className={`flex-1 py-3 px-4 text-white font-black text-xs rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer shrink-0 ${
+                            className={`flex-1 min-w-0 py-3 px-3 sm:px-4 text-white font-black text-xs rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer ${
                               selectedLocation?.id === loc.id
                                 ? 'bg-emerald-600 hover:bg-emerald-500'
                                 : 'bg-sky-600 hover:bg-sky-500'
                             }`}
                           >
-                            <span>{selectedLocation?.id === loc.id ? 'Selected (Tap to Book)' : 'Select Location & Book'}</span>
-                            <ChevronRight className="w-4 h-4" />
+                            <span className="truncate">{selectedLocation?.id === loc.id ? 'Selected (Tap to Book)' : 'Select Location & Book'}</span>
+                            <ChevronRight className="w-4 h-4 shrink-0" />
                           </button>
                         </div>
                       </div>
@@ -1391,7 +1391,7 @@ export const CustomerDashboard: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
                 <button
                   type="button"
                   onClick={() => {
@@ -1418,7 +1418,7 @@ export const CustomerDashboard: React.FC = () => {
 
             {isMapExpanded && (
               <div className="border-t border-slate-800 animate-fade-in">
-                <div className="h-[520px] sm:h-[580px] lg:h-[640px] relative bg-slate-950 w-full overflow-hidden">
+                <div className="h-[360px] sm:h-[580px] lg:h-[640px] relative bg-slate-950 w-full overflow-hidden">
                   <MapSimulation
                     locations={locations}
                     selectedLocationId={mapPreviewLocation?.id ?? null}
@@ -1565,7 +1565,7 @@ export const CustomerDashboard: React.FC = () => {
 
             {/* Collapsed Section Banner */}
             {isHistorySectionCollapsed && (
-              <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 text-center text-xs text-slate-600 flex items-center justify-between gap-3">
+              <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 text-center text-xs text-slate-600 flex flex-wrap items-center justify-between gap-3">
                 <span>📁 <strong>Booking History Collapsed:</strong> {bookings.length} recorded booking(s) hidden.</span>
                 <button
                   type="button"
@@ -1666,8 +1666,8 @@ export const CustomerDashboard: React.FC = () => {
                             </div>
 
                             {/* Minimal Date & Time Row */}
-                            <div className="flex items-center justify-between gap-2 text-xs text-slate-500 font-medium pt-0.5">
-                              <div className="flex items-center gap-1.5 truncate">
+                            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 font-medium pt-0.5">
+                              <div className="flex items-center gap-1.5 min-w-0 flex-1">
                                 <Calendar className="w-3.5 h-3.5 text-sky-500 shrink-0" />
                                 <span className="truncate">{formatBookingDate(bk.date)}</span>
                                 <span className="text-slate-300">•</span>
@@ -1687,14 +1687,14 @@ export const CustomerDashboard: React.FC = () => {
                             <div className="p-3.5 sm:p-4 border-t border-slate-200/80 bg-slate-50/60 space-y-3 text-xs animate-fade-in">
                               {/* Location & Address Banner */}
                               <div className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                                <div className="space-y-0.5">
+                                <div className="space-y-0.5 min-w-0">
                                   <span className="block text-[9px] text-slate-400 uppercase font-black tracking-wider">Location Address</span>
                                   <div className="flex items-center gap-1 text-slate-800 font-medium">
                                     <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                                    <span>{(bk as any).carWashAddress || 'Location details in card'}</span>
+                                    <span className="break-words">{(bk as any).carWashAddress || 'Location details in card'}</span>
                                   </div>
                                 </div>
-                                <div className="text-right sm:text-right shrink-0">
+                                <div className="text-left sm:text-right shrink-0">
                                   <span className="block text-[9px] text-slate-400 uppercase font-black tracking-wider">Price BND</span>
                                   <span className="font-black text-slate-900 text-sm font-mono">BND ${(bk.price || 15.00).toFixed(2)}</span>
                                 </div>
@@ -1869,30 +1869,30 @@ export const CustomerDashboard: React.FC = () => {
 
       {activeTab === 'profile' && (
         <div className="space-y-6">
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs relative overflow-hidden">
+          <div className="bg-white border border-slate-200 rounded-3xl p-4 sm:p-6 shadow-xs relative overflow-hidden">
             <div className="absolute top-0 right-0 w-24 h-24 bg-sky-500/5 rounded-bl-full pointer-events-none" />
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3 sm:gap-4 min-w-0 w-full md:w-auto">
                 {user?.profileImageUrl ? (
                   <img
                     src={user.profileImageUrl}
                     alt={user.name}
-                    className="w-16 h-16 rounded-full object-cover border-2 border-sky-100 shadow-xs"
+                    className="w-14 h-14 sm:w-16 sm:h-16 rounded-full object-cover border-2 border-sky-100 shadow-xs shrink-0"
                     referrerPolicy="no-referrer"
                   />
                 ) : (
-                  <div className="w-16 h-16 rounded-full bg-sky-100 flex items-center justify-center text-sky-600 font-extrabold text-xl shadow-xs">
+                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-sky-100 flex items-center justify-center text-sky-600 font-extrabold text-xl shadow-xs shrink-0">
                     {user?.name.charAt(0).toUpperCase()}
                   </div>
                 )}
-                <div>
-                  <h2 className="text-sm font-extrabold text-slate-800 flex items-center gap-2">
-                    {user?.name}
-                    <span className="bg-sky-50 text-sky-600 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-sm font-extrabold text-slate-800 flex flex-wrap items-center gap-2">
+                    <span className="break-words">{user?.name}</span>
+                    <span className="bg-sky-50 text-sky-600 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0">
                       {user?.role} Member
                     </span>
                   </h2>
-                  <p className="text-xs text-slate-500 font-medium">{user?.email}</p>
+                  <p className="text-xs text-slate-500 font-medium break-all">{user?.email}</p>
                 </div>
               </div>
               <button
@@ -1987,7 +1987,7 @@ export const CustomerDashboard: React.FC = () => {
                 </div>
               </form>
             ) : (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 text-xs">
+              <div className="grid grid-cols-1 min-[380px]:grid-cols-2 md:grid-cols-4 gap-4 pt-4 text-xs">
                 <div>
                   <span className="block font-bold text-slate-400 uppercase tracking-wider mb-1">Phone Number</span>
                   <span className="text-slate-700 font-bold text-xs">{user?.phone || '—'}</span>
@@ -2002,7 +2002,7 @@ export const CustomerDashboard: React.FC = () => {
                   <span className="block font-bold text-slate-400 uppercase tracking-wider mb-1">Gender</span>
                   <span className="text-slate-700 font-bold text-xs">{user?.gender || '—'}</span>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <span className="block font-bold text-slate-400 uppercase tracking-wider mb-1">Home Address</span>
                   <span className="text-slate-700 font-bold text-xs block truncate max-w-xs" title={user?.address}>
                     {user?.address || '—'}
@@ -2013,9 +2013,9 @@ export const CustomerDashboard: React.FC = () => {
           </div>
 
           {/* Security & Credentials Card */}
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs relative overflow-hidden" id="security-settings-card">
+          <div className="bg-white border border-slate-200 rounded-3xl p-4 sm:p-6 shadow-xs relative overflow-hidden" id="security-settings-card">
             <div className="absolute top-0 right-0 w-24 h-24 bg-sky-500/5 rounded-bl-full pointer-events-none" />
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+            <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-100">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-slate-100 text-slate-700 rounded-xl">
                   <Lock className="h-4 w-4" />
@@ -2118,7 +2118,7 @@ export const CustomerDashboard: React.FC = () => {
           </div>
 
           {/* Legal, Help & Account Status */}
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs relative overflow-hidden" id="legal-and-support-card">
+          <div className="bg-white border border-slate-200 rounded-3xl p-4 sm:p-6 shadow-xs relative overflow-hidden" id="legal-and-support-card">
             <div className="absolute top-0 right-0 w-24 h-24 bg-slate-500/5 rounded-bl-full pointer-events-none" />
             <h3 className="font-bold text-slate-800 text-sm sm:text-base mb-1">Legal & Support</h3>
             <p className="text-[10px] text-slate-400 font-mono uppercase mb-4">View terms and manage account state</p>
@@ -2167,29 +2167,29 @@ export const CustomerDashboard: React.FC = () => {
       )}
 
       {showTermsModal && (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in" id="terms-of-service-modal-overlay">
-          <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[85vh] border border-slate-100 shadow-2xl overflow-hidden flex flex-col" id="terms-of-service-modal-container">
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 z-50 animate-fade-in" id="terms-of-service-modal-overlay">
+          <div className="bg-white rounded-2xl sm:rounded-3xl max-w-2xl w-full max-h-[90vh] sm:max-h-[85vh] border border-slate-100 shadow-2xl overflow-hidden flex flex-col" id="terms-of-service-modal-container">
             {/* Header / Brand */}
-            <div className="flex items-center justify-between p-6 border-b border-slate-100 shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 flex items-center justify-center overflow-hidden rounded-xl bg-[#0058E6] shadow-xs">
+            <div className="flex items-center justify-between gap-2 p-4 sm:p-6 border-b border-slate-100 shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="h-10 w-10 flex items-center justify-center overflow-hidden rounded-xl bg-[#0058E6] shadow-xs shrink-0">
                   <img src={autoshineLogo} alt="Autoshine BN Logo" className="h-full w-full object-contain" referrerPolicy="no-referrer" />
                 </div>
-                <div>
-                  <h3 className="font-extrabold text-slate-800 text-sm sm:text-base">AUTOSHINE BN Terms</h3>
-                  <p className="text-[9px] text-sky-600 font-mono uppercase tracking-wide">Effective: 1st September 2026</p>
+                <div className="min-w-0">
+                  <h3 className="font-extrabold text-slate-800 text-sm sm:text-base truncate">AUTOSHINE BN Terms</h3>
+                  <p className="text-[9px] text-sky-600 font-mono uppercase tracking-wide truncate">Effective: 1st September 2026</p>
                 </div>
               </div>
               <button
                 onClick={() => setShowTermsModal(false)}
-                className="bg-slate-100 hover:bg-slate-200 p-2 rounded-xl text-slate-500 hover:text-slate-700 transition-colors cursor-pointer"
+                className="bg-slate-100 hover:bg-slate-200 p-2 rounded-xl text-slate-500 hover:text-slate-700 transition-colors cursor-pointer shrink-0"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             {/* Scrollable Terms Content */}
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6">
               <TermsAndConditionsContent />
             </div>
           </div>
@@ -2200,30 +2200,30 @@ export const CustomerDashboard: React.FC = () => {
       {showFullScreenMap && (
         <div className="fixed inset-0 z-50 bg-slate-950 flex flex-col animate-fade-in">
           {/* Header */}
-          <div className="bg-slate-900 text-white px-4 py-3.5 flex items-center justify-between border-b border-slate-800 shrink-0">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 bg-sky-500/20 text-sky-400 rounded-xl border border-sky-500/30">
+          <div className="bg-slate-900 text-white px-3 sm:px-4 py-3 sm:py-3.5 flex items-center justify-between gap-2 border-b border-slate-800 shrink-0">
+            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+              <div className="p-2 bg-sky-500/20 text-sky-400 rounded-xl border border-sky-500/30 shrink-0">
                 <Navigation className="h-5 w-5 animate-pulse" />
               </div>
-              <div>
-                <h3 className="font-extrabold text-sm text-white">
+              <div className="min-w-0">
+                <h3 className="font-extrabold text-xs sm:text-sm text-white truncate">
                   {selectedLocation ? selectedLocation.name : 'Interactive GPS Map - All Car Washes'}
                 </h3>
-                <p className="text-xs text-slate-400">
+                <p className="text-[11px] sm:text-xs text-slate-400 truncate">
                   {selectedLocation ? 'Tap pins on map to switch location or verify GPS route' : 'Tap any car wash pin to select location and start booking'}
                 </p>
               </div>
             </div>
             <button
               onClick={() => setShowFullScreenMap(false)}
-              className="bg-slate-800 hover:bg-slate-700 p-2 rounded-xl text-white transition-colors cursor-pointer border border-slate-700"
+              className="bg-slate-800 hover:bg-slate-700 p-2 rounded-xl text-white transition-colors cursor-pointer border border-slate-700 shrink-0"
             >
               <X className="h-5 w-5" />
             </button>
           </div>
 
           {/* Interactive Map Block */}
-          <div className="flex-1 relative bg-slate-900">
+          <div className="flex-1 relative bg-slate-900 min-h-0">
             <MapSimulation
               locations={locations}
               selectedLocationId={mapPreviewLocation?.id ?? null}
@@ -2248,8 +2248,8 @@ export const CustomerDashboard: React.FC = () => {
           </div>
 
           {/* Footer Action */}
-          <div className="bg-slate-900 p-3.5 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
-            <div className="text-xs text-slate-300">
+          <div className="bg-slate-900 p-3 sm:p-3.5 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-2.5 sm:gap-3 shrink-0">
+            <div className="text-xs text-slate-300 text-center sm:text-left break-words w-full sm:w-auto">
               {mapPreviewLocation ? (
                 <span>Selected on map: <strong className="text-sky-400 font-black">{mapPreviewLocation.name}</strong> ({mapPreviewLocation.address})</span>
               ) : (
@@ -2264,16 +2264,16 @@ export const CustomerDashboard: React.FC = () => {
                     setShowFullScreenMap(false);
                     setSelectedLocation(mapPreviewLocation);
                   }}
-                  className="flex-1 sm:flex-initial px-5 py-2.5 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white font-extrabold text-xs rounded-xl transition-all shadow-md cursor-pointer text-center flex items-center justify-center gap-1.5"
+                  className="flex-1 sm:flex-initial px-4 sm:px-5 py-2.5 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white font-extrabold text-xs rounded-xl transition-all shadow-md cursor-pointer text-center flex items-center justify-center gap-1.5"
                 >
-                  <Calendar className="w-4 h-4" />
+                  <Calendar className="w-4 h-4 shrink-0" />
                   <span>Book Appointment</span>
                 </button>
               )}
               <button
                 type="button"
                 onClick={() => setShowFullScreenMap(false)}
-                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition-all cursor-pointer text-center"
+                className="flex-1 sm:flex-initial px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition-all cursor-pointer text-center"
               >
                 Close Map
               </button>
@@ -2286,17 +2286,17 @@ export const CustomerDashboard: React.FC = () => {
       {showFullScreenDate && selectedLocation && (
         <div className="fixed inset-0 z-50 bg-white flex flex-col animate-fade-in overflow-y-auto">
           {/* Header */}
-          <div className="bg-slate-900 text-white px-4 py-4 flex items-center justify-between sticky top-0 z-10">
-            <div className="flex items-center gap-2">
-              <Calendar className="h-5 w-5 text-sky-400" />
-              <div>
-                <h3 className="font-extrabold text-xs">Select Appointment Date & Time</h3>
-                <p className="text-[10px] text-sky-300">Location: {selectedLocation.name}</p>
+          <div className="bg-slate-900 text-white px-3 sm:px-4 py-3 sm:py-4 flex items-center justify-between gap-2 sticky top-0 z-10">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <Calendar className="h-5 w-5 text-sky-400 shrink-0" />
+              <div className="min-w-0">
+                <h3 className="font-extrabold text-xs truncate">Select Appointment Date &amp; Time</h3>
+                <p className="text-[10px] text-sky-300 truncate">Location: {selectedLocation.name}</p>
               </div>
             </div>
             <button
               onClick={() => setShowFullScreenDate(false)}
-              className="bg-slate-800 hover:bg-slate-700 p-2 rounded-xl text-white transition-colors cursor-pointer"
+              className="bg-slate-800 hover:bg-slate-700 p-2 rounded-xl text-white transition-colors cursor-pointer shrink-0"
             >
               <X className="h-5 w-5" />
             </button>
@@ -2338,9 +2338,9 @@ export const CustomerDashboard: React.FC = () => {
 
               {/* Slots section */}
             <div className="space-y-3">
-              <label className="block text-xs font-black text-slate-700 uppercase tracking-wider flex justify-between items-center">
+              <label className="block text-xs font-black text-slate-700 uppercase tracking-wider flex flex-wrap justify-between items-center gap-1.5">
                 <span>2. Choose Available Appointment Time Slot</span>
-                <span className="text-[10px] text-sky-600 bg-sky-50 px-2 py-0.5 rounded-full font-bold">
+                <span className="text-[10px] text-sky-600 bg-sky-50 px-2 py-0.5 rounded-full font-bold shrink-0">
                   {bookingDate}
                 </span>
               </label>
@@ -2348,12 +2348,12 @@ export const CustomerDashboard: React.FC = () => {
               {(() => {
                 const baseStep = selectedLocation?.slotDuration || 30;
                 return selectedService && selectedService.duration > baseStep ? (
-                  <div className="p-2.5 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-between text-xs text-indigo-900">
+                  <div className="p-2.5 rounded-xl bg-indigo-50 border border-indigo-100 flex flex-wrap items-center justify-between gap-1.5 text-xs text-indigo-900">
                     <span className="font-bold flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-indigo-500 shrink-0" />
                       {selectedService.name}: {selectedService.duration} mins ({Math.ceil(selectedService.duration / baseStep)} slots)
                     </span>
-                    <span className="text-[10px] font-medium text-indigo-600 bg-white px-1.5 py-0.5 rounded border border-indigo-200/60">
+                    <span className="text-[10px] font-medium text-indigo-600 bg-white px-1.5 py-0.5 rounded border border-indigo-200/60 shrink-0">
                       Continuous bay check
                     </span>
                   </div>
@@ -2469,20 +2469,20 @@ export const CustomerDashboard: React.FC = () => {
 
       {/* Rescheduling Modal Dialog */}
       {reschedulingBooking && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-2xl max-w-md w-full border border-slate-200 shadow-2xl p-6">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-              <h3 className="text-sm font-extrabold text-slate-800 uppercase">Reschedule Booking</h3>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-2xl max-w-md w-full border border-slate-200 shadow-2xl max-h-[92vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between gap-2 px-4 sm:px-6 pt-4 sm:pt-5 pb-3 border-b border-slate-100 shrink-0">
+              <h3 className="text-sm font-extrabold text-slate-800 uppercase truncate">Reschedule Booking</h3>
               <button
                 onClick={() => setReschedulingBooking(null)}
-                className="p-1 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 cursor-pointer"
+                className="p-1.5 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 cursor-pointer shrink-0"
                 id="close-reschedule-modal"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <form onSubmit={handleRescheduleSubmit} className="mt-4 space-y-4">
+            <form onSubmit={handleRescheduleSubmit} className="p-4 sm:p-6 overflow-y-auto flex-1 min-h-0 overscroll-contain space-y-4">
               <div className="bg-sky-50 text-sky-800 text-xs p-3 rounded-xl border border-sky-100 flex items-start gap-2">
                 <Info className="h-4 w-4 shrink-0 mt-0.5 text-sky-600" />
                 <div>
@@ -2599,54 +2599,54 @@ export const CustomerDashboard: React.FC = () => {
 
       {/* Booking Success & WhatsApp Notification Modal */}
       {showSuccessModal && lastBookedInfo && (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-3xl max-w-lg w-full border border-slate-100 shadow-2xl overflow-hidden transform scale-100 transition-transform">
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-2xl sm:rounded-3xl max-w-lg w-full max-h-[92vh] border border-slate-100 shadow-2xl overflow-hidden flex flex-col transform scale-100 transition-transform">
             {/* Header with success badge */}
-            <div className="relative bg-gradient-to-r from-emerald-500 to-teal-600 text-white p-6 text-center">
+            <div className="relative bg-gradient-to-r from-emerald-500 to-teal-600 text-white p-4 sm:p-6 text-center shrink-0">
               <button
                 onClick={() => setShowSuccessModal(false)}
-                className="absolute top-4 right-4 p-1.5 bg-black/10 hover:bg-black/20 rounded-full text-white/90 transition-colors cursor-pointer"
+                className="absolute top-3 right-3 sm:top-4 sm:right-4 p-1.5 bg-black/10 hover:bg-black/20 rounded-full text-white/90 transition-colors cursor-pointer"
                 title="Dismiss"
               >
                 <X className="h-4 w-4" />
               </button>
-              <div className="mx-auto w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mb-3">
-                <Check className="h-9 w-9 text-white" />
+              <div className="mx-auto w-12 h-12 sm:w-16 sm:h-16 bg-white/20 rounded-full flex items-center justify-center mb-2.5 sm:mb-3">
+                <Check className="h-7 w-7 sm:h-9 sm:w-9 text-white" />
               </div>
-              <h3 className="text-xl font-bold tracking-tight">Booking Confirmed!</h3>
+              <h3 className="text-lg sm:text-xl font-bold tracking-tight">Booking Confirmed!</h3>
               <p className="text-emerald-100 text-xs mt-1">Your car wash slot has been successfully reserved.</p>
             </div>
 
             {/* Details Card */}
-            <div className="p-6 space-y-4">
-              <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 text-xs sm:text-sm space-y-3">
-                <div className="flex justify-between border-b border-slate-100 pb-2">
-                  <span className="text-slate-400 font-medium">Location</span>
-                  <span className="text-slate-800 font-bold">{lastBookedInfo.locationName}</span>
+            <div className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1 min-h-0 overscroll-contain">
+              <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3.5 sm:p-4 text-xs sm:text-sm space-y-3">
+                <div className="flex justify-between gap-2 border-b border-slate-100 pb-2">
+                  <span className="text-slate-400 font-medium shrink-0">Location</span>
+                  <span className="text-slate-800 font-bold text-right break-words min-w-0">{lastBookedInfo.locationName}</span>
                 </div>
-                <div className="flex justify-between border-b border-slate-100 pb-2">
-                  <span className="text-slate-400 font-medium">Date</span>
-                  <span className="text-slate-800 font-bold">{lastBookedInfo.date}</span>
+                <div className="flex justify-between gap-2 border-b border-slate-100 pb-2">
+                  <span className="text-slate-400 font-medium shrink-0">Date</span>
+                  <span className="text-slate-800 font-bold text-right">{lastBookedInfo.date}</span>
                 </div>
-                <div className="flex justify-between border-b border-slate-100 pb-2">
-                  <span className="text-slate-400 font-medium">Time Slot</span>
-                  <span className="text-slate-800 font-mono font-bold text-sky-600">{lastBookedInfo.timeSlot}</span>
+                <div className="flex justify-between gap-2 border-b border-slate-100 pb-2">
+                  <span className="text-slate-400 font-medium shrink-0">Time Slot</span>
+                  <span className="text-slate-800 font-mono font-bold text-sky-600 text-right">{lastBookedInfo.timeSlot}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400 font-medium">Customer Name</span>
-                  <span className="text-slate-800 font-bold">{user?.name || 'Customer'}</span>
+                <div className="flex justify-between gap-2">
+                  <span className="text-slate-400 font-medium shrink-0">Customer Name</span>
+                  <span className="text-slate-800 font-bold text-right break-words min-w-0">{user?.name || 'Customer'}</span>
                 </div>
                 {lastBookedInfo.notes && (
-                  <div className="border-t border-slate-100 pt-2 text-slate-500 text-xs italic">
+                  <div className="border-t border-slate-100 pt-2 text-slate-500 text-xs italic break-words">
                     Note: "{lastBookedInfo.notes}"
                   </div>
                 )}
               </div>
 
               {/* Notification Details Section */}
-              <div className="border border-emerald-100 bg-emerald-50/40 p-4 rounded-2xl space-y-3">
+              <div className="border border-emerald-100 bg-emerald-50/40 p-3.5 sm:p-4 rounded-2xl space-y-3">
                 <div className="flex items-center gap-2 text-emerald-800">
-                  <Info className="h-4 w-4 text-emerald-600" />
+                  <Info className="h-4 w-4 text-emerald-600 shrink-0" />
                   <strong className="text-xs font-bold uppercase tracking-wider">WhatsApp Notification</strong>
                 </div>
                 <p className="text-xs text-slate-600 leading-relaxed">
@@ -2662,14 +2662,14 @@ export const CustomerDashboard: React.FC = () => {
                       placeholder="Enter WhatsApp number (e.g. 6738123456)"
                       value={customWhatsAppPhone}
                       onChange={(e) => setCustomWhatsAppPhone(e.target.value.replace(/[^0-9]/g, ''))}
-                      className="flex-1 px-3 py-1.5 text-xs border border-slate-200 rounded-lg bg-white"
+                      className="flex-1 min-w-0 px-3 py-1.5 text-xs border border-slate-200 rounded-lg bg-white"
                     />
                   </div>
                   {lastBookedInfo.locationPhone ? (
                     <p className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1.5">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 -ml-3"></span>
-                      Owner's WhatsApp linked & auto-filled!
+                      Owner's WhatsApp linked &amp; auto-filled!
                     </p>
                   ) : (
                     <p className="text-[10px] text-amber-600 font-medium">
@@ -2680,7 +2680,7 @@ export const CustomerDashboard: React.FC = () => {
               </div>
 
               {/* Actions */}
-              <div className="grid grid-cols-2 gap-3 pt-2">
+              <div className="grid grid-cols-1 min-[360px]:grid-cols-2 gap-2.5 sm:gap-3 pt-2">
                 <button
                   onClick={() => setShowSuccessModal(false)}
                   className="py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer text-center"
@@ -2707,8 +2707,8 @@ export const CustomerDashboard: React.FC = () => {
 
       {/* Manual Bank Payment Modal */}
       {showPaymentModal && selectedLocation && selectedSlot && (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="w-full max-w-xl my-8">
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 z-50 overflow-y-auto">
+          <div className="w-full max-w-xl my-auto max-h-[92vh] overflow-y-auto">
             <LocalPaymentForm
               carWash={selectedLocation}
               date={bookingDate}
@@ -2748,8 +2748,8 @@ export const CustomerDashboard: React.FC = () => {
 
       {/* Account Deletion Confirmation Modal */}
       {showDeleteModal && (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in" id="delete-account-confirmation-overlay">
-          <div className="bg-white rounded-3xl max-w-md w-full border border-slate-100 shadow-2xl overflow-hidden p-6 space-y-6" id="delete-account-modal-container">
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 z-50 animate-fade-in" id="delete-account-confirmation-overlay">
+          <div className="bg-white rounded-2xl sm:rounded-3xl max-w-md w-full border border-slate-100 shadow-2xl max-h-[92vh] overflow-y-auto overscroll-contain p-4 sm:p-6 space-y-4 sm:space-y-6" id="delete-account-modal-container">
             <div className="flex items-center gap-3 text-rose-600">
               <div className="p-2 bg-rose-50 rounded-xl">
                 <AlertTriangle className="h-5 w-5 animate-bounce" />
@@ -2836,7 +2836,7 @@ export const CustomerDashboard: React.FC = () => {
               </label>
             </div>
 
-            <div className="flex items-center gap-3 justify-end pt-2">
+            <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 justify-end pt-2">
               <button
                 onClick={() => setShowDeleteModal(false)}
                 className="py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer"
@@ -2847,7 +2847,7 @@ export const CustomerDashboard: React.FC = () => {
               </button>
               <button
                 onClick={handleDeleteAccountConfirm}
-                className="py-2.5 px-5 bg-rose-600 hover:bg-rose-700 disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none border border-transparent disabled:border-slate-200 text-white rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shadow-md shadow-rose-600/10"
+                className="py-2.5 px-5 bg-rose-600 hover:bg-rose-700 disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none border border-transparent disabled:border-slate-200 text-white rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 shadow-md shadow-rose-600/10"
                 id="confirm-delete-account-btn"
                 disabled={isDeletingAccount || !agreeToDelete || !deletePassword.trim()}
               >
@@ -2877,8 +2877,8 @@ export const CustomerDashboard: React.FC = () => {
 
       {/* 📍 GPS / Location Permission Guide Modal */}
       {showGpsGuideModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-100 text-center space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white rounded-2xl sm:rounded-3xl max-w-sm w-full p-5 sm:p-6 max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-100 text-center space-y-4">
             <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 text-amber-600 mx-auto flex items-center justify-center">
               <MapPin className="w-6 h-6" />
             </div>

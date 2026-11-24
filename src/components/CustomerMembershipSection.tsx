@@ -111,23 +111,23 @@ export const CustomerMembershipSection: React.FC<CustomerMembershipSectionProps>
     if (matchedMembership) {
       return (
         <>
-          <div className="bg-gradient-to-br from-indigo-900 via-slate-900 to-blue-950 rounded-3xl p-5 text-white shadow-lg border border-indigo-500/20">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-center gap-3">
+          <div className="bg-gradient-to-br from-indigo-900 via-slate-900 to-blue-950 rounded-3xl p-4 sm:p-5 text-white shadow-lg border border-indigo-500/20">
+            <div className="flex flex-wrap items-start justify-between gap-3 sm:gap-4">
+              <div className="flex items-center gap-3 min-w-0 flex-1">
                 <div className="w-10 h-10 rounded-xl bg-amber-400/20 border border-amber-400/30 flex items-center justify-center text-amber-400 shrink-0">
                   <Award className="w-5 h-5" />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <span className="text-[10px] uppercase font-bold tracking-widest text-indigo-300">
                     Active Member
                   </span>
-                  <h3 className="text-sm font-extrabold text-white">
+                  <h3 className="text-sm font-extrabold text-white break-words">
                     {programmeConfig?.programmeName || `${carWash.name} Rewards`}
                   </h3>
                 </div>
               </div>
 
-              <div className="text-right">
+              <div className="text-right shrink-0">
                 <span className="text-[10px] text-indigo-200 uppercase font-semibold">Balance</span>
                 <p className="text-lg font-black text-amber-300">
                   {Number(matchedMembership?.pointsBalance ?? 0).toLocaleString()} <span className="text-xs font-bold text-white">pts</span>
@@ -136,7 +136,7 @@ export const CustomerMembershipSection: React.FC<CustomerMembershipSectionProps>
             </div>
 
             <div className="mt-4 pt-3 border-t border-white/10 flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs text-indigo-200 font-mono">
                   ID: {matchedMembership.membershipNumber}
                 </span>
@@ -175,7 +175,7 @@ export const CustomerMembershipSection: React.FC<CustomerMembershipSectionProps>
 
     // Not yet a member: Show Join Onboarding Call-to-Action
     return (
-      <div className="bg-gradient-to-br from-indigo-50 via-blue-50/60 to-purple-50/40 rounded-3xl p-6 border border-indigo-200/80 shadow-xs space-y-4">
+      <div className="bg-gradient-to-br from-indigo-50 via-blue-50/60 to-purple-50/40 rounded-3xl p-4 sm:p-6 border border-indigo-200/80 shadow-xs space-y-4">
         <div className="flex items-start gap-3">
           <div className="w-11 h-11 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-md shrink-0">
             <Sparkles className="w-6 h-6" />
@@ -292,11 +292,11 @@ export const CustomerMembershipSection: React.FC<CustomerMembershipSectionProps>
                   <button
                     key={cw.id}
                     onClick={() => onNavigateToWash && onNavigateToWash(cw)}
-                    className="p-3 bg-white hover:border-indigo-300 border border-slate-200 rounded-2xl shadow-2xs transition-all flex items-center justify-between text-left cursor-pointer"
+                    className="p-3 bg-white hover:border-indigo-300 border border-slate-200 rounded-2xl shadow-2xs transition-all flex items-center justify-between gap-2 text-left cursor-pointer"
                   >
-                    <div>
-                      <h4 className="text-xs font-extrabold text-slate-900">{cw.name}</h4>
-                      <p className="text-[10px] text-slate-500">{cw.address || 'Brunei'}</p>
+                    <div className="min-w-0 flex-1">
+                      <h4 className="text-xs font-extrabold text-slate-900 truncate">{cw.name}</h4>
+                      <p className="text-[10px] text-slate-500 truncate">{cw.address || 'Brunei'}</p>
                     </div>
                     <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
                   </button>
@@ -310,24 +310,24 @@ export const CustomerMembershipSection: React.FC<CustomerMembershipSectionProps>
           {myMemberships.map((membership) => (
             <div
               key={membership.id}
-              className="bg-white rounded-3xl p-5 border border-slate-200/90 shadow-xs hover:border-indigo-300 transition-all flex flex-col justify-between space-y-4"
+              className="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200/90 shadow-xs hover:border-indigo-300 transition-all flex flex-col justify-between space-y-4"
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
                   <div className="w-11 h-11 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-700 shrink-0">
                     <Award className="w-6 h-6" />
                   </div>
-                  <div>
-                    <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">
+                  <div className="min-w-0">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block truncate">
                       MEMBER #{membership.membershipNumber}
                     </span>
-                    <h3 className="text-sm font-black text-slate-900 leading-tight">
+                    <h3 className="text-sm font-black text-slate-900 leading-tight break-words">
                       {membership.carWashName || 'Car Wash Station'}
                     </h3>
                   </div>
                 </div>
 
-                <div className="text-right">
+                <div className="text-right shrink-0">
                   <span className="text-[10px] text-slate-400 uppercase font-semibold">Points</span>
                   <p className="text-xl font-black text-indigo-600">
                     {Number(membership?.pointsBalance ?? 0).toLocaleString()}
@@ -335,7 +335,7 @@ export const CustomerMembershipSection: React.FC<CustomerMembershipSectionProps>
                 </div>
               </div>
 
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+              <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs">
                 <span className="text-slate-400 text-[11px]">
                   Joined {new Date(membership.joinedAt).toLocaleDateString()}
                 </span>

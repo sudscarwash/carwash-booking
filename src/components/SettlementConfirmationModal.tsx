@@ -88,16 +88,16 @@ export const SettlementConfirmationModal: React.FC<SettlementConfirmationModalPr
   const bookingPrice = Number(booking.price) || 15.00;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto animate-fade-in">
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-md overflow-hidden my-auto flex flex-col text-left">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-2 sm:p-4 animate-fade-in">
+      <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 shadow-2xl w-full max-w-md max-h-[92vh] overflow-hidden flex flex-col text-left">
         {/* Header */}
-        <div className="bg-gradient-to-r from-emerald-950 via-slate-900 to-emerald-950 text-white p-5 flex items-start justify-between relative shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-emerald-400 shrink-0">
+        <div className="bg-gradient-to-r from-emerald-950 via-slate-900 to-emerald-950 text-white p-4 sm:p-5 flex items-start justify-between gap-2 relative shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-emerald-400 shrink-0">
               <DollarSign className="w-5 h-5" />
             </div>
-            <div>
-              <h2 className="text-base font-black text-white leading-tight">
+            <div className="min-w-0">
+              <h2 className="text-sm sm:text-base font-black text-white leading-tight">
                 Confirm Settlement & Complete
               </h2>
               <p className="text-xs text-emerald-200/80 mt-0.5 font-medium">
@@ -108,29 +108,29 @@ export const SettlementConfirmationModal: React.FC<SettlementConfirmationModalPr
           <button
             type="button"
             onClick={onClose}
-            className="text-slate-400 hover:text-white p-1 rounded-xl transition-colors cursor-pointer"
+            className="text-slate-400 hover:text-white p-1.5 rounded-xl transition-colors cursor-pointer shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1 min-h-0 overscroll-contain">
           {/* Order Summary Card */}
           <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-            <div className="flex items-start justify-between gap-2">
-              <div>
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0">
                 <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">Customer & Vehicle</span>
-                <span className="text-sm font-extrabold text-slate-800 block">
+                <span className="text-sm font-extrabold text-slate-800 block break-words">
                   {booking.customerName || 'Customer'}
                 </span>
                 {booking.vehicleInfo && (
-                  <span className="text-xs font-mono font-bold text-slate-600">
+                  <span className="text-xs font-mono font-bold text-slate-600 break-words">
                     🚗 {booking.vehicleInfo}
                   </span>
                 )}
               </div>
-              <div className="text-right">
+              <div className="text-left sm:text-right shrink-0">
                 <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">Total Due</span>
                 <span className="text-base font-black font-mono text-emerald-600">
                   BND ${bookingPrice.toFixed(2)}
@@ -138,11 +138,11 @@ export const SettlementConfirmationModal: React.FC<SettlementConfirmationModalPr
               </div>
             </div>
 
-            <div className="pt-2 border-t border-slate-200 text-xs text-slate-600 flex items-center justify-between">
-              <span className="text-slate-500 truncate max-w-[240px]">
+            <div className="pt-2 border-t border-slate-200 text-xs text-slate-600 flex flex-wrap items-center justify-between gap-2">
+              <span className="text-slate-500 min-w-0 break-words">
                 {booking.serviceName || 'Standard Car Wash'}
               </span>
-              <span className="text-[10px] font-bold text-slate-400">
+              <span className="text-[10px] font-bold text-slate-400 shrink-0">
                 {booking.timeSlot}
               </span>
             </div>
@@ -153,7 +153,7 @@ export const SettlementConfirmationModal: React.FC<SettlementConfirmationModalPr
             <label className="block text-[11px] font-black uppercase text-slate-600 tracking-wider mb-2">
               How did the customer pay at counter?
             </label>
-            <div className="grid grid-cols-2 gap-2.5">
+            <div className="grid grid-cols-1 min-[360px]:grid-cols-2 gap-2.5">
               <button
                 type="button"
                 onClick={() => setPaymentMode('Cash')}
@@ -210,19 +210,19 @@ export const SettlementConfirmationModal: React.FC<SettlementConfirmationModalPr
           </div>
 
           {/* Action Buttons */}
-          <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
+          <div className="pt-3 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 border-t border-slate-100">
             <button
               type="button"
               onClick={onClose}
               disabled={isSubmitting}
-              className="px-4 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl text-xs font-bold transition-all cursor-pointer"
+              className="w-full sm:w-auto px-4 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl text-xs font-bold transition-all cursor-pointer text-center"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-extrabold shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              className="w-full sm:flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-extrabold shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
             >
               <Check className="w-4 h-4" />
               <span>{isSubmitting ? 'Recording...' : 'Confirm & Complete Wash'}</span>

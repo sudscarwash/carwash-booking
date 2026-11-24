@@ -27,7 +27,7 @@ export const SpecialUser403Forbidden: React.FC<SpecialUser403ForbiddenProps> = (
   return (
     <div className="min-h-[70vh] flex items-center justify-center p-4">
       <div className="max-w-lg w-full bg-white border border-rose-200/90 rounded-3xl shadow-xl overflow-hidden animate-in fade-in zoom-in duration-200">
-        <div className="bg-gradient-to-r from-rose-600 via-rose-500 to-amber-600 p-6 text-white text-center relative overflow-hidden">
+        <div className="bg-gradient-to-r from-rose-600 via-rose-500 to-amber-600 p-5 sm:p-6 text-white text-center relative overflow-hidden">
           <div className="absolute -top-10 -right-10 w-36 h-36 bg-white/10 rounded-full blur-xl pointer-events-none" />
           <div className="mx-auto w-16 h-16 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center border border-white/30 shadow-inner mb-3">
             <ShieldAlert className="w-9 h-9 text-white animate-pulse" />
@@ -40,7 +40,7 @@ export const SpecialUser403Forbidden: React.FC<SpecialUser403ForbiddenProps> = (
           </h2>
         </div>
 
-        <div className="p-6 sm:p-8 space-y-5">
+        <div className="p-4 sm:p-8 space-y-5">
           <div className="bg-rose-50/80 border border-rose-200/80 rounded-2xl p-4 text-xs sm:text-sm text-rose-900 leading-relaxed flex gap-3 items-start">
             <Lock className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
             <div>
@@ -53,9 +53,9 @@ export const SpecialUser403Forbidden: React.FC<SpecialUser403ForbiddenProps> = (
             </div>
           </div>
 
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 font-mono text-xs text-slate-600 flex items-center justify-between">
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 font-mono text-xs text-slate-600 flex flex-wrap items-center justify-between gap-2">
             <span className="text-slate-400 font-bold uppercase text-[10px]">Restricted Path:</span>
-            <span className="font-semibold text-rose-700 bg-rose-100/70 px-2 py-0.5 rounded-md">
+            <span className="font-semibold text-rose-700 bg-rose-100/70 px-2 py-0.5 rounded-md break-all">
               {attemptedPath || '/restricted'}
             </span>
           </div>

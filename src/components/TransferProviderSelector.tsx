@@ -75,8 +75,8 @@ export const TransferProviderSelector: React.FC<TransferProviderSelectorProps> =
 
   return (
     <div className="space-y-2" id={`${idPrefix}-container`}>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5">
+      <div className="flex flex-wrap items-center justify-between gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5 min-w-0">
           <label
             htmlFor={`${idPrefix}-input`}
             className="text-[10px] font-black uppercase text-sky-900 tracking-wider"
@@ -109,7 +109,7 @@ export const TransferProviderSelector: React.FC<TransferProviderSelectorProps> =
           className="p-2.5 bg-white border border-sky-200 rounded-xl space-y-2 text-xs shadow-2xs animate-fade-in"
           id={`${idPrefix}-edit-panel`}
         >
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-1.5">
             <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
               Manage Quick Transfer Buttons:
             </span>
@@ -141,7 +141,7 @@ export const TransferProviderSelector: React.FC<TransferProviderSelectorProps> =
             ))}
           </div>
 
-          <div className="flex items-center gap-1.5 pt-1">
+          <div className="flex flex-col min-[360px]:flex-row items-stretch min-[360px]:items-center gap-1.5 pt-1">
             <input
               type="text"
               value={newPresetInput}
@@ -153,12 +153,12 @@ export const TransferProviderSelector: React.FC<TransferProviderSelectorProps> =
                 }
               }}
               placeholder="Add bank/provider (e.g. TAIB, SCB...)"
-              className="flex-1 px-2.5 py-1 text-xs border border-slate-200 rounded-lg outline-none focus:border-sky-500 bg-slate-50"
+              className="flex-1 min-w-0 px-2.5 py-1.5 min-[360px]:py-1 text-xs border border-slate-200 rounded-lg outline-none focus:border-sky-500 bg-slate-50"
             />
             <button
               type="button"
               onClick={() => handleAddCustom(newPresetInput)}
-              className="px-2.5 py-1 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0"
+              className="px-2.5 py-1.5 min-[360px]:py-1 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer shrink-0"
             >
               <Plus className="w-3 h-3" /> Add
             </button>
@@ -202,14 +202,14 @@ export const TransferProviderSelector: React.FC<TransferProviderSelectorProps> =
 
         {/* Prompt to save custom bank name as quick button if not already saved */}
         {!isCurrentValueInPresets && value.trim().length > 1 && (
-          <div className="mt-1.5 flex items-center justify-between bg-sky-100/70 border border-sky-200 rounded-lg px-2.5 py-1 text-[11px] animate-fade-in">
-            <span className="text-sky-900 font-medium">
+          <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 bg-sky-100/70 border border-sky-200 rounded-lg px-2.5 py-1.5 text-[11px] animate-fade-in">
+            <span className="text-sky-900 font-medium min-w-0 break-words">
               Add <strong>"{value.trim()}"</strong> to your quick buttons?
             </span>
             <button
               type="button"
               onClick={() => handleAddCustom(value.trim())}
-              className="px-2 py-0.5 bg-sky-600 hover:bg-sky-700 text-white rounded text-[10px] font-bold transition-colors cursor-pointer flex items-center gap-0.5"
+              className="px-2 py-0.5 bg-sky-600 hover:bg-sky-700 text-white rounded text-[10px] font-bold transition-colors cursor-pointer flex items-center gap-0.5 shrink-0"
             >
               <Plus className="w-3 h-3" /> Save Button
             </button>

@@ -62,10 +62,10 @@
   color: #0f172a !important;
 }
 
-@media (max-width: 420px) {
+@media (max-width: 480px) {
   .leaflet-popup-content {
-    min-width: 240px !important;
-    max-width: 290px !important;
+    min-width: 200px !important;
+    max-width: calc(100vw - 64px) !important;
     margin: 12px 12px !important;
   }
 }

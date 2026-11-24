@@ -874,14 +874,14 @@ export const PublicOperatorView: React.FC<PublicOperatorViewProps> = ({
 
       {/* Share / QR Modal */}
       {showShareModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl border border-slate-200 text-center">
-            <div className="w-12 h-12 bg-sky-50 text-sky-600 rounded-2xl flex items-center justify-center mx-auto">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-2xl sm:rounded-3xl max-w-sm w-full p-5 sm:p-6 space-y-4 shadow-2xl border border-slate-200 text-center max-h-[90vh] overflow-y-auto">
+            <div className="w-12 h-12 bg-sky-50 text-sky-600 rounded-2xl flex items-center justify-center mx-auto shrink-0">
               <QrCode className="w-6 h-6" />
             </div>
 
             <div>
-              <h3 className="text-lg font-black text-slate-900">Direct Booking Link</h3>
+              <h3 className="text-base sm:text-lg font-black text-slate-900">Direct Booking Link</h3>
               <p className="text-xs text-slate-500 mt-1">
                 Share this direct URL with customers to book slots at {carWash.name}
               </p>
@@ -891,21 +891,21 @@ export const PublicOperatorView: React.FC<PublicOperatorViewProps> = ({
               {directUrl}
             </div>
 
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={handleCopyLink}
-                className="flex-1 py-2.5 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
-              >
-                {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                <span>{copied ? 'Link Copied!' : 'Copy Link'}</span>
-              </button>
+            <div className="flex flex-col-reverse sm:flex-row gap-2">
               <button
                 type="button"
                 onClick={() => setShowShareModal(false)}
-                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                className="w-full sm:w-auto px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer"
               >
                 Close
+              </button>
+              <button
+                type="button"
+                onClick={handleCopyLink}
+                className="w-full sm:flex-1 py-2.5 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                <span>{copied ? 'Link Copied!' : 'Copy Link'}</span>
               </button>
             </div>
           </div>

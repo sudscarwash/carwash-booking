@@ -549,14 +549,14 @@ export const SpecialUserDashboard: React.FC = () => {
     <div className="space-y-6 animate-fade-in max-w-5xl mx-auto pb-12">
       {/* Toast banner */}
       {toastMessage && (
-        <div className="fixed top-20 right-4 z-[9999] bg-slate-900 text-white text-xs font-bold px-4 py-3 rounded-2xl shadow-2xl border border-slate-700 flex items-center gap-2 animate-bounce">
+        <div className="fixed top-20 right-4 left-4 sm:left-auto z-[9999] bg-slate-900 text-white text-xs font-bold px-4 py-3 rounded-2xl shadow-2xl border border-slate-700 flex items-center gap-2 animate-bounce max-w-md sm:w-auto">
           <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
-          <span>{toastMessage}</span>
+          <span className="break-words min-w-0">{toastMessage}</span>
         </div>
       )}
 
       {/* Hero Header */}
-      <div className="bg-gradient-to-tr from-emerald-700 via-teal-600 to-cyan-500 rounded-3xl p-6 sm:p-8 text-white shadow-lg relative overflow-hidden">
+      <div className="bg-gradient-to-tr from-emerald-700 via-teal-600 to-cyan-500 rounded-3xl p-4 sm:p-8 text-white shadow-lg relative overflow-hidden">
         <div className="absolute right-0 top-0 opacity-10 translate-x-1/4 -translate-y-1/4 pointer-events-none">
           <MapPin className="w-96 h-96" />
         </div>
@@ -617,16 +617,16 @@ export const SpecialUserDashboard: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
           {/* Form Side (7 cols) */}
           <div className="md:col-span-7">
-            <div className="bg-white border border-slate-200/90 rounded-3xl p-6 shadow-xs">
+            <div className="bg-white border border-slate-200/90 rounded-3xl p-4 sm:p-6 shadow-xs">
               <h2 className="text-base sm:text-lg font-black text-slate-800 pb-3 border-b border-slate-100 mb-6 flex items-center gap-2">
-                <Building2 className="h-5 w-5 text-emerald-600" />
-                Merchant Onboarding Registration
+                <Building2 className="h-5 w-5 text-emerald-600 shrink-0" />
+                <span>Merchant Onboarding Registration</span>
               </h2>
 
               <form onSubmit={handleSubmitOnboarding} className="space-y-6 text-xs sm:text-sm">
                 {/* Part 1: Owner Profile */}
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <h3 className="font-black text-slate-700 text-xs uppercase tracking-wider flex items-center gap-2">
                       <span className="bg-emerald-100 text-emerald-800 w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-extrabold">
                         1
@@ -712,13 +712,13 @@ export const SpecialUserDashboard: React.FC = () => {
                       </div>
 
                       {/* Account Expiry Date Assignment for New Owner */}
-                      <div className="p-4 bg-emerald-50/70 border border-emerald-200/90 rounded-2xl space-y-3" id="special-new-owner-expiry-card">
-                        <div className="flex items-center justify-between">
+                      <div className="p-3.5 sm:p-4 bg-emerald-50/70 border border-emerald-200/90 rounded-2xl space-y-3" id="special-new-owner-expiry-card">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
                           <label className="block text-xs font-bold text-emerald-950 uppercase flex items-center gap-1.5">
-                            <Clock className="w-4 h-4 text-emerald-700" />
-                            Account Access / Expiry Date
+                            <Clock className="w-4 h-4 text-emerald-700 shrink-0" />
+                            <span>Account Access / Expiry Date</span>
                           </label>
-                          <span className="text-[10px] font-mono font-bold text-emerald-800 bg-white px-2 py-0.5 rounded-lg border border-emerald-200 shadow-2xs">
+                          <span className="text-[10px] font-mono font-bold text-emerald-800 bg-white px-2 py-0.5 rounded-lg border border-emerald-200 shadow-2xs shrink-0">
                             {onboardNoExpiry ? 'Permanent (No Expiry)' : (onboardExpiryDate ? `Expires: ${onboardExpiryDate}` : 'Not Set')}
                           </span>
                         </div>
@@ -891,12 +891,12 @@ export const SpecialUserDashboard: React.FC = () => {
 
           {/* Map & Coordinates Picker Side (5 cols) */}
           <div className="md:col-span-5 space-y-4">
-            <div className="bg-white border border-slate-200/90 rounded-3xl p-5 shadow-xs space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
+            <div className="bg-white border border-slate-200/90 rounded-3xl p-4 sm:p-5 shadow-xs space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">
                   <h3 className="font-black text-slate-800 text-sm flex items-center gap-1.5">
-                    <MapPin className="w-4 h-4 text-emerald-600" />
-                    Set Location GPS Coordinates
+                    <MapPin className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>Set Location GPS Coordinates</span>
                   </h3>
                   <p className="text-[11px] text-slate-500">Click anywhere on the map to place pin</p>
                 </div>
@@ -977,7 +977,7 @@ export const SpecialUserDashboard: React.FC = () => {
                 <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">
                   Manual Coordinate Inputs (Decimal GPS)
                 </span>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 min-[360px]:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[10px] font-bold text-slate-600 mb-1">Latitude</label>
                     <input
@@ -1017,8 +1017,8 @@ export const SpecialUserDashboard: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium pt-1 border-t border-slate-200/60">
-                  <span>Pin: {businessLat.toFixed(6)}, {businessLng.toFixed(6)}</span>
+                <div className="flex flex-wrap items-center justify-between gap-1.5 text-[11px] text-slate-500 font-medium pt-1 border-t border-slate-200/60">
+                  <span className="font-mono">Pin: {businessLat.toFixed(6)}, {businessLng.toFixed(6)}</span>
                   <a
                     href={`https://www.google.com/maps?q=${businessLat},${businessLng}`}
                     target="_blank"
@@ -1040,10 +1040,10 @@ export const SpecialUserDashboard: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-12 gap-8 animate-fade-in">
           {/* Select & Details Side (5 cols) */}
           <div className="md:col-span-5 space-y-6">
-            <div className="bg-white border border-slate-200/90 rounded-3xl p-6 shadow-xs space-y-5">
+            <div className="bg-white border border-slate-200/90 rounded-3xl p-4 sm:p-6 shadow-xs space-y-5">
               <h2 className="text-base font-black text-slate-800 pb-2 border-b border-slate-100 flex items-center gap-2">
-                <Edit3 className="w-5 h-5 text-emerald-600" />
-                Select Existing Business
+                <Edit3 className="w-5 h-5 text-emerald-600 shrink-0" />
+                <span>Select Existing Business</span>
               </h2>
 
               {locations.length === 0 ? (
@@ -1052,10 +1052,10 @@ export const SpecialUserDashboard: React.FC = () => {
                 <div className="space-y-4">
                   {/* Clean Operator Switcher & Scalable Browser */}
                   <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="min-w-0">
                         <label className="block text-xs font-bold text-slate-700">Car Wash Facility</label>
-                        <span className="text-[10px] text-slate-500 font-medium">
+                        <span className="text-[10px] text-slate-500 font-medium block truncate">
                           {selectedWashObj ? `Selected: ${selectedWashObj.name}` : `Total ${locations.length} operators`}
                         </span>
                       </div>
@@ -1229,7 +1229,7 @@ export const SpecialUserDashboard: React.FC = () => {
                       </div>
 
                       <div className="space-y-1.5 pt-2 border-t border-slate-200/60 text-xs">
-                        <div className="flex justify-between items-center">
+                        <div className="flex flex-wrap justify-between items-center gap-1.5">
                           <span className="text-slate-500 font-medium">Owner QR Code:</span>
                           <span
                             className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase tracking-wider ${
@@ -1241,7 +1241,7 @@ export const SpecialUserDashboard: React.FC = () => {
                             {selectedWashObj.ownerQrCodeEnabled ? 'Allowed (Visible)' : 'Hidden'}
                           </span>
                         </div>
-                        <div className="flex justify-between items-center">
+                        <div className="flex flex-wrap justify-between items-center gap-1.5">
                           <span className="text-slate-500 font-medium">Loyalty &amp; Rewards:</span>
                           <span
                             className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase tracking-wider ${
@@ -1253,9 +1253,9 @@ export const SpecialUserDashboard: React.FC = () => {
                             {selectedWashObj.membershipEnabled ? '⭐ Active (Enabled)' : 'Disabled'}
                           </span>
                         </div>
-                        <div className="flex justify-between">
+                        <div className="flex flex-wrap justify-between items-center gap-1.5">
                           <span className="text-slate-500 font-medium">Owner Email:</span>
-                          <span className="font-mono font-bold text-slate-800">{selectedWashObj.ownerEmail || 'N/A'}</span>
+                          <span className="font-mono font-bold text-slate-800 break-all text-right">{selectedWashObj.ownerEmail || 'N/A'}</span>
                         </div>
 
                         {/* Owner Account Expiry Timeline & Edit Button */}
@@ -1271,7 +1271,7 @@ export const SpecialUserDashboard: React.FC = () => {
 
                           return (
                             <div className="p-2.5 bg-white border border-slate-200 rounded-xl space-y-1.5 my-1" id="special-existing-owner-expiry-info">
-                              <div className="flex items-center justify-between text-[11px]">
+                              <div className="flex flex-wrap items-center justify-between gap-1.5 text-[11px]">
                                 <span className="text-slate-500 font-bold flex items-center gap-1">
                                   <Clock className="w-3.5 h-3.5 text-emerald-600" /> Account Expiry:
                                 </span>
@@ -1311,11 +1311,11 @@ export const SpecialUserDashboard: React.FC = () => {
                             </div>
                           );
                         })()}
-                        <div className="flex justify-between">
+                        <div className="flex flex-wrap justify-between gap-1.5">
                           <span className="text-slate-500 font-medium">Current Lat:</span>
                           <span className="font-mono font-bold text-slate-800">{selectedWashObj.locationLat}</span>
                         </div>
-                        <div className="flex justify-between">
+                        <div className="flex flex-wrap justify-between gap-1.5">
                           <span className="text-slate-500 font-medium">Current Lng:</span>
                           <span className="font-mono font-bold text-slate-800">{selectedWashObj.locationLng}</span>
                         </div>
@@ -1407,12 +1407,12 @@ export const SpecialUserDashboard: React.FC = () => {
 
           {/* Interactive Map & Coords Form (7 cols) */}
           <div className="md:col-span-7 space-y-4">
-            <div className="bg-white border border-slate-200/90 rounded-3xl p-6 shadow-xs space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
+            <div className="bg-white border border-slate-200/90 rounded-3xl p-4 sm:p-6 shadow-xs space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">
                   <h3 className="font-black text-slate-800 text-sm flex items-center gap-2">
-                    <MapPin className="w-4 h-4 text-emerald-600" />
-                    Reposition Map Pin & Update Coordinates
+                    <MapPin className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>Reposition Map Pin &amp; Update Coordinates</span>
                   </h3>
                   <p className="text-[11px] text-slate-500">Click anywhere on map to reposition the pin</p>
                 </div>
@@ -1544,7 +1544,7 @@ export const SpecialUserDashboard: React.FC = () => {
                   </p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 min-[360px]:grid-cols-2 gap-3 sm:gap-4">
                   <div>
                     <label className="block text-[10px] font-bold text-slate-600 mb-1 uppercase tracking-wider">
                       Latitude Coordinate
@@ -1608,12 +1608,12 @@ export const SpecialUserDashboard: React.FC = () => {
         const countTotal = directoryTotalUsers > 0 ? directoryTotalUsers : displayedUsers.length;
 
         return (
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-5" id="system-marketplace-directory">
+          <div className="bg-white border border-slate-200 rounded-3xl p-4 sm:p-6 shadow-sm space-y-5" id="system-marketplace-directory">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-base sm:text-lg font-bold text-slate-800">Carwash Owner Directory &amp; Expiry Management</h2>
-                  <span className="text-[10px] font-bold px-2.5 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full font-mono">
+                  <span className="text-[10px] font-bold px-2.5 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full font-mono shrink-0">
                     {countTotal} {countTotal === 1 ? 'Carwash Owner' : 'Carwash Owners'}
                   </span>
                 </div>
@@ -1638,7 +1638,7 @@ export const SpecialUserDashboard: React.FC = () => {
             </div>
 
             {/* Search controls & Strict Scope Info */}
-            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+            <div className="bg-slate-50 p-3 sm:p-4 rounded-2xl border border-slate-200 space-y-3">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
@@ -1919,7 +1919,7 @@ export const SpecialUserDashboard: React.FC = () => {
 
             {/* Pagination controls */}
             {directoryTotalPages > 1 && (
-              <div className="flex items-center justify-between pt-4 border-t border-slate-100 text-xs text-slate-500 font-medium">
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-4 border-t border-slate-100 text-xs text-slate-500 font-medium">
                 <div>
                   Page <strong className="font-bold text-slate-800">{directoryCurrentPage}</strong> of{' '}
                   <strong className="font-bold text-slate-800">{directoryTotalPages}</strong>
@@ -1959,28 +1959,28 @@ export const SpecialUserDashboard: React.FC = () => {
 
       {/* Special User: Edit Owner Profile & Expiry Date Modal */}
       {editingOwner && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-50 overflow-y-auto">
-          <div className="relative my-auto bg-white rounded-3xl max-w-md w-full border border-slate-200 shadow-2xl p-6 text-left max-h-[90vh] overflow-y-auto overscroll-contain space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <div className="p-2 bg-emerald-100 text-emerald-800 rounded-xl">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-6 z-50 overflow-y-auto">
+          <div className="relative my-auto bg-white rounded-2xl sm:rounded-3xl max-w-md w-full border border-slate-200 shadow-2xl text-left max-h-[92vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between gap-2 px-4 sm:px-6 pt-4 sm:pt-5 pb-3 border-b border-slate-100 shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="p-2 bg-emerald-100 text-emerald-800 rounded-xl shrink-0">
                   <Calendar className="w-5 h-5" />
                 </div>
-                <div>
-                  <h3 className="font-extrabold text-slate-800 text-base">Edit Owner Profile &amp; Expiry</h3>
-                  <p className="text-[11px] text-slate-500">Manage operator credentials &amp; subscription timeline</p>
+                <div className="min-w-0">
+                  <h3 className="font-extrabold text-slate-800 text-sm sm:text-base truncate">Edit Owner Profile &amp; Expiry</h3>
+                  <p className="text-[11px] text-slate-500 truncate">Manage operator credentials &amp; subscription timeline</p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setEditingOwner(null)}
-                className="p-1.5 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 cursor-pointer transition-colors"
+                className="p-1.5 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 cursor-pointer transition-colors shrink-0"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveOwnerEdit} className="space-y-4 text-xs sm:text-sm">
+            <form onSubmit={handleSaveOwnerEdit} className="p-4 sm:p-6 overflow-y-auto flex-1 min-h-0 overscroll-contain space-y-4 text-xs sm:text-sm">
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Owner Name</label>
                 <input
@@ -2016,13 +2016,13 @@ export const SpecialUserDashboard: React.FC = () => {
               </div>
 
               {/* Account Expiry Date UI */}
-              <div className="p-4 bg-emerald-50/70 border border-emerald-200/90 rounded-2xl space-y-3">
-                <div className="flex items-center justify-between">
+              <div className="p-3.5 sm:p-4 bg-emerald-50/70 border border-emerald-200/90 rounded-2xl space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-1.5">
                   <label className="block text-xs font-bold text-emerald-950 uppercase flex items-center gap-1.5">
-                    <Clock className="w-4 h-4 text-emerald-700" />
-                    Account Access / Expiry Date
+                    <Clock className="w-4 h-4 text-emerald-700 shrink-0" />
+                    <span>Account Access / Expiry Date</span>
                   </label>
-                  <span className="text-[10px] font-mono font-bold text-emerald-800 bg-white px-2 py-0.5 rounded-lg border border-emerald-200 shadow-2xs">
+                  <span className="text-[10px] font-mono font-bold text-emerald-800 bg-white px-2 py-0.5 rounded-lg border border-emerald-200 shadow-2xs shrink-0">
                     {editOwnerNoExpiry ? 'Permanent (No Expiry)' : (editOwnerExpiryDate || 'Not Set')}
                   </span>
                 </div>
@@ -2034,7 +2034,7 @@ export const SpecialUserDashboard: React.FC = () => {
                   const daysLeft = Math.ceil((expiryMs - nowMs) / (1000 * 60 * 60 * 24));
                   const isPast = daysLeft <= 0;
                   return (
-                    <div className={`p-2 rounded-xl text-xs font-medium flex items-center justify-between border ${
+                    <div className={`p-2 rounded-xl text-xs font-medium flex flex-wrap items-center justify-between gap-1.5 border ${
                       isPast ? 'bg-rose-50 text-rose-800 border-rose-200' : daysLeft <= 7 ? 'bg-amber-50 text-amber-900 border-amber-200' : 'bg-white text-emerald-900 border-emerald-200'
                     }`}>
                       <span>Current Access:</span>
@@ -2044,7 +2044,7 @@ export const SpecialUserDashboard: React.FC = () => {
                     </div>
                   );
                 })() : (
-                  <div className="p-2 rounded-xl text-xs font-medium bg-white text-emerald-900 border border-emerald-200 flex items-center justify-between">
+                  <div className="p-2 rounded-xl text-xs font-medium bg-white text-emerald-900 border border-emerald-200 flex flex-wrap items-center justify-between gap-1.5">
                     <span>Current Access:</span>
                     <strong className="font-bold">♾️ Permanent (No Expiry)</strong>
                   </div>
@@ -2111,18 +2111,18 @@ export const SpecialUserDashboard: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setEditingOwner(null)}
-                  className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl cursor-pointer transition-colors"
+                  className="px-4 py-2.5 sm:py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl cursor-pointer transition-colors text-center"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={editOwnerSubmitting}
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-extrabold text-xs rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                  className="px-5 py-2.5 sm:py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-extrabold text-xs rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                   id="special-save-owner-edit-btn"
                 >
                   <Save className="w-3.5 h-3.5" />

@@ -302,57 +302,57 @@ export const StaffMembershipCounterModal: React.FC<StaffMembershipCounterModalPr
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-xs p-4 overflow-y-auto">
-      <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-xs p-2 sm:p-4">
+      <div className="bg-white w-full max-w-lg rounded-2xl sm:rounded-3xl shadow-2xl border border-slate-200 max-h-[92vh] sm:max-h-[90vh] overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200">
         
         {/* Header */}
-        <div className="bg-slate-900 text-white p-5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-indigo-600/30 border border-indigo-400/30 flex items-center justify-center text-indigo-400">
+        <div className="bg-slate-900 text-white p-4 sm:p-5 flex items-center justify-between gap-2 shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-indigo-600/30 border border-indigo-400/30 flex items-center justify-center text-indigo-400 shrink-0">
               <Award className="w-5 h-5" />
             </div>
-            <div>
-              <h2 className="text-sm font-extrabold text-white">Counter Membership Desk</h2>
-              <p className="text-xs text-slate-400">Look up members, award points, and redeem customer vouchers</p>
+            <div className="min-w-0">
+              <h2 className="text-sm font-extrabold text-white truncate">Counter Membership Desk</h2>
+              <p className="text-xs text-slate-400 line-clamp-1">Look up members, award points, and redeem customer vouchers</p>
             </div>
           </div>
 
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white/80 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+            className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white/80 hover:text-white flex items-center justify-center transition-colors cursor-pointer shrink-0"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Tab Switcher */}
-        <div className="flex border-b border-slate-200 bg-slate-50 p-2 gap-2">
+        <div className="grid grid-cols-1 min-[360px]:grid-cols-2 sm:flex border-b border-slate-200 bg-slate-50 p-2 gap-1.5 sm:gap-2 shrink-0">
           <button
             onClick={() => setActiveTab('scan_member')}
-            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
+            className={`sm:flex-1 py-2 px-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
               activeTab === 'scan_member'
                 ? 'bg-white text-indigo-700 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <UserCheck className="w-4 h-4" />
-            <span>Award Counter Points</span>
+            <UserCheck className="w-4 h-4 shrink-0" />
+            <span className="truncate">Award Counter Points</span>
           </button>
           <button
             onClick={() => setActiveTab('redeem_voucher')}
-            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
+            className={`sm:flex-1 py-2 px-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
               activeTab === 'redeem_voucher'
                 ? 'bg-white text-indigo-700 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <Gift className="w-4 h-4" />
-            <span>Redeem Voucher</span>
+            <Gift className="w-4 h-4 shrink-0" />
+            <span className="truncate">Redeem Voucher</span>
           </button>
         </div>
 
         {/* Body */}
-        <div className="p-6 space-y-6">
+        <div className="p-4 sm:p-6 space-y-5 overflow-y-auto flex-1 min-h-0 overscroll-contain">
 
           {/* TAB 1: SCAN MEMBER / AWARD POINTS */}
           {activeTab === 'scan_member' && (
@@ -373,8 +373,8 @@ export const StaffMembershipCounterModal: React.FC<StaffMembershipCounterModalPr
                 </div>
 
                 <form onSubmit={handleSearchMember} className="space-y-2">
-                  <div className="flex gap-2">
-                    <div className="relative flex-1">
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="relative flex-1 min-w-0">
                       <QrCode className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                       <input
                         type="text"
@@ -388,7 +388,7 @@ export const StaffMembershipCounterModal: React.FC<StaffMembershipCounterModalPr
                     <button
                       type="submit"
                       disabled={searchingMember}
-                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl cursor-pointer disabled:opacity-50"
+                      className="w-full sm:w-auto px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl cursor-pointer disabled:opacity-50 shrink-0"
                     >
                       {searchingMember ? 'Searching...' : 'Find Member'}
                     </button>
@@ -398,20 +398,20 @@ export const StaffMembershipCounterModal: React.FC<StaffMembershipCounterModalPr
 
               {foundMember && (
                 <div className="bg-gradient-to-br from-indigo-50/70 to-blue-50/50 border border-indigo-200 rounded-2xl p-4 space-y-4">
-                  <div className="flex items-start justify-between">
-                    <div>
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
                       <span className="text-[10px] uppercase font-bold text-indigo-700">
                         {foundMember.membershipNumber}
                       </span>
-                      <h4 className="font-extrabold text-slate-900 text-sm">
+                      <h4 className="font-extrabold text-slate-900 text-sm break-words">
                         {foundMember.customerName || 'Customer Member'}
                       </h4>
-                      <p className="text-[11px] text-slate-500">
+                      <p className="text-[11px] text-slate-500 break-words">
                         {foundMember.customerPhone || foundMember.customerEmail || 'No contact'}
                       </p>
                     </div>
 
-                    <div className="text-right">
+                    <div className="text-left sm:text-right shrink-0">
                       <span className="text-[10px] text-slate-400 uppercase font-bold">Balance</span>
                       <p className="text-xl font-black text-indigo-600">
                         {Number(foundMember?.pointsBalance ?? 0).toLocaleString()} pts
@@ -420,7 +420,7 @@ export const StaffMembershipCounterModal: React.FC<StaffMembershipCounterModalPr
                   </div>
 
                   <div className="border-t border-indigo-100 pt-3 space-y-3 text-xs">
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                       <span className="font-bold text-slate-800 block">Select Completed Services (Choose Several):</span>
                       <div className="flex items-center gap-1.5 text-[10px] font-bold">
                         <button
@@ -521,7 +521,7 @@ export const StaffMembershipCounterModal: React.FC<StaffMembershipCounterModalPr
                     </div>
 
                     {/* Points Sum Bar */}
-                    <div className="bg-indigo-50/80 p-2.5 rounded-xl border border-indigo-150 flex items-center justify-between gap-2">
+                    <div className="bg-indigo-50/80 p-2.5 rounded-xl border border-indigo-150 flex flex-wrap items-center justify-between gap-2">
                       <div>
                         <span className="text-[11px] font-bold text-slate-700 block">Total Points to Award:</span>
                         <span className="text-[10px] text-slate-500">
@@ -587,8 +587,8 @@ export const StaffMembershipCounterModal: React.FC<StaffMembershipCounterModalPr
                 </div>
 
                 <form onSubmit={handleSearchVoucher} className="space-y-2">
-                  <div className="flex gap-2">
-                    <div className="relative flex-1">
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="relative flex-1 min-w-0">
                       <Gift className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                       <input
                         type="text"
@@ -602,7 +602,7 @@ export const StaffMembershipCounterModal: React.FC<StaffMembershipCounterModalPr
                     <button
                       type="submit"
                       disabled={searchingVoucher}
-                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl cursor-pointer disabled:opacity-50"
+                      className="w-full sm:w-auto px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl cursor-pointer disabled:opacity-50 shrink-0"
                     >
                       {searchingVoucher ? 'Checking...' : 'Check Voucher'}
                     </button>
@@ -612,15 +612,15 @@ export const StaffMembershipCounterModal: React.FC<StaffMembershipCounterModalPr
 
               {foundVoucher && (
                 <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
-                  <div className="flex items-start justify-between">
-                    <div>
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
                       <span className="font-mono font-bold text-xs text-indigo-700">
                         {foundVoucher.redemptionCode}
                       </span>
-                      <h4 className="font-extrabold text-slate-900 text-sm">
+                      <h4 className="font-extrabold text-slate-900 text-sm break-words">
                         {foundVoucher.rewardTitle}
                       </h4>
-                      <p className="text-[11px] text-slate-500">
+                      <p className="text-[11px] text-slate-500 break-words">
                         Customer: {foundVoucher.customerName || foundVoucher.customerId}
                       </p>
                     </div>

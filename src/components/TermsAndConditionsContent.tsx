@@ -40,10 +40,10 @@ export const TermsAndConditionsContent: React.FC = () => {
         {/* 1. Definitions */}
         <div className="pt-4 first:pt-0">
           <h3 className="text-sm font-extrabold text-slate-900 uppercase flex items-center gap-2 mb-2">
-            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black">1</span>
+            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black shrink-0">1</span>
             Definitions
           </h3>
-          <ul className="pl-7 space-y-1.5 list-disc text-slate-600">
+          <ul className="pl-4 sm:pl-7 space-y-1.5 list-disc text-slate-600">
             <li><strong className="text-slate-800">{companyName}</strong> means the owner and operator of the booking platform.</li>
             <li><strong className="text-slate-800">User</strong> means any person who registers or uses the Platform.</li>
             <li><strong className="text-slate-800">Service Operator</strong> means an independent car wash company offering services through the Platform.</li>
@@ -54,10 +54,10 @@ export const TermsAndConditionsContent: React.FC = () => {
         {/* 2. Acceptance of Terms */}
         <div className="pt-4">
           <h3 className="text-sm font-extrabold text-slate-900 uppercase flex items-center gap-2 mb-2">
-            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black">2</span>
+            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black shrink-0">2</span>
             Acceptance of Terms
           </h3>
-          <div className="pl-7 space-y-2 text-slate-600">
+          <div className="pl-4 sm:pl-7 space-y-2 text-slate-600">
             <p>By using AUTOSHINE BN, you confirm that you:</p>
             <ul className="list-disc pl-5 space-y-1">
               <li>Are at least 18 years old or have permission from a parent or legal guardian.</li>
@@ -69,10 +69,10 @@ export const TermsAndConditionsContent: React.FC = () => {
         {/* 3. Platform Services */}
         <div className="pt-4">
           <h3 className="text-sm font-extrabold text-slate-900 uppercase flex items-center gap-2 mb-2">
-            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black">3</span>
+            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black shrink-0">3</span>
             Platform Services
           </h3>
-          <div className="pl-7 space-y-2 text-slate-600">
+          <div className="pl-4 sm:pl-7 space-y-2 text-slate-600">
             <p>AUTOSHINE BN provides an online platform that enables Users to:</p>
             <ul className="list-disc pl-5 space-y-1">
               <li>Browse participating car wash operators.</li>
@@ -89,10 +89,10 @@ export const TermsAndConditionsContent: React.FC = () => {
         {/* 4. User Account */}
         <div className="pt-4">
           <h3 className="text-sm font-extrabold text-slate-900 uppercase flex items-center gap-2 mb-2">
-            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black">4</span>
+            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black shrink-0">4</span>
             User Account
           </h3>
-          <div className="pl-7 space-y-2 text-slate-600">
+          <div className="pl-4 sm:pl-7 space-y-2 text-slate-600">
             <p>Users are responsible for:</p>
             <ul className="list-disc pl-5 space-y-1">
               <li>Providing accurate and current information.</li>
@@ -109,10 +109,10 @@ export const TermsAndConditionsContent: React.FC = () => {
         {/* 5. Booking Policy */}
         <div className="pt-4">
           <h3 className="text-sm font-extrabold text-slate-900 uppercase flex items-center gap-2 mb-2">
-            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black">5</span>
+            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black shrink-0">5</span>
             Booking Policy
           </h3>
-          <div className="pl-7 space-y-2 text-slate-600">
+          <div className="pl-4 sm:pl-7 space-y-2 text-slate-600">
             <p>Users agree to:</p>
             <ul className="list-disc pl-5 space-y-1">
               <li>Provide accurate vehicle information.</li>
@@ -128,10 +128,10 @@ export const TermsAndConditionsContent: React.FC = () => {
         {/* 6. Pricing */}
         <div className="pt-4">
           <h3 className="text-sm font-extrabold text-slate-900 uppercase flex items-center gap-2 mb-2">
-            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black">6</span>
+            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black shrink-0">6</span>
             Pricing
           </h3>
-          <div className="pl-7 space-y-2 text-slate-600">
+          <div className="pl-4 sm:pl-7 space-y-2 text-slate-600">
             <p>Prices displayed on the Platform are determined by the respective Service Operators.</p>
             <p>
               AUTOSHINE BN does not guarantee that prices will remain unchanged and reserves the right to update pricing
@@ -147,10 +147,10 @@ export const TermsAndConditionsContent: React.FC = () => {
         {/* 7. Payments */}
         <div className="pt-4">
           <h3 className="text-sm font-extrabold text-slate-900 uppercase flex items-center gap-2 mb-2">
-            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black">7</span>
+            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black shrink-0">7</span>
             Payments
           </h3>
-          <div className="pl-7 space-y-2 text-slate-600">
+          <div className="pl-4 sm:pl-7 space-y-2 text-slate-600">
             <p>Payments for the carwash service shall be paid directly to the operator.</p>
             <ul className="list-disc pl-5 space-y-1">
               <li>Payment shall be made using approved payment methods.</li>
@@ -161,10 +161,10 @@ export const TermsAndConditionsContent: React.FC = () => {
         {/* 8. Cancellation and Refunds */}
         <div className="pt-4">
           <h3 className="text-sm font-extrabold text-slate-900 uppercase flex items-center gap-2 mb-2">
-            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black">8</span>
+            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black shrink-0">8</span>
             Cancellation and Refunds
           </h3>
-          <div className="pl-7 space-y-2 text-slate-600">
+          <div className="pl-4 sm:pl-7 space-y-2 text-slate-600">
             <p>Users may cancel bookings in accordance with the cancellation policy displayed on the Platform.</p>
             <p>Refund eligibility depends on:</p>
             <ul className="list-disc pl-5 space-y-1">
@@ -181,10 +181,10 @@ export const TermsAndConditionsContent: React.FC = () => {
         {/* 9. User Responsibilities */}
         <div className="pt-4">
           <h3 className="text-sm font-extrabold text-slate-900 uppercase flex items-center gap-2 mb-2">
-            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black">9</span>
+            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black shrink-0">9</span>
             User Responsibilities
           </h3>
-          <div className="pl-7 space-y-2 text-slate-600">
+          <div className="pl-4 sm:pl-7 space-y-2 text-slate-600">
             <p>Users shall:</p>
             <ul className="list-disc pl-5 space-y-1">
               <li>Treat Service Operators and their employees respectfully.</li>
@@ -201,10 +201,10 @@ export const TermsAndConditionsContent: React.FC = () => {
         {/* 10. Service Quality */}
         <div className="pt-4">
           <h3 className="text-sm font-extrabold text-slate-900 uppercase flex items-center gap-2 mb-2">
-            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black">10</span>
+            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black shrink-0">10</span>
             Service Quality
           </h3>
-          <div className="pl-7 space-y-2 text-slate-600">
+          <div className="pl-4 sm:pl-7 space-y-2 text-slate-600">
             <p>The quality of car wash services is the responsibility of the selected Service Operator.</p>
             <p>Any complaints regarding service quality should first be directed to the Service Operator.</p>
             <p>AUTOSHINE BN may assist in facilitating communication but does not guarantee any specific outcome.</p>
@@ -214,10 +214,10 @@ export const TermsAndConditionsContent: React.FC = () => {
         {/* 11. Limitation of Liability */}
         <div className="pt-4">
           <h3 className="text-sm font-extrabold text-slate-900 uppercase flex items-center gap-2 mb-2">
-            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black">11</span>
+            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black shrink-0">11</span>
             Limitation of Liability
           </h3>
-          <div className="pl-7 space-y-2 text-slate-600">
+          <div className="pl-4 sm:pl-7 space-y-2 text-slate-600">
             <p>AUTOSHINE BN:</p>
             <ul className="list-disc pl-5 space-y-1">
               <li>Does not perform the car wash services.</li>
@@ -235,10 +235,10 @@ export const TermsAndConditionsContent: React.FC = () => {
         {/* 12. Vehicle Damage */}
         <div className="pt-4">
           <h3 className="text-sm font-extrabold text-slate-900 uppercase flex items-center gap-2 mb-2">
-            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black">12</span>
+            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black shrink-0">12</span>
             Vehicle Damage
           </h3>
-          <div className="pl-7 space-y-2 text-slate-600">
+          <div className="pl-4 sm:pl-7 space-y-2 text-slate-600">
             <p>
               Any claims relating to vehicle damage shall be made directly to the Service Operator responsible for providing
               the service.
@@ -253,10 +253,10 @@ export const TermsAndConditionsContent: React.FC = () => {
         {/* 13. Intellectual Property */}
         <div className="pt-4">
           <h3 className="text-sm font-extrabold text-slate-900 uppercase flex items-center gap-2 mb-2">
-            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black">13</span>
+            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black shrink-0">13</span>
             Intellectual Property
           </h3>
-          <div className="pl-7 space-y-2 text-slate-600">
+          <div className="pl-4 sm:pl-7 space-y-2 text-slate-600">
             <p>
               All content on the Platform, including trademarks, logos, graphics, software, and text, remains the property of
               AUTOSHINE BN or its licensors.
@@ -268,10 +268,10 @@ export const TermsAndConditionsContent: React.FC = () => {
         {/* 14. Privacy */}
         <div className="pt-4">
           <h3 className="text-sm font-extrabold text-slate-900 uppercase flex items-center gap-2 mb-2">
-            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black">14</span>
+            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black shrink-0">14</span>
             Privacy
           </h3>
-          <div className="pl-7 space-y-2 text-slate-600">
+          <div className="pl-4 sm:pl-7 space-y-2 text-slate-600">
             <p>
               AUTOSHINE BN collects and processes personal information solely for the purpose of providing booking
               services and improving the Platform.
@@ -283,10 +283,10 @@ export const TermsAndConditionsContent: React.FC = () => {
         {/* 15. Prohibited Conduct */}
         <div className="pt-4">
           <h3 className="text-sm font-extrabold text-slate-900 uppercase flex items-center gap-2 mb-2">
-            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black">15</span>
+            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black shrink-0">15</span>
             Prohibited Conduct
           </h3>
-          <div className="pl-7 space-y-2 text-slate-600">
+          <div className="pl-4 sm:pl-7 space-y-2 text-slate-600">
             <p>Users shall not:</p>
             <ul className="list-disc pl-5 space-y-1">
               <li>Use false identities.</li>
@@ -302,10 +302,10 @@ export const TermsAndConditionsContent: React.FC = () => {
         {/* 16. Suspension or Termination */}
         <div className="pt-4">
           <h3 className="text-sm font-extrabold text-slate-900 uppercase flex items-center gap-2 mb-2">
-            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black">16</span>
+            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black shrink-0">16</span>
             Suspension or Termination
           </h3>
-          <div className="pl-7 space-y-2 text-slate-600">
+          <div className="pl-4 sm:pl-7 space-y-2 text-slate-600">
             <p>AUTOSHINE BN may suspend or terminate a User account without prior notice if the User:</p>
             <ul className="list-disc pl-5 space-y-1">
               <li>Breaches these Terms.</li>
@@ -319,10 +319,10 @@ export const TermsAndConditionsContent: React.FC = () => {
         {/* 17. Platform Availability */}
         <div className="pt-4">
           <h3 className="text-sm font-extrabold text-slate-900 uppercase flex items-center gap-2 mb-2">
-            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black">17</span>
+            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black shrink-0">17</span>
             Platform Availability
           </h3>
-          <div className="pl-7 space-y-2 text-slate-600">
+          <div className="pl-4 sm:pl-7 space-y-2 text-slate-600">
             <p>AUTOSHINE BN aims to provide continuous service but does not guarantee uninterrupted access.</p>
             <p>
               Temporary interruptions may occur due to maintenance, upgrades, technical failures, or events beyond
@@ -334,10 +334,10 @@ export const TermsAndConditionsContent: React.FC = () => {
         {/* 18. Changes to These Terms */}
         <div className="pt-4">
           <h3 className="text-sm font-extrabold text-slate-900 uppercase flex items-center gap-2 mb-2">
-            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black">18</span>
+            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black shrink-0">18</span>
             Changes to These Terms
           </h3>
-          <div className="pl-7 space-y-2 text-slate-600">
+          <div className="pl-4 sm:pl-7 space-y-2 text-slate-600">
             <p>AUTOSHINE BN reserves the right to amend these Terms at any time.</p>
             <p>
               Updated Terms shall become effective upon publication on the Platform. Continued use of the Platform
@@ -349,10 +349,10 @@ export const TermsAndConditionsContent: React.FC = () => {
         {/* 19. Governing Law */}
         <div className="pt-4">
           <h3 className="text-sm font-extrabold text-slate-900 uppercase flex items-center gap-2 mb-2">
-            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black">19</span>
+            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black shrink-0">19</span>
             Governing Law
           </h3>
-          <div className="pl-7 space-y-2 text-slate-600">
+          <div className="pl-4 sm:pl-7 space-y-2 text-slate-600">
             <p>These Terms shall be governed by and interpreted in accordance with the laws of Brunei Darussalam.</p>
             <p>
               Any disputes arising from these Terms shall be subject to the exclusive jurisdiction of the courts of Brunei
@@ -364,42 +364,42 @@ export const TermsAndConditionsContent: React.FC = () => {
         {/* 20. Contact Information */}
         <div className="pt-4">
           <h3 className="text-sm font-extrabold text-slate-900 uppercase flex items-center gap-2 mb-2">
-            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black">20</span>
+            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black shrink-0">20</span>
             Contact Information
           </h3>
-          <div className="pl-7 space-y-3 text-slate-600">
+          <div className="pl-4 sm:pl-7 space-y-3 text-slate-600">
             <p>For enquiries, support, or complaints, please contact:</p>
-            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2.5 text-xs sm:text-sm">
-              <div className="flex items-center gap-2.5 text-slate-800 font-black">
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 sm:p-4 space-y-2.5 text-xs sm:text-sm">
+              <div className="flex items-center gap-2.5 text-slate-800 font-black min-w-0">
                 <Building className="w-4 h-4 text-sky-600 shrink-0" />
-                <span>{companyName}</span>
+                <span className="break-words min-w-0">{companyName}</span>
               </div>
-              <div className="flex items-center gap-2.5 text-slate-700">
+              <div className="flex items-center gap-2.5 text-slate-700 min-w-0">
                 <Mail className="w-4 h-4 text-sky-600 shrink-0" />
-                <span>
+                <span className="min-w-0 break-words">
                   Email:{' '}
-                  <a href={`mailto:${email}`} className="text-sky-600 font-bold hover:underline">
+                  <a href={`mailto:${email}`} className="text-sky-600 font-bold hover:underline break-all">
                     {email}
                   </a>
                 </span>
               </div>
-              <div className="flex items-center gap-2.5 text-slate-700">
+              <div className="flex items-center gap-2.5 text-slate-700 min-w-0">
                 <MessageCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>
+                <span className="min-w-0 break-words">
                   WhatsApp:{' '}
                   <a 
                     href={cleanWhatsapp ? `https://wa.me/${cleanWhatsapp}` : '#'} 
                     target="_blank" 
                     rel="noopener noreferrer" 
-                    className="text-emerald-700 font-bold hover:underline"
+                    className="text-emerald-700 font-bold hover:underline break-words"
                   >
                     {whatsapp}
                   </a>
                 </span>
               </div>
-              <div className="flex items-start gap-2.5 text-slate-700">
+              <div className="flex items-start gap-2.5 text-slate-700 min-w-0">
                 <MapPin className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-                <span>
+                <span className="min-w-0 break-words">
                   Business Address:{' '}
                   <span className="font-medium text-slate-800">{address}</span>
                 </span>

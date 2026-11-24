@@ -856,9 +856,9 @@ export const AdminDashboard: React.FC = () => {
   return (
     <div className="space-y-8 animate-fade-in">
       {/* Admin Title */}
-      <div className="bg-slate-900 text-white rounded-3xl p-6 sm:p-8 border border-slate-800 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
-          <span className="bg-red-500/20 text-red-400 text-xs font-mono font-bold px-3 py-1 rounded-full border border-red-500/30 uppercase tracking-widest">
+      <div className="bg-slate-900 text-white rounded-3xl p-4 sm:p-8 border border-slate-800 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6">
+        <div className="min-w-0">
+          <span className="bg-red-500/20 text-red-400 text-xs font-mono font-bold px-3 py-1 rounded-full border border-red-500/30 uppercase tracking-widest inline-block">
             Platform Operator Room
           </span>
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight mt-3 text-white">
@@ -870,22 +870,22 @@ export const AdminDashboard: React.FC = () => {
         </div>
 
         {/* Global Statistics */}
-        <div className="flex flex-wrap gap-4">
-          <div className="bg-slate-800 border border-slate-700/50 px-4 py-2 rounded-xl text-center min-w-24">
+        <div className="flex flex-wrap gap-2.5 sm:gap-4 shrink-0">
+          <div className="bg-slate-800 border border-slate-700/50 px-3 sm:px-4 py-2 rounded-xl text-center flex-1 min-w-[100px] sm:flex-none sm:min-w-24">
             <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider">Total Users</span>
             <strong className="text-lg font-black text-white font-mono">{adminUsersList.length}</strong>
           </div>
-          <div className="bg-slate-800 border border-slate-700/50 px-4 py-2 rounded-xl text-center min-w-24">
+          <div className="bg-slate-800 border border-slate-700/50 px-3 sm:px-4 py-2 rounded-xl text-center flex-1 min-w-[100px] sm:flex-none sm:min-w-24">
             <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider">Locations</span>
             <strong className="text-lg font-black text-white font-mono">{locations.length}</strong>
           </div>
-          <div className="bg-slate-800 border border-slate-700/50 px-4 py-2 rounded-xl text-center min-w-24">
+          <div className="bg-slate-800 border border-slate-700/50 px-3 sm:px-4 py-2 rounded-xl text-center flex-1 min-w-[100px] sm:flex-none sm:min-w-24">
             <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider">Bookings</span>
             <strong className="text-lg font-black text-white font-mono">{bookings.length}</strong>
           </div>
           <button
             onClick={() => setActiveSubTab('emails')}
-            className={`px-4 py-2 rounded-xl text-center min-w-28 transition-all cursor-pointer border flex flex-col items-center justify-center ${
+            className={`px-3 sm:px-4 py-2 rounded-xl text-center flex-1 min-w-[110px] sm:flex-none sm:min-w-28 transition-all cursor-pointer border flex flex-col items-center justify-center ${
               activeSubTab === 'emails'
                 ? 'bg-sky-500/20 border-sky-400 text-sky-300 ring-2 ring-sky-500/30'
                 : 'bg-slate-800 hover:bg-slate-700 border-slate-700/70 text-slate-300'
@@ -903,7 +903,7 @@ export const AdminDashboard: React.FC = () => {
       </div>
 
       {/* Sub Tabs Selection - Responsive Mobile Horizontal Scroll */}
-      <div className="border-b border-slate-200 flex items-center gap-1.5 sm:gap-4 text-xs sm:text-sm font-semibold overflow-x-auto no-scrollbar scrollbar-none py-1 -mx-4 px-4 sm:mx-0 sm:px-0 touch-pan-x">
+      <div className="border-b border-slate-200 flex items-center gap-1.5 sm:gap-4 text-xs sm:text-sm font-semibold overflow-x-auto no-scrollbar scrollbar-none py-1 -mx-3 px-3 sm:mx-0 sm:px-0 touch-pan-x">
         <button
           onClick={() => setActiveSubTab('users')}
           className={`pb-3 pt-1.5 px-2.5 sm:px-1 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap ${
@@ -1025,12 +1025,12 @@ export const AdminDashboard: React.FC = () => {
         const countTotal = totalUsers > 0 ? totalUsers : adminUsersList.length;
 
         return (
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-5" id="system-marketplace-directory">
+          <div className="bg-white border border-slate-200 rounded-3xl p-4 sm:p-6 shadow-sm space-y-5" id="system-marketplace-directory">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-2">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-base sm:text-lg font-bold text-slate-800">System Marketplace Directory</h2>
-                  <span className="text-[10px] font-bold px-2 py-0.5 bg-red-50 text-red-700 border border-red-200 rounded-full font-mono">
+                  <span className="text-[10px] font-bold px-2 py-0.5 bg-red-50 text-red-700 border border-red-200 rounded-full font-mono shrink-0">
                     {countTotal} Total Accounts
                   </span>
                 </div>
@@ -1039,7 +1039,7 @@ export const AdminDashboard: React.FC = () => {
                 </p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
                 <button
                   type="button"
                   disabled={isEnforcingExpiry}
@@ -1063,7 +1063,7 @@ export const AdminDashboard: React.FC = () => {
             </div>
 
             {/* Filter & Search controls row */}
-            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+            <div className="bg-slate-50 p-3 sm:p-4 rounded-2xl border border-slate-200 space-y-3">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                 {/* Search input with backend query optimization */}
                 <div className="relative flex-1">
@@ -1113,8 +1113,8 @@ export const AdminDashboard: React.FC = () => {
               </div>
 
               {/* Role Filter buttons */}
-              <div className="flex items-center gap-1 overflow-x-auto pb-1 text-xs font-bold pt-1">
-                <span className="text-slate-400 uppercase tracking-wider text-[10px] mr-1">Role:</span>
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar scrollbar-none pb-1 text-xs font-bold pt-1">
+                <span className="text-slate-400 uppercase tracking-wider text-[10px] mr-1 shrink-0">Role:</span>
                 {['ALL', Role.OWNER, Role.CUSTOMER, Role.EMPLOYEE, Role.SPECIAL, Role.ADMIN].map((r) => (
                   <button
                     key={r}
@@ -1183,13 +1183,13 @@ export const AdminDashboard: React.FC = () => {
                               <span className={`w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 ${
                                 isExpired || !u.isActive ? 'bg-rose-500' : 'bg-emerald-500'
                               }`} />
-                              <div>
-                                <div className="font-bold text-slate-900 text-xs sm:text-sm">{u.name}</div>
-                                <div className="text-[11px] font-mono text-slate-500 mt-0.5">{u.email}</div>
+                              <div className="min-w-0">
+                                <div className="font-bold text-slate-900 text-xs sm:text-sm break-words">{u.name}</div>
+                                <div className="text-[11px] font-mono text-slate-500 mt-0.5 break-all">{u.email}</div>
                                 {Boolean(u.businessName) && (
-                                  <div className="flex items-center gap-1 text-[11px] text-sky-800 font-semibold mt-1 bg-sky-50 px-2 py-0.5 rounded border border-sky-200/80 w-fit">
+                                  <div className="flex items-center gap-1 text-[11px] text-sky-800 font-semibold mt-1 bg-sky-50 px-2 py-0.5 rounded border border-sky-200/80 w-fit max-w-full">
                                     <Building className="h-3 w-3 text-sky-600 shrink-0" />
-                                    <span>{u.businessName}</span>
+                                    <span className="break-words">{u.businessName}</span>
                                   </div>
                                 )}
                               </div>
@@ -1263,7 +1263,7 @@ export const AdminDashboard: React.FC = () => {
                                   )}
                                 </div>
 
-                                <div className="flex items-center gap-1.5">
+                                <div className="flex flex-wrap items-center gap-1.5">
                                   <input
                                     type="date"
                                     value={draftVal}
@@ -1377,7 +1377,7 @@ export const AdminDashboard: React.FC = () => {
               </div>
 
               {totalPages > 1 && (
-                <div className="flex items-center gap-1.5 self-center sm:self-auto">
+                <div className="flex flex-wrap items-center justify-center gap-1.5 self-center sm:self-auto">
                   <button
                     type="button"
                     disabled={currentPage <= 1}
@@ -1444,29 +1444,29 @@ export const AdminDashboard: React.FC = () => {
         <div className="space-y-6">
           {/* Email Settings Toast Message */}
           {emailSettingsMsg && (
-            <div className={`p-4 rounded-2xl text-xs font-bold flex items-center justify-between shadow-sm animate-fade-in ${
+            <div className={`p-3 sm:p-4 rounded-2xl text-xs font-bold flex flex-wrap items-center justify-between gap-2 shadow-sm animate-fade-in ${
               emailSettingsMsg.type === 'success'
                 ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                 : 'bg-rose-50 text-rose-800 border border-rose-200'
             }`}>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 min-w-0">
                 {emailSettingsMsg.type === 'success' ? <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" /> : <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" />}
-                <span>{emailSettingsMsg.text}</span>
+                <span className="break-words">{emailSettingsMsg.text}</span>
               </div>
-              <button onClick={() => setEmailSettingsMsg(null)} className="text-slate-400 hover:text-slate-600 text-xs font-bold ml-4">Dismiss</button>
+              <button onClick={() => setEmailSettingsMsg(null)} className="text-slate-400 hover:text-slate-600 text-xs font-bold ml-auto sm:ml-4 shrink-0 cursor-pointer">Dismiss</button>
             </div>
           )}
 
           {/* Top Row: Notification Controls & Provider Switcher */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* Notification ON/OFF Preferences (7 Cols) */}
-            <div className="lg:col-span-7 bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-5">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <div className="flex items-center gap-3">
-                  <div className={`p-2.5 rounded-2xl ${emailSettings?.masterEnabled ? 'bg-sky-50 text-sky-600' : 'bg-slate-100 text-slate-400'}`}>
+            <div className="lg:col-span-7 bg-white border border-slate-200 rounded-3xl p-4 sm:p-6 shadow-sm space-y-5">
+              <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className={`p-2.5 rounded-2xl shrink-0 ${emailSettings?.masterEnabled ? 'bg-sky-50 text-sky-600' : 'bg-slate-100 text-slate-400'}`}>
                     {emailSettings?.masterEnabled ? <Bell className="h-5 w-5" /> : <BellOff className="h-5 w-5" />}
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <h2 className="text-base font-bold text-slate-800">Email Notification Toggles</h2>
                     <p className="text-xs text-slate-400">Control outgoing transactional messages to preserve daily email quota</p>
                   </div>
@@ -1476,7 +1476,7 @@ export const AdminDashboard: React.FC = () => {
                 <button
                   onClick={() => handleUpdateEmailSetting({ masterEnabled: !emailSettings?.masterEnabled })}
                   disabled={savingEmailSettings}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm ${
+                  className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm shrink-0 ${
                     emailSettings?.masterEnabled
                       ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
                       : 'bg-slate-200 hover:bg-slate-300 text-slate-700'
@@ -1506,9 +1506,9 @@ export const AdminDashboard: React.FC = () => {
               {/* Granular Toggles List */}
               <div className="space-y-3 pt-1">
                 {/* 1. Car Wash Completed (Car Ready) */}
-                <div className="p-3.5 bg-slate-50 hover:bg-slate-50/80 border border-slate-200/80 rounded-2xl flex items-center justify-between gap-3 transition-colors">
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-2">
+                <div className="p-3.5 bg-slate-50 hover:bg-slate-50/80 border border-slate-200/80 rounded-2xl flex flex-col min-[380px]:flex-row min-[380px]:items-center justify-between gap-3 transition-colors">
+                  <div className="space-y-0.5 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="text-xs font-bold text-slate-800">Car Wash Completed & Ready for Pick-Up</span>
                       <span className="bg-emerald-100 text-emerald-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider">High Value</span>
                     </div>
@@ -1517,7 +1517,7 @@ export const AdminDashboard: React.FC = () => {
                   <button
                     onClick={() => handleUpdateEmailSetting({ notifyWashCompleted: !emailSettings?.notifyWashCompleted })}
                     disabled={savingEmailSettings || !emailSettings?.masterEnabled}
-                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 ${
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 self-end min-[380px]:self-auto ${
                       emailSettings?.notifyWashCompleted && emailSettings?.masterEnabled ? 'bg-sky-600' : 'bg-slate-300'
                     }`}
                   >
@@ -1528,9 +1528,9 @@ export const AdminDashboard: React.FC = () => {
                 </div>
 
                 {/* 2. Booking Confirmation */}
-                <div className="p-3.5 bg-slate-50 hover:bg-slate-50/80 border border-slate-200/80 rounded-2xl flex items-center justify-between gap-3 transition-colors">
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-2">
+                <div className="p-3.5 bg-slate-50 hover:bg-slate-50/80 border border-slate-200/80 rounded-2xl flex flex-col min-[380px]:flex-row min-[380px]:items-center justify-between gap-3 transition-colors">
+                  <div className="space-y-0.5 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="text-xs font-bold text-slate-800">Booking Confirmation Email</span>
                       <span className="bg-amber-100 text-amber-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider">Quota Saver</span>
                     </div>
@@ -1539,7 +1539,7 @@ export const AdminDashboard: React.FC = () => {
                   <button
                     onClick={() => handleUpdateEmailSetting({ notifyBookingConfirmed: !emailSettings?.notifyBookingConfirmed })}
                     disabled={savingEmailSettings || !emailSettings?.masterEnabled}
-                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 ${
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 self-end min-[380px]:self-auto ${
                       emailSettings?.notifyBookingConfirmed && emailSettings?.masterEnabled ? 'bg-sky-600' : 'bg-slate-300'
                     }`}
                   >
@@ -1550,9 +1550,9 @@ export const AdminDashboard: React.FC = () => {
                 </div>
 
                 {/* 3. Appointment Reminder Alert */}
-                <div className="p-3.5 bg-slate-50 hover:bg-slate-50/80 border border-slate-200/80 rounded-2xl flex items-center justify-between gap-3 transition-colors">
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-2">
+                <div className="p-3.5 bg-slate-50 hover:bg-slate-50/80 border border-slate-200/80 rounded-2xl flex flex-col min-[380px]:flex-row min-[380px]:items-center justify-between gap-3 transition-colors">
+                  <div className="space-y-0.5 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="text-xs font-bold text-slate-800">⏰ Upcoming Appointment Reminder Alert</span>
                     </div>
                     <p className="text-[11px] text-slate-500">Sends appointment reminder email to customer with date, bay arrival details, and slot time.</p>
@@ -1560,7 +1560,7 @@ export const AdminDashboard: React.FC = () => {
                   <button
                     onClick={() => handleUpdateEmailSetting({ notifyBookingReminder: emailSettings?.notifyBookingReminder === false ? true : false })}
                     disabled={savingEmailSettings || !emailSettings?.masterEnabled}
-                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 ${
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 self-end min-[380px]:self-auto ${
                       emailSettings?.notifyBookingReminder !== false && emailSettings?.masterEnabled ? 'bg-sky-600' : 'bg-slate-300'
                     }`}
                   >
@@ -1571,9 +1571,9 @@ export const AdminDashboard: React.FC = () => {
                 </div>
 
                 {/* 4. Booking Cancellation */}
-                <div className="p-3.5 bg-slate-50 hover:bg-slate-50/80 border border-slate-200/80 rounded-2xl flex items-center justify-between gap-3 transition-colors">
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-2">
+                <div className="p-3.5 bg-slate-50 hover:bg-slate-50/80 border border-slate-200/80 rounded-2xl flex flex-col min-[380px]:flex-row min-[380px]:items-center justify-between gap-3 transition-colors">
+                  <div className="space-y-0.5 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="text-xs font-bold text-slate-800">Booking Cancellation / Rejection Alert</span>
                     </div>
                     <p className="text-[11px] text-slate-500">Alerts customer if weather, power, or slot issues force a cancellation.</p>
@@ -1581,7 +1581,7 @@ export const AdminDashboard: React.FC = () => {
                   <button
                     onClick={() => handleUpdateEmailSetting({ notifyBookingCancelled: !emailSettings?.notifyBookingCancelled })}
                     disabled={savingEmailSettings || !emailSettings?.masterEnabled}
-                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 ${
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 self-end min-[380px]:self-auto ${
                       emailSettings?.notifyBookingCancelled && emailSettings?.masterEnabled ? 'bg-sky-600' : 'bg-slate-300'
                     }`}
                   >
@@ -1592,9 +1592,9 @@ export const AdminDashboard: React.FC = () => {
                 </div>
 
                 {/* 4. Owner Daily Summary */}
-                <div className="p-3.5 bg-slate-50 hover:bg-slate-50/80 border border-slate-200/80 rounded-2xl flex items-center justify-between gap-3 transition-colors">
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-2">
+                <div className="p-3.5 bg-slate-50 hover:bg-slate-50/80 border border-slate-200/80 rounded-2xl flex flex-col min-[380px]:flex-row min-[380px]:items-center justify-between gap-3 transition-colors">
+                  <div className="space-y-0.5 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="text-xs font-bold text-slate-800">Owner Daily Schedule Digest</span>
                       <span className="bg-slate-200 text-slate-700 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider">1 / day</span>
                     </div>
@@ -1603,7 +1603,7 @@ export const AdminDashboard: React.FC = () => {
                   <button
                     onClick={() => handleUpdateEmailSetting({ notifyDailyOwnerDigest: !emailSettings?.notifyDailyOwnerDigest })}
                     disabled={savingEmailSettings || !emailSettings?.masterEnabled}
-                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 ${
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 self-end min-[380px]:self-auto ${
                       emailSettings?.notifyDailyOwnerDigest && emailSettings?.masterEnabled ? 'bg-sky-600' : 'bg-slate-300'
                     }`}
                   >
@@ -1614,9 +1614,9 @@ export const AdminDashboard: React.FC = () => {
                 </div>
 
                 {/* 5. Expiry Notification Emails Toggle */}
-                <div className="p-3.5 bg-slate-50 hover:bg-slate-50/80 border border-slate-200/80 rounded-2xl flex items-center justify-between gap-3 transition-colors" id="admin-expiry-email-toggle-card">
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-2">
+                <div className="p-3.5 bg-slate-50 hover:bg-slate-50/80 border border-slate-200/80 rounded-2xl flex flex-col min-[380px]:flex-row min-[380px]:items-center justify-between gap-3 transition-colors" id="admin-expiry-email-toggle-card">
+                  <div className="space-y-0.5 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="text-xs font-bold text-slate-800">Enable Expiry Notification Emails</span>
                       <span className="bg-amber-100 text-amber-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider">Automated Alerts</span>
                     </div>
@@ -1628,7 +1628,7 @@ export const AdminDashboard: React.FC = () => {
                     type="button"
                     onClick={() => handleUpdateEmailSetting({ notifySubscriptionExpiry: !(emailSettings?.notifySubscriptionExpiry !== false) })}
                     disabled={savingEmailSettings || !emailSettings?.masterEnabled}
-                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 ${
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 self-end min-[380px]:self-auto ${
                       (emailSettings?.notifySubscriptionExpiry !== false) && emailSettings?.masterEnabled ? 'bg-sky-600' : 'bg-slate-300'
                     }`}
                     id="admin-toggle-expiry-emails-btn"
@@ -1643,11 +1643,11 @@ export const AdminDashboard: React.FC = () => {
             </div>
 
             {/* Provider Switcher & Quota Gauge (5 Cols) */}
-            <div className="lg:col-span-5 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-3xl p-6 text-white shadow-md flex flex-col justify-between space-y-5">
+            <div className="lg:col-span-5 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-3xl p-4 sm:p-6 text-white shadow-md flex flex-col justify-between space-y-5">
               <div className="space-y-4">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2 text-sky-400 text-xs font-extrabold uppercase tracking-wider">
-                    <Server className="h-4 w-4" /> Email Delivery Engine
+                    <Server className="h-4 w-4 shrink-0" /> Email Delivery Engine
                   </div>
                   <span className="text-[10px] font-mono bg-slate-800 px-2 py-0.5 rounded-full text-slate-400">
                     {quotaStatus?.date || new Date().toISOString().slice(0, 10)}
@@ -1669,8 +1669,8 @@ export const AdminDashboard: React.FC = () => {
 
                   return (
                     <div className="bg-slate-800/90 border border-slate-700/80 rounded-2xl p-4 space-y-2.5">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-slate-300 font-semibold flex items-center gap-1.5">
+                      <div className="flex flex-wrap items-center justify-between gap-1.5 text-xs">
+                        <span className="text-slate-300 font-semibold flex flex-wrap items-center gap-1.5">
                           Daily Quota Usage:
                           {isCapped ? (
                             <span className="text-[10px] bg-rose-950 text-rose-300 border border-rose-800 px-2 py-0.5 rounded-full font-bold">
@@ -1686,7 +1686,7 @@ export const AdminDashboard: React.FC = () => {
                             </span>
                           )}
                         </span>
-                        <span className="font-mono font-bold text-white">
+                        <span className="font-mono font-bold text-white shrink-0">
                           {sent} / {limit} sent
                         </span>
                       </div>
@@ -1701,9 +1701,9 @@ export const AdminDashboard: React.FC = () => {
                         />
                       </div>
 
-                      <div className="flex items-center justify-between text-[11px] text-slate-400 pt-0.5">
+                      <div className="flex flex-wrap items-center justify-between gap-1.5 text-[11px] text-slate-400 pt-0.5">
                         <span className="flex items-center gap-1 text-emerald-400 font-medium">
-                          <ShieldCheck className="h-3.5 w-3.5" /> 25 OTPs Reserved
+                          <ShieldCheck className="h-3.5 w-3.5 shrink-0" /> 25 OTPs Reserved
                         </span>
                         <span className={isCapped ? 'text-rose-400 font-bold' : isNearLimit ? 'text-amber-400 font-bold' : ''}>
                           {notifsLeft} notifications left
@@ -1733,7 +1733,7 @@ export const AdminDashboard: React.FC = () => {
                 {/* Active Provider Selector */}
                 <div className="space-y-2">
                   <label className="block text-xs font-bold text-slate-300 uppercase tracking-wide">Select Active Provider</label>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-1 min-[360px]:grid-cols-3 gap-2">
                     <button
                       onClick={() => handleUpdateEmailSetting({ activeProvider: 'RESEND', dailyQuotaLimit: 100 })}
                       disabled={savingEmailSettings}
@@ -1778,9 +1778,9 @@ export const AdminDashboard: React.FC = () => {
                 {/* Free Gmail SMTP Config Section */}
                 {emailSettings?.activeProvider === 'GMAIL_SMTP' && (
                   <div className="bg-slate-800/80 border border-slate-700 rounded-2xl p-3.5 space-y-2.5 text-xs text-slate-300">
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                       <span className="font-bold text-emerald-400 text-[11px] flex items-center gap-1">
-                        <Zap className="h-3.5 w-3.5" /> Gmail 16-Char App Password
+                        <Zap className="h-3.5 w-3.5 shrink-0" /> Gmail 16-Char App Password
                       </span>
                       <button
                         onClick={() => setShowGmailConfigForm(!showGmailConfigForm)}
@@ -1821,13 +1821,13 @@ export const AdminDashboard: React.FC = () => {
                         <label className="block text-[10px] font-bold text-slate-300 uppercase">
                           16-Character App Password
                         </label>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-col min-[360px]:flex-row items-stretch min-[360px]:items-center gap-2">
                           <input
                             type="password"
                             placeholder="Paste 16-character App Password (e.g. abcd efgh ijkl mnop)"
                             value={gmailAppPassInput}
                             onChange={(e) => setGmailAppPassInput(e.target.value)}
-                            className="flex-1 bg-slate-900 border border-slate-700 px-3 py-1.5 rounded-xl text-xs font-mono text-white outline-none focus:border-emerald-500"
+                            className="flex-1 min-w-0 bg-slate-900 border border-slate-700 px-3 py-1.5 rounded-xl text-xs font-mono text-white outline-none focus:border-emerald-500"
                           />
                           <button
                             onClick={() => handleUpdateEmailSetting({
@@ -1835,7 +1835,7 @@ export const AdminDashboard: React.FC = () => {
                               gmailAppPassword: gmailAppPassInput.trim(),
                             })}
                             disabled={savingEmailSettings || !gmailAppPassInput.trim()}
-                            className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs font-bold px-3 py-1.5 rounded-xl transition-colors cursor-pointer"
+                            className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs font-bold px-3 py-1.5 rounded-xl transition-colors cursor-pointer shrink-0"
                           >
                             Save
                           </button>
@@ -1847,7 +1847,7 @@ export const AdminDashboard: React.FC = () => {
 
                 {/* Sender Address (From) & Reply-To Configuration */}
                 <div className="bg-slate-800/80 border border-slate-700 rounded-2xl p-3.5 space-y-2.5 text-xs text-slate-300">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="font-bold text-sky-400 text-[11px] flex items-center gap-1">
                       <Mail className="h-3.5 w-3.5" /> Sender Address & Reply-To
                     </span>
@@ -1909,10 +1909,10 @@ export const AdminDashboard: React.FC = () => {
                       </div>
                     </div>
                   ) : (
-                    <div className="text-[10px] text-slate-400 flex items-center justify-between">
-                      <span className="truncate">From: <strong className="text-slate-200 font-mono">{emailSettings?.emailFromAddress || 'AutoShine BN <onboarding@resend.dev>'}</strong></span>
+                    <div className="text-[10px] text-slate-400 flex flex-wrap items-center justify-between gap-1">
+                      <span className="truncate max-w-full">From: <strong className="text-slate-200 font-mono">{emailSettings?.emailFromAddress || 'AutoShine BN <onboarding@resend.dev>'}</strong></span>
                       {emailSettings?.replyToAddress && (
-                        <span className="truncate ml-2 text-slate-400">Reply: <strong className="text-sky-300 font-mono">{emailSettings.replyToAddress}</strong></span>
+                        <span className="truncate max-w-full text-slate-400">Reply: <strong className="text-sky-300 font-mono">{emailSettings.replyToAddress}</strong></span>
                       )}
                     </div>
                   )}
@@ -1920,7 +1920,7 @@ export const AdminDashboard: React.FC = () => {
               </div>
 
               {/* Status footer banner */}
-              <div className="text-[11px] text-slate-400 pt-1 border-t border-slate-800 flex items-center justify-between">
+              <div className="text-[11px] text-slate-400 pt-1 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2">
                 <span>Active: <strong className="text-white">{emailSettings?.activeProvider}</strong></span>
                 <span>Circuit Breaker: <strong className="text-emerald-400">Armed</strong></span>
               </div>
@@ -1930,19 +1930,19 @@ export const AdminDashboard: React.FC = () => {
           {/* Middle Row: Test Email Dispatch Form */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* Live Email Testing Form */}
-            <div className="lg:col-span-12 bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-blue-50 text-blue-600 rounded-2xl">
+            <div className="lg:col-span-12 bg-white border border-slate-200 rounded-3xl p-4 sm:p-6 shadow-sm space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="p-2.5 bg-blue-50 text-blue-600 rounded-2xl shrink-0">
                     <Send className="h-5 w-5" />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <h2 className="text-base font-bold text-slate-800">Dispatch Test Email</h2>
                     <p className="text-xs text-slate-400">Send transactional test messages to verify your active provider ({emailSettings?.activeProvider || 'Sandbox'})</p>
                   </div>
                 </div>
 
-                <span className="text-xs font-mono px-2.5 py-1 bg-slate-100 text-slate-700 rounded-xl font-bold">
+                <span className="text-xs font-mono px-2.5 py-1 bg-slate-100 text-slate-700 rounded-xl font-bold shrink-0">
                   Target Engine: {emailSettings?.activeProvider}
                 </span>
               </div>
@@ -1998,7 +1998,7 @@ export const AdminDashboard: React.FC = () => {
                   <button
                     type="submit"
                     disabled={sendingTestEmail}
-                    className="bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-sm transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                    className="w-full sm:w-auto bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-sm transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                   >
                     {sendingTestEmail ? (
                       <>
@@ -2016,12 +2016,14 @@ export const AdminDashboard: React.FC = () => {
           </div>
 
           {/* Email Logs Table */}
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+          <div className="bg-white border border-slate-200 rounded-3xl p-4 sm:p-6 shadow-sm space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+              <div className="min-w-0">
                 <h2 className="text-base font-bold text-slate-800">Email Dispatch History & Delivery Logs</h2>
-                <p className="text-xs text-slate-400">Captured transactional emails dispatched across the system ({emailLogs.length} recent records • Automatically capped at max 50 to prevent buildup)</p>
+                <p className="text-xs text-slate-400 mt-0.5">Captured transactional emails dispatched across the system ({emailLogs.length} recent records • Automatically capped at max 50 to prevent buildup)</p>
+              </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
                 <button
                   onClick={fetchEmailLogs}
                   disabled={emailLogsLoading}
@@ -2132,47 +2134,47 @@ export const AdminDashboard: React.FC = () => {
 
           {/* Email Preview Modal */}
           {selectedEmailPreview && (
-            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-              <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[85vh] flex flex-col">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                  <div>
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4">
+              <div className="bg-white rounded-2xl sm:rounded-3xl max-w-2xl w-full p-4 sm:p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[92vh] sm:max-h-[85vh] flex flex-col overflow-hidden">
+                <div className="flex items-start justify-between gap-2 pb-3 border-b border-slate-100 shrink-0">
+                  <div className="min-w-0">
                     <span className="text-[10px] font-extrabold uppercase bg-sky-100 text-sky-800 px-2 py-0.5 rounded-full">
                       Email Content Preview
                     </span>
-                    <h3 className="text-base font-bold text-slate-800 mt-1">{selectedEmailPreview.subject}</h3>
-                    <p className="text-xs text-slate-400">
+                    <h3 className="text-sm sm:text-base font-bold text-slate-800 mt-1 break-words">{selectedEmailPreview.subject}</h3>
+                    <p className="text-xs text-slate-400 break-words">
                       To: {selectedEmailPreview.to} | Sent: {new Date(selectedEmailPreview.timestamp).toLocaleString()} | Provider: {selectedEmailPreview.provider}
                     </p>
                   </div>
                   <button
                     onClick={() => setSelectedEmailPreview(null)}
-                    className="p-2 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-xl transition-colors cursor-pointer"
+                    className="p-2 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-xl transition-colors cursor-pointer shrink-0"
                   >
                     <X className="h-5 w-5" />
                   </button>
                 </div>
 
                 {selectedEmailPreview.errorDetails && (
-                  <div className="bg-rose-50 border border-rose-200 text-rose-800 p-3 rounded-2xl text-xs flex items-start gap-2.5">
+                  <div className="bg-rose-50 border border-rose-200 text-rose-800 p-3 rounded-2xl text-xs flex items-start gap-2.5 shrink-0">
                     <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600 mt-0.5" />
-                    <div>
+                    <div className="min-w-0">
                       <strong className="block font-bold">Failure / Diagnostic Reason:</strong>
                       <p className="font-mono text-[11px] text-rose-700 mt-0.5 break-all">{selectedEmailPreview.errorDetails}</p>
                     </div>
                   </div>
                 )}
 
-                <div className="flex-1 overflow-y-auto bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                <div className="flex-1 min-h-0 overflow-y-auto overflow-x-auto bg-slate-50 border border-slate-200 rounded-2xl p-3 sm:p-4 overscroll-contain">
                   <div
                     className="email-html-preview"
                     dangerouslySetInnerHTML={{ __html: selectedEmailPreview.html }}
                   />
                 </div>
 
-                <div className="pt-2 flex justify-end">
+                <div className="pt-2 flex justify-end shrink-0">
                   <button
                     onClick={() => setSelectedEmailPreview(null)}
-                    className="bg-slate-900 text-white font-bold text-xs px-5 py-2.5 rounded-xl cursor-pointer hover:bg-slate-800 transition-colors"
+                    className="w-full sm:w-auto bg-slate-900 text-white font-bold text-xs px-5 py-2.5 rounded-xl cursor-pointer hover:bg-slate-800 transition-colors"
                   >
                     Close Preview
                   </button>
@@ -2185,7 +2187,7 @@ export const AdminDashboard: React.FC = () => {
 
       {/* Sub Tab: Businesses */}
       {activeSubTab === 'businesses' && (
-        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
+        <div className="bg-white border border-slate-200 rounded-3xl p-4 sm:p-6 shadow-sm">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 mb-6">
             <div>
               <h2 className="text-base sm:text-lg font-bold text-slate-800">System Marketplace Directory</h2>
@@ -2193,28 +2195,28 @@ export const AdminDashboard: React.FC = () => {
             </div>
             <button
               onClick={() => setShowOnboardModal(true)}
-              className="bg-red-600 hover:bg-red-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-md transition-colors flex items-center gap-1.5 cursor-pointer"
+              className="w-full sm:w-auto bg-red-600 hover:bg-red-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-md transition-colors flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
               id="admin-onboard-business-trigger"
             >
               <Plus className="h-4 w-4" /> Onboard Business & Owner
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
             {locations.map((loc) => (
               <div key={loc.id} className="border border-slate-150 p-4 rounded-2xl flex flex-col justify-between hover:border-slate-300 bg-slate-50/50">
                 <div>
                   <div className="flex items-start justify-between gap-2">
-                    <h3 className="font-bold text-slate-800">{loc.name}</h3>
-                    <span className="bg-red-50 text-red-700 border border-red-100 font-mono text-[9px] font-bold px-1.5 py-0.5 rounded">
+                    <h3 className="font-bold text-slate-800 min-w-0 break-words">{loc.name}</h3>
+                    <span className="bg-red-50 text-red-700 border border-red-100 font-mono text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0">
                       ID: {loc.id}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-500 mt-1">{loc.address}</p>
-                  <p className="text-xs text-slate-600 mt-2 line-clamp-2">{loc.description}</p>
+                  <p className="text-xs text-slate-500 mt-1 break-words">{loc.address}</p>
+                  <p className="text-xs text-slate-600 mt-2 line-clamp-2 break-words">{loc.description}</p>
                 </div>
 
-                <div className="border-t border-slate-100 pt-3 mt-4 flex items-center justify-between">
+                <div className="border-t border-slate-100 pt-3 mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-[11px] text-slate-400 font-medium">
                     <span>Slot: {loc.slotDuration} min</span>
                     <span>Capacity: {loc.capacityPerSlot} cap</span>
@@ -2257,7 +2259,7 @@ export const AdminDashboard: React.FC = () => {
                       {loc.membershipEnabled ? '⭐ Loyalty: Enabled' : '⭐ Loyalty: Disabled'}
                     </button>
                   </div>
-                  <div className="flex items-center gap-1.5 sm:gap-2">
+                  <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 shrink-0">
                     <button
                       type="button"
                       onClick={() => setOperationsModalCarWash(loc)}
@@ -2310,19 +2312,19 @@ export const AdminDashboard: React.FC = () => {
       {activeSubTab === 'memberships' && (
         <div className="space-y-6 animate-fade-in" id="admin-memberships-management-section">
           {/* Header Banner */}
-          <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <div>
+          <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-4 sm:p-8 text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6">
+            <div className="min-w-0">
               <div className="inline-flex items-center gap-1.5 bg-indigo-500/20 border border-indigo-400/30 px-3 py-1 rounded-full text-indigo-300 text-xs font-semibold mb-2">
-                <Award className="h-3.5 w-3.5" />
+                <Award className="h-3.5 w-3.5 shrink-0" />
                 <span>Multi-Tenant Loyalty Platform Administration</span>
               </div>
-              <h2 className="text-2xl sm:text-3xl font-black">Customer Loyalty &amp; Rewards Programmes</h2>
+              <h2 className="text-xl sm:text-3xl font-black">Customer Loyalty &amp; Rewards Programmes</h2>
               <p className="text-xs sm:text-sm text-slate-300 max-w-xl mt-1">
                 Centrally activate or deactivate the customer rewards club for each car wash partner in Brunei.
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 shrink-0">
+            <div className="grid grid-cols-1 min-[340px]:grid-cols-2 gap-3 shrink-0">
               <div className="bg-white/10 backdrop-blur-md border border-white/20 px-4 py-3 rounded-2xl text-center">
                 <span className="text-[10px] uppercase font-bold text-slate-300 block">Programmes Active</span>
                 <span className="text-2xl font-black text-emerald-400">
@@ -2354,7 +2356,7 @@ export const AdminDashboard: React.FC = () => {
           </div>
 
           {/* Facilities List Table */}
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+          <div className="bg-white border border-slate-200 rounded-3xl p-4 sm:p-6 shadow-sm space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
               <div>
                 <h3 className="font-bold text-slate-900 text-base">Registered Car Wash Facilities ({locations.length})</h3>
@@ -2368,7 +2370,7 @@ export const AdminDashboard: React.FC = () => {
 
                 return (
                   <div key={loc.id} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50/50 px-2 rounded-2xl transition-colors">
-                    <div className="flex items-start gap-3">
+                    <div className="flex items-start gap-3 min-w-0">
                       <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border ${
                         isEnabled
                           ? 'bg-indigo-100 text-indigo-700 border-indigo-200'
@@ -2379,8 +2381,8 @@ export const AdminDashboard: React.FC = () => {
 
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <h4 className="font-extrabold text-slate-900 text-sm">{loc.name}</h4>
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                          <h4 className="font-extrabold text-slate-900 text-sm break-words">{loc.name}</h4>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider shrink-0 ${
                             isEnabled
                               ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
                               : 'bg-slate-100 text-slate-600 border border-slate-200'
@@ -2393,7 +2395,7 @@ export const AdminDashboard: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                    <div className="flex flex-wrap items-center gap-2 shrink-0 self-end sm:self-center">
                       <button
                         type="button"
                         onClick={async () => {
@@ -2440,16 +2442,16 @@ export const AdminDashboard: React.FC = () => {
 
       {/* Sub Tab: Presets */}
       {activeSubTab === 'presets' && (
-        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
+        <div className="bg-white border border-slate-200 rounded-3xl p-4 sm:p-6 shadow-sm">
           <div className="pb-4 border-b border-slate-100 mb-6">
             <h2 className="text-base sm:text-lg font-bold text-slate-800">Map Presets Management</h2>
             <p className="text-xs text-slate-400">Add or remove geographical shortcut buttons used on the customer search map</p>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
             {/* Form to Add Preset */}
             <div className="lg:col-span-5 space-y-4">
-              <div className="bg-slate-50 border border-slate-150 p-5 rounded-2xl">
+              <div className="bg-slate-50 border border-slate-150 p-4 sm:p-5 rounded-2xl">
                 <h3 className="font-bold text-slate-800 text-sm mb-4 flex items-center gap-1.5">
                   <Plus className="h-4 w-4 text-red-600" /> Create Shortcut Preset
                 </h3>
@@ -2493,7 +2495,7 @@ export const AdminDashboard: React.FC = () => {
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 min-[360px]:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Latitude</label>
                       <input
@@ -2523,7 +2525,7 @@ export const AdminDashboard: React.FC = () => {
                   {/* Visual Map Assist */}
                   <div className="space-y-1.5">
                     <label className="block text-[10px] font-bold text-slate-400 uppercase">Map Assist (Click to Pin Coordinates)</label>
-                    <div className="h-[450px] sm:h-[320px] rounded-xl border border-slate-200 overflow-hidden relative shadow-inner">
+                    <div className="h-[280px] sm:h-[320px] rounded-xl border border-slate-200 overflow-hidden relative shadow-inner">
                       <MapSimulation
                         locations={locations}
                         interactiveSelectCoords={{ lat: parseFloat(newPresetLat) || 4.8917, lng: parseFloat(newPresetLng) || 114.9401 }}
@@ -2555,7 +2557,7 @@ export const AdminDashboard: React.FC = () => {
 
             {/* List of presets */}
             <div className="lg:col-span-7 space-y-4">
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex flex-wrap items-center justify-between gap-1.5 mb-2">
                 <h3 className="font-bold text-slate-800 text-sm">Active Map Presets ({presets.length})</h3>
                 <span className="text-xs text-slate-400">Total shortcuts shown on map page</span>
               </div>
@@ -2571,16 +2573,16 @@ export const AdminDashboard: React.FC = () => {
                   presets.map((preset) => (
                     <div
                       key={preset.id}
-                      className="flex items-center justify-between bg-white border border-slate-200 hover:border-slate-300 p-3.5 rounded-2xl shadow-3xs transition-all"
+                      className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 bg-white border border-slate-200 hover:border-slate-300 p-3.5 rounded-2xl shadow-3xs transition-all"
                     >
-                      <div className="flex items-center gap-3">
-                        <div className="h-9 w-9 rounded-xl bg-slate-100 flex items-center justify-center text-sky-600">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="h-9 w-9 rounded-xl bg-slate-100 flex items-center justify-center text-sky-600 shrink-0">
                           <MapPin className="h-5 w-5" />
                         </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-slate-800 text-xs sm:text-sm">{preset.name}</span>
-                            <span className="bg-slate-100 text-slate-600 text-[9px] px-1.5 py-0.5 rounded font-bold uppercase">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-bold text-slate-800 text-xs sm:text-sm break-words">{preset.name}</span>
+                            <span className="bg-slate-100 text-slate-600 text-[9px] px-1.5 py-0.5 rounded font-bold uppercase shrink-0">
                               {preset.country}
                             </span>
                           </div>
@@ -2591,7 +2593,7 @@ export const AdminDashboard: React.FC = () => {
                       </div>
 
                       {deletingPresetId === preset.id ? (
-                        <div className="flex items-center gap-1.5 animate-fade-in bg-rose-50 border border-rose-100 p-1.5 rounded-lg">
+                        <div className="flex items-center gap-1.5 animate-fade-in bg-rose-50 border border-rose-100 p-1.5 rounded-lg shrink-0">
                           <span className="text-[10px] font-bold text-rose-700 px-1">Delete preset?</span>
                           <button
                             onClick={async () => {
@@ -2612,7 +2614,7 @@ export const AdminDashboard: React.FC = () => {
                       ) : (
                         <button
                           onClick={() => setDeletingPresetId(preset.id)}
-                          className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 text-[10px] font-bold rounded-lg cursor-pointer transition-colors"
+                          className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 text-[10px] font-bold rounded-lg cursor-pointer transition-colors shrink-0"
                           title="Delete shortcut preset"
                         >
                           Delete
@@ -2629,7 +2631,7 @@ export const AdminDashboard: React.FC = () => {
 
       {/* Sub Tab: Autoshine Global Information & Enquiry Management */}
       {activeSubTab === 'info' && (
-        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-6">
+        <div className="bg-white border border-slate-200 rounded-3xl p-4 sm:p-6 shadow-sm space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
             <div>
               <h2 className="text-base sm:text-lg font-bold text-slate-800 flex items-center gap-2">
@@ -2800,12 +2802,12 @@ export const AdminDashboard: React.FC = () => {
 
                 {/* Administrator 2FA Security Enforcement Card */}
                 <div className="p-4 bg-rose-50/60 border border-rose-200 rounded-2xl space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                      <div className="p-2 bg-rose-100 rounded-xl text-rose-700">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="p-2 bg-rose-100 rounded-xl text-rose-700 shrink-0">
                         <ShieldAlert className="w-5 h-5" />
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <h4 className="text-xs sm:text-sm font-bold text-slate-800">
                           Administrator 2FA Security Enforcement
                         </h4>
@@ -2833,7 +2835,7 @@ export const AdminDashboard: React.FC = () => {
                         type="checkbox"
                         checked={infoAdminOtpRequired}
                         onChange={(e) => setInfoAdminOtpRequired(e.target.checked)}
-                        className="w-4 h-4 text-rose-600 rounded border-slate-300 focus:ring-rose-500 cursor-pointer"
+                        className="w-4 h-4 text-rose-600 rounded border-slate-300 focus:ring-rose-500 cursor-pointer shrink-0"
                         id="toggle-admin-otp-checkbox"
                       />
                       <span className="text-xs font-semibold text-slate-700">
@@ -2845,7 +2847,7 @@ export const AdminDashboard: React.FC = () => {
                       type="button"
                       disabled={togglingOtp}
                       onClick={() => handleDirectToggleOtp(!infoAdminOtpRequired)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer flex items-center gap-1.5 ${
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer flex items-center gap-1.5 shrink-0 ${
                         infoAdminOtpRequired
                           ? 'bg-amber-600 hover:bg-amber-500 text-white'
                           : 'bg-emerald-600 hover:bg-emerald-500 text-white'
@@ -2871,7 +2873,7 @@ export const AdminDashboard: React.FC = () => {
                   <button
                     type="submit"
                     disabled={infoSaving}
-                    className="px-5 py-2.5 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+                    className="w-full sm:w-auto px-5 py-2.5 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                     id="save-platform-info-btn"
                   >
                     {infoSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
@@ -2884,12 +2886,12 @@ export const AdminDashboard: React.FC = () => {
             {/* Right Column: Live Login Screen Card Preview */}
             <div className="lg:col-span-5 space-y-4">
               <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-200/80 pb-3">
-                  <div className="flex items-center gap-2">
-                    <Eye className="w-4 h-4 text-slate-500" />
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 pb-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Eye className="w-4 h-4 text-slate-500 shrink-0" />
                     <span className="font-bold text-xs text-slate-700 uppercase tracking-wider">Live Preview: Login Page Card</span>
                   </div>
-                  <span className="text-[9px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded font-mono">Public View</span>
+                  <span className="text-[9px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded font-mono shrink-0">Public View</span>
                 </div>
 
                 <p className="text-[11px] text-slate-500">
@@ -2899,7 +2901,7 @@ export const AdminDashboard: React.FC = () => {
                 {/* Actual Card Render */}
                 <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm text-center space-y-2">
                   <div className="flex items-center justify-center gap-1.5 text-slate-800 font-extrabold text-xs sm:text-sm">
-                    <div className="p-1 bg-sky-100 text-sky-700 rounded-lg">
+                    <div className="p-1 bg-sky-100 text-sky-700 rounded-lg shrink-0">
                       <Building className="w-3.5 h-3.5" />
                     </div>
                     <span>Carwash Owner &amp; Business Enquiry</span>
@@ -2909,19 +2911,19 @@ export const AdminDashboard: React.FC = () => {
                   </p>
                   <div className="flex flex-col gap-2 pt-1">
                     {infoEmail && (
-                      <div className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-50 text-sky-700 font-bold text-xs border border-sky-200">
+                      <div className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-50 text-sky-700 font-bold text-xs border border-sky-200 min-w-0">
                         <Mail className="w-3.5 h-3.5 shrink-0" />
                         <span className="truncate">{infoEmail}</span>
                       </div>
                     )}
                     {(infoWhatsapp || infoContact) && (
-                      <div className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 font-bold text-xs border border-emerald-200">
+                      <div className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 font-bold text-xs border border-emerald-200 min-w-0">
                         <Phone className="w-3.5 h-3.5 shrink-0" />
-                        <span>WhatsApp: {infoWhatsapp || infoContact}</span>
+                        <span className="truncate">WhatsApp: {infoWhatsapp || infoContact}</span>
                       </div>
                     )}
                     {infoAddress && (
-                      <div className="flex items-center justify-center gap-1 text-[10px] text-slate-400 pt-1">
+                      <div className="flex items-center justify-center gap-1 text-[10px] text-slate-400 pt-1 min-w-0">
                         <MapPin className="w-3 h-3 shrink-0" />
                         <span className="truncate">{infoAddress}</span>
                       </div>
@@ -2931,31 +2933,31 @@ export const AdminDashboard: React.FC = () => {
 
                 {/* Terms & Conditions Contact Section Preview */}
                 <div className="border-t border-slate-200/80 pt-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
-                      <FileText className="w-3.5 h-3.5 text-sky-600" />
+                  <div className="flex flex-wrap items-center justify-between gap-1.5">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 min-w-0">
+                      <FileText className="w-3.5 h-3.5 text-sky-600 shrink-0" />
                       <span>Live Preview: Terms &amp; Conditions (Section 20)</span>
                     </div>
-                    <span className="text-[9px] bg-sky-100 text-sky-700 font-bold px-1.5 py-0.5 rounded">T&amp;C Section 20</span>
+                    <span className="text-[9px] bg-sky-100 text-sky-700 font-bold px-1.5 py-0.5 rounded shrink-0">T&amp;C Section 20</span>
                   </div>
                   <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2 text-left text-xs">
                     <p className="text-[11px] text-slate-500 font-medium">For enquiries, support, or complaints, please contact:</p>
                     <div className="space-y-1.5 pl-1">
-                      <div className="flex items-center gap-2 font-bold text-slate-800">
+                      <div className="flex items-center gap-2 font-bold text-slate-800 min-w-0">
                         <Building className="w-3.5 h-3.5 text-sky-600 shrink-0" />
-                        <span>{infoCompanyName || 'AUTOSHINE BN'}</span>
+                        <span className="break-words">{infoCompanyName || 'AUTOSHINE BN'}</span>
                       </div>
-                      <div className="flex items-center gap-2 text-slate-600 text-[11px]">
+                      <div className="flex items-center gap-2 text-slate-600 text-[11px] min-w-0">
                         <Mail className="w-3.5 h-3.5 text-sky-600 shrink-0" />
-                        <span>Email: <strong className="text-sky-600">{infoEmail || 'info@autoshinebn.com'}</strong></span>
+                        <span className="min-w-0 break-all">Email: <strong className="text-sky-600">{infoEmail || 'info@autoshinebn.com'}</strong></span>
                       </div>
-                      <div className="flex items-center gap-2 text-slate-600 text-[11px]">
+                      <div className="flex items-center gap-2 text-slate-600 text-[11px] min-w-0">
                         <Phone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                        <span>WhatsApp: <strong className="text-emerald-700">{infoWhatsapp || infoContact || '+673 8974459'}</strong></span>
+                        <span className="min-w-0 break-words">WhatsApp: <strong className="text-emerald-700">{infoWhatsapp || infoContact || '+673 8974459'}</strong></span>
                       </div>
-                      <div className="flex items-start gap-2 text-slate-600 text-[11px]">
+                      <div className="flex items-start gap-2 text-slate-600 text-[11px] min-w-0">
                         <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0 mt-0.5" />
-                        <span>Address: <strong className="text-slate-800 font-medium">{infoAddress || 'Unit 1, 1st Floor Block C, Kiarong Complex BSB BE1318'}</strong></span>
+                        <span className="min-w-0 break-words">Address: <strong className="text-slate-800 font-medium">{infoAddress || 'Unit 1, 1st Floor Block C, Kiarong Complex BSB BE1318'}</strong></span>
                       </div>
                     </div>
                   </div>
@@ -2970,9 +2972,9 @@ export const AdminDashboard: React.FC = () => {
       {activeSubTab === 'system' && (
         <div className="space-y-6 animate-fade-in text-xs sm:text-sm">
           {/* Main Info Banner */}
-          <div className="bg-slate-950 text-white border border-slate-800 rounded-3xl p-6 shadow-lg">
+          <div className="bg-slate-950 text-white border border-slate-800 rounded-3xl p-4 sm:p-6 shadow-lg">
             <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
-              <Server className="h-5 w-5 text-red-500 animate-pulse" /> System & Database Integration Diagnostics
+              <Server className="h-5 w-5 text-red-500 animate-pulse shrink-0" /> System & Database Integration Diagnostics
             </h2>
             <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">
               Real-time monitoring of your production database connections, third-party credentials, mail dispatch relays, and infrastructure synchronicity. Use this operator room to troubleshoot hosting configurations.
@@ -2983,7 +2985,7 @@ export const AdminDashboard: React.FC = () => {
             {/* Left Column: Database Status & Stats */}
             <div className="lg:col-span-7 space-y-6">
               {/* Database Connection Card */}
-              <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+              <div className="bg-white border border-slate-200 rounded-3xl p-4 sm:p-6 shadow-sm space-y-4">
                 <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                   <div className="flex items-center gap-2">
                     <Database className="h-5 w-5 text-slate-700" />
@@ -3086,7 +3088,7 @@ export const AdminDashboard: React.FC = () => {
                     {/* Stats counts */}
                     <div className="pt-4 border-t border-slate-100">
                       <h4 className="font-bold text-slate-700 text-xs mb-3">Database Records Count</h4>
-                      <div className="grid grid-cols-3 gap-3">
+                      <div className="grid grid-cols-1 min-[360px]:grid-cols-3 gap-2.5 sm:gap-3">
                         <div className="bg-slate-50 border border-slate-100 p-3 rounded-xl text-center">
                           <span className="text-[10px] text-slate-400 font-bold block uppercase">Users</span>
                           <span className="text-base font-black text-slate-800 font-mono mt-0.5 block">{systemStatus.database.stats.usersCount}</span>
@@ -3106,17 +3108,17 @@ export const AdminDashboard: React.FC = () => {
               </div>
 
               {/* Supabase OAuth & Auth Service Indicator */}
-              <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+              <div className="bg-white border border-slate-200 rounded-3xl p-4 sm:p-6 shadow-sm space-y-4">
                 <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
-                  <Lock className="h-5 w-5 text-slate-700" />
+                  <Lock className="h-5 w-5 text-slate-700 shrink-0" />
                   <h3 className="font-bold text-slate-800 text-sm">Supabase Authentication Integration</h3>
                 </div>
 
                 {systemStatus && (
                   <div className="space-y-3.5 text-xs">
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-wrap items-center justify-between gap-1.5">
                       <span className="text-slate-500 font-medium">Supabase Auth Provider Hook:</span>
-                      <span className={`px-2.5 py-1 rounded-full font-bold uppercase text-[10px] ${
+                      <span className={`px-2.5 py-1 rounded-full font-bold uppercase text-[10px] shrink-0 ${
                         systemStatus.supabaseAuth.enabled 
                           ? 'bg-green-50 text-green-700 border border-green-150' 
                           : 'bg-slate-100 text-slate-500 border border-slate-200'
@@ -3132,9 +3134,9 @@ export const AdminDashboard: React.FC = () => {
                       </code>
                     </div>
 
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-wrap items-center justify-between gap-1.5">
                       <span className="text-slate-500 font-medium">Service Role Bypass Key:</span>
-                      <span className={`px-2 py-0.5 rounded font-bold font-mono text-[10px] border ${
+                      <span className={`px-2 py-0.5 rounded font-bold font-mono text-[10px] border break-all ${
                         systemStatus.supabaseAuth.hasServiceKey ? 'bg-green-50 text-green-700 border-green-150' : 'bg-rose-50 text-rose-700 border-rose-150'
                       }`}>
                         {systemStatus.supabaseAuth.hasServiceKey ? 'FOUND' : 'MISSING (SUPABASE_SERVICE_ROLE_KEY)'}
@@ -3155,25 +3157,25 @@ export const AdminDashboard: React.FC = () => {
             {/* Right Column: Mail dispatcher verification */}
             <div className="lg:col-span-5 space-y-6">
               {/* Resend Email Card */}
-              <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+              <div className="bg-white border border-slate-200 rounded-3xl p-4 sm:p-6 shadow-sm space-y-4">
                 <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
-                  <Mail className="h-5 w-5 text-slate-700" />
+                  <Mail className="h-5 w-5 text-slate-700 shrink-0" />
                   <h3 className="font-bold text-slate-800 text-sm">Resend Mail Dispatcher</h3>
                 </div>
 
                 {systemStatus && (
                   <div className="space-y-4 text-xs">
-                    <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100">
-                      <div>
+                    <div className="flex items-center justify-between gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
+                      <div className="min-w-0">
                         <span className="text-[9px] uppercase font-bold text-slate-400 block">Dispatch Status</span>
-                        <span className="font-bold text-slate-700 block">{systemStatus.email.status}</span>
+                        <span className="font-bold text-slate-700 block break-words">{systemStatus.email.status}</span>
                       </div>
-                      <span className={`h-2.5 w-2.5 rounded-full ${systemStatus.email.hasApiKey ? 'bg-green-500 animate-pulse' : 'bg-slate-400'}`}></span>
+                      <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${systemStatus.email.hasApiKey ? 'bg-green-500 animate-pulse' : 'bg-slate-400'}`}></span>
                     </div>
 
                     <div>
                       <span className="text-[10px] uppercase font-bold text-slate-400 block">Sender "From" Address</span>
-                      <strong className="text-slate-700 block font-mono font-semibold mt-0.5">{systemStatus.email.fromAddress}</strong>
+                      <strong className="text-slate-700 block font-mono font-semibold mt-0.5 break-all">{systemStatus.email.fromAddress}</strong>
                     </div>
 
                     {/* Email Test Form */}
@@ -3238,7 +3240,7 @@ export const AdminDashboard: React.FC = () => {
               </div>
 
               {/* Data Schema Map & SQL Guide */}
-              <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+              <div className="bg-white border border-slate-200 rounded-3xl p-4 sm:p-6 shadow-sm space-y-4">
                 <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
                   <FileText className="h-5 w-5 text-slate-700" />
                   <h3 className="font-bold text-slate-800 text-sm">PostgreSQL Schema Map</h3>
@@ -3332,8 +3334,8 @@ export const AdminDashboard: React.FC = () => {
           {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200">
             <div>
-              <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-                <Star className="h-5 w-5 text-amber-500 fill-amber-500" />
+              <h2 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight flex flex-wrap items-center gap-2">
+                <Star className="h-5 w-5 text-amber-500 fill-amber-500 shrink-0" />
                 <span>Customer Reviews Moderation</span>
                 <span className="text-xs font-semibold bg-amber-50 text-amber-700 px-2.5 py-0.5 rounded-full border border-amber-200">
                   {adminReviews.length} {adminReviews.length === 1 ? 'Review' : 'Reviews'}
@@ -3347,7 +3349,7 @@ export const AdminDashboard: React.FC = () => {
               type="button"
               onClick={fetchAdminReviews}
               disabled={adminReviewsLoading}
-              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer self-start sm:self-auto"
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer self-start sm:self-auto shrink-0"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${adminReviewsLoading ? 'animate-spin' : ''}`} />
               <span>Refresh</span>
@@ -3355,7 +3357,7 @@ export const AdminDashboard: React.FC = () => {
           </div>
 
           {/* Filter Bar */}
-          <div className="flex flex-col sm:flex-row gap-3 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
+          <div className="flex flex-col sm:flex-row gap-3 bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 shadow-xs">
             <div className="flex-1 relative">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
@@ -3367,11 +3369,11 @@ export const AdminDashboard: React.FC = () => {
               />
             </div>
             <div className="flex items-center gap-2">
-              <Filter className="w-4 h-4 text-slate-400" />
+              <Filter className="w-4 h-4 text-slate-400 shrink-0" />
               <select
                 value={adminReviewsRatingFilter}
                 onChange={(e) => setAdminReviewsRatingFilter(e.target.value)}
-                className="text-xs border border-slate-200 rounded-xl px-3 py-2 bg-white text-slate-700 font-semibold focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-500"
+                className="w-full sm:w-auto text-xs border border-slate-200 rounded-xl px-3 py-2 bg-white text-slate-700 font-semibold focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-500"
               >
                 <option value="ALL">All Star Ratings</option>
                 <option value="5">5 Stars ★★★★★</option>
@@ -3423,11 +3425,11 @@ export const AdminDashboard: React.FC = () => {
                       key={rev.id}
                       className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-start justify-between gap-4 transition-all"
                     >
-                      <div className="space-y-2 flex-1">
+                      <div className="space-y-2 flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-xs font-black text-slate-800">{rev.customerName}</span>
                           {rev.customerEmail && (
-                            <span className="text-[11px] text-slate-400 font-mono">({rev.customerEmail})</span>
+                            <span className="text-[11px] text-slate-400 font-mono break-all">({rev.customerEmail})</span>
                           )}
                           <span className="text-[10px] text-slate-400">•</span>
                           <span className="text-[11px] text-slate-500 font-semibold">
@@ -3453,17 +3455,17 @@ export const AdminDashboard: React.FC = () => {
                         </div>
 
                         {/* Comment text */}
-                        <p className="text-xs text-slate-700 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100 font-medium">
+                        <p className="text-xs text-slate-700 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100 font-medium break-words">
                           "{rev.comment}"
                         </p>
 
                         {/* Owner Reply if present */}
                         {rev.ownerReply && (
-                          <div className="ml-4 pl-3 border-l-2 border-indigo-200 text-xs text-indigo-900 bg-indigo-50/50 p-2.5 rounded-r-xl space-y-0.5">
+                          <div className="ml-2 sm:ml-4 pl-3 border-l-2 border-indigo-200 text-xs text-indigo-900 bg-indigo-50/50 p-2.5 rounded-r-xl space-y-0.5">
                             <span className="font-bold text-[11px] text-indigo-700 block">
                               {rev.ownerReplyBy || 'Business Owner Reply'}:
                             </span>
-                            <p className="italic text-slate-600">"{rev.ownerReply}"</p>
+                            <p className="italic text-slate-600 break-words">"{rev.ownerReply}"</p>
                           </div>
                         )}
                       </div>
@@ -3492,19 +3494,19 @@ export const AdminDashboard: React.FC = () => {
 
       {/* Admin: Create User Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-50 overflow-y-auto">
-          <div className="relative my-auto bg-white rounded-2xl max-w-sm w-full border border-slate-200 shadow-2xl p-5 sm:p-6 text-left max-h-[85vh] overflow-y-auto overscroll-contain">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-6 z-50">
+          <div className="relative bg-white rounded-2xl sm:rounded-3xl max-w-sm w-full border border-slate-200 shadow-2xl text-left max-h-[92vh] sm:max-h-[85vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between gap-2 px-4 sm:px-6 pt-4 pb-3 border-b border-slate-100 shrink-0">
               <h3 className="font-bold text-slate-800 text-base">Register Profile Panel</h3>
               <button
                 onClick={() => setShowCreateModal(false)}
-                className="p-1 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 cursor-pointer"
+                className="p-1.5 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 cursor-pointer shrink-0"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateUser} className="mt-4 space-y-4 text-xs sm:text-sm">
+            <form onSubmit={handleCreateUser} className="p-4 sm:p-6 flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-4 text-xs sm:text-sm">
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Name</label>
                 <input
@@ -3584,19 +3586,19 @@ export const AdminDashboard: React.FC = () => {
 
       {/* Admin: Edit User Modal */}
       {editingUser && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-50 overflow-y-auto">
-          <div className="relative my-auto bg-white rounded-2xl max-w-sm w-full border border-slate-200 shadow-2xl p-5 sm:p-6 text-left max-h-[85vh] overflow-y-auto overscroll-contain">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-6 z-50">
+          <div className="relative bg-white rounded-2xl sm:rounded-3xl max-w-sm w-full border border-slate-200 shadow-2xl text-left max-h-[92vh] sm:max-h-[85vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between gap-2 px-4 sm:px-6 pt-4 pb-3 border-b border-slate-100 shrink-0">
               <h3 className="font-bold text-slate-800 text-base">Edit User Profile</h3>
               <button
                 onClick={() => setEditingUser(null)}
-                className="p-1 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 cursor-pointer"
+                className="p-1.5 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 cursor-pointer shrink-0"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveEdit} className="mt-4 space-y-4 text-xs sm:text-sm">
+            <form onSubmit={handleSaveEdit} className="p-4 sm:p-6 flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-4 text-xs sm:text-sm">
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Name</label>
                 <input
@@ -3653,7 +3655,7 @@ export const AdminDashboard: React.FC = () => {
 
               {editRole === Role.OWNER && (
                 <div className="p-3 bg-indigo-50/60 border border-indigo-200/80 rounded-xl space-y-2.5">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-1.5">
                     <label className="block text-xs font-bold text-indigo-950 uppercase">
                       Account Expiry Date
                     </label>
@@ -3683,7 +3685,7 @@ export const AdminDashboard: React.FC = () => {
                           setEditExpiryDate(in30Days);
                         }
                       }}
-                      className="h-4 w-4 accent-indigo-600 rounded cursor-pointer"
+                      className="h-4 w-4 accent-indigo-600 rounded cursor-pointer shrink-0"
                     />
                     <span className="text-xs font-semibold text-indigo-900">
                       Permanent Access (No Expiry Date / NULL)
@@ -3700,7 +3702,7 @@ export const AdminDashboard: React.FC = () => {
                     setEditIsActive(e.target.checked);
                     setEditStatus(e.target.checked ? 'Active' : 'Suspended');
                   }}
-                  className="h-4 w-4 accent-red-600 rounded cursor-pointer"
+                  className="h-4 w-4 accent-red-600 rounded cursor-pointer shrink-0"
                 />
                 <span className="font-semibold text-slate-700 text-xs">Active Account Status</span>
               </div>
@@ -3719,33 +3721,33 @@ export const AdminDashboard: React.FC = () => {
 
       {/* Admin: Onboard Business and Owner Modal */}
       {showOnboardModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-50 overflow-y-auto">
-          <div className="relative my-auto bg-white rounded-3xl max-w-2xl w-full border border-slate-200 shadow-2xl p-5 sm:p-6 text-left max-h-[85vh] sm:max-h-[90vh] overflow-y-auto overscroll-contain">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
-              <div>
-                <h3 className="font-bold text-slate-800 text-lg flex items-center gap-1.5">
-                  <Sparkles className="h-5 w-5 text-red-600" />
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-6 z-50">
+          <div className="relative bg-white rounded-2xl sm:rounded-3xl max-w-2xl w-full border border-slate-200 shadow-2xl text-left max-h-[92vh] sm:max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="flex items-start justify-between gap-2 px-4 sm:px-6 pt-4 sm:pt-5 pb-3 border-b border-slate-100 shrink-0">
+              <div className="min-w-0">
+                <h3 className="font-bold text-slate-800 text-base sm:text-lg flex items-center gap-1.5">
+                  <Sparkles className="h-5 w-5 text-red-600 shrink-0" />
                   Onboard Business & Owner
                 </h3>
                 <p className="text-xs text-slate-400">Register a new car wash location and create its Owner profile simultaneously.</p>
               </div>
               <button
                 onClick={() => setShowOnboardModal(false)}
-                className="p-1 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 cursor-pointer"
+                className="p-1.5 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 cursor-pointer shrink-0"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <form onSubmit={handleOnboardSubmit} className="space-y-6 text-xs sm:text-sm">
+            <form onSubmit={handleOnboardSubmit} className="p-4 sm:p-6 flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-5 sm:space-y-6 text-xs sm:text-sm">
               {/* Part 1: Owner Profile details */}
-              <div className="space-y-3 bg-slate-50/50 p-4 rounded-2xl border border-slate-100">
-                <div className="flex items-center justify-between">
+              <div className="space-y-3 bg-slate-50/50 p-3.5 sm:p-4 rounded-2xl border border-slate-100">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <h4 className="font-bold text-slate-700 text-xs uppercase tracking-wider flex items-center gap-1.5">
-                    <span className="bg-red-50 text-red-700 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold">1</span>
+                    <span className="bg-red-50 text-red-700 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0">1</span>
                     Merchant Account Profile (Owner)
                   </h4>
-                  <div className="flex items-center bg-slate-200/60 p-0.5 rounded-lg text-[10px] font-bold">
+                  <div className="flex items-center bg-slate-200/60 p-0.5 rounded-lg text-[10px] font-bold shrink-0">
                     <button
                       type="button"
                       onClick={() => setOnboardOwnerMode('new')}
@@ -3829,7 +3831,7 @@ export const AdminDashboard: React.FC = () => {
               {/* Part 2: Business Location details */}
               <div className="space-y-3">
                 <h4 className="font-bold text-slate-700 text-xs uppercase tracking-wider flex items-center gap-1.5">
-                  <span className="bg-red-50 text-red-700 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold">2</span>
+                  <span className="bg-red-50 text-red-700 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0">2</span>
                   Business Location Details (Facility)
                 </h4>
 
@@ -3876,7 +3878,7 @@ export const AdminDashboard: React.FC = () => {
                     id="admin-onboard-membership-toggle"
                     checked={onboardMembership}
                     onChange={(e) => setOnboardMembership(e.target.checked)}
-                    className="mt-0.5 w-4 h-4 text-red-600 rounded border-slate-300 focus:ring-red-500 cursor-pointer"
+                    className="mt-0.5 w-4 h-4 text-red-600 rounded border-slate-300 focus:ring-red-500 cursor-pointer shrink-0"
                   />
                   <div>
                     <label htmlFor="admin-onboard-membership-toggle" className="text-xs font-bold text-slate-800 cursor-pointer block">
@@ -3892,7 +3894,7 @@ export const AdminDashboard: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 pt-2">
                   <div className="sm:col-span-7 space-y-2">
                     <label className="block text-xs font-bold text-slate-700 uppercase">Map Placement Assist</label>
-                    <div className="rounded-2xl border border-slate-200 overflow-hidden relative h-[480px] sm:h-[400px]">
+                    <div className="rounded-2xl border border-slate-200 overflow-hidden relative h-[280px] sm:h-[400px]">
                       <MapSimulation
                         locations={[]}
                         interactiveSelectCoords={{ lat: onboardBusinessLat, lng: onboardBusinessLng }}
@@ -3942,18 +3944,18 @@ export const AdminDashboard: React.FC = () => {
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
+              <div className="pt-4 border-t border-slate-100 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3">
                 <button
                   type="button"
                   onClick={() => setShowOnboardModal(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
+                  className="w-full sm:w-auto px-4 py-2.5 sm:py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={onboardSubmitting}
-                  className="px-5 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl text-xs shadow-md transition-all cursor-pointer"
+                  className="w-full sm:w-auto px-5 py-2.5 sm:py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl text-xs shadow-md transition-all cursor-pointer"
                   id="admin-onboard-submit-btn"
                 >
                   {onboardSubmitting ? 'Onboarding...' : 'Onboard Business & Owner'}
@@ -3966,25 +3968,25 @@ export const AdminDashboard: React.FC = () => {
 
       {/* Admin: Edit Business Location Modal */}
       {editingLocation && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-50 overflow-y-auto">
-          <div className="relative my-auto bg-white rounded-3xl max-w-2xl w-full border border-slate-200 shadow-2xl p-5 sm:p-6 text-left max-h-[85vh] sm:max-h-[90vh] overflow-y-auto overscroll-contain">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
-              <div>
-                <h3 className="font-bold text-slate-800 text-lg flex items-center gap-1.5">
-                  <Edit className="h-5 w-5 text-red-600" />
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-6 z-50">
+          <div className="relative bg-white rounded-2xl sm:rounded-3xl max-w-2xl w-full border border-slate-200 shadow-2xl text-left max-h-[92vh] sm:max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="flex items-start justify-between gap-2 px-4 sm:px-6 pt-4 sm:pt-5 pb-3 border-b border-slate-100 shrink-0">
+              <div className="min-w-0">
+                <h3 className="font-bold text-slate-800 text-base sm:text-lg flex items-center gap-1.5">
+                  <Edit className="h-5 w-5 text-red-600 shrink-0" />
                   Edit Business Location
                 </h3>
                 <p className="text-xs text-slate-400">Configure parameters, schedule slot duration, capacity, and active status.</p>
               </div>
               <button
                 onClick={() => setEditingLocation(null)}
-                className="p-1 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 cursor-pointer"
+                className="p-1.5 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 cursor-pointer shrink-0"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <form onSubmit={handleEditLocationSubmit} className="space-y-6 text-xs sm:text-sm">
+            <form onSubmit={handleEditLocationSubmit} className="p-4 sm:p-6 flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-5 sm:space-y-6 text-xs sm:text-sm">
               <div className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
@@ -4125,7 +4127,7 @@ export const AdminDashboard: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 pt-2">
                   <div className="sm:col-span-7 space-y-2">
                     <label className="block text-xs font-bold text-slate-700 uppercase">Map Placement Assist</label>
-                    <div className="rounded-2xl border border-slate-200 overflow-hidden relative h-[480px] sm:h-[400px]">
+                    <div className="rounded-2xl border border-slate-200 overflow-hidden relative h-[280px] sm:h-[400px]">
                       <MapSimulation
                         locations={[]}
                         interactiveSelectCoords={{ lat: editLocLat, lng: editLocLng }}
@@ -4175,18 +4177,18 @@ export const AdminDashboard: React.FC = () => {
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
+              <div className="pt-4 border-t border-slate-100 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3">
                 <button
                   type="button"
                   onClick={() => setEditingLocation(null)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
+                  className="w-full sm:w-auto px-4 py-2.5 sm:py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={editLocSubmitting}
-                  className="px-5 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl text-xs shadow-md transition-all cursor-pointer"
+                  className="w-full sm:w-auto px-5 py-2.5 sm:py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl text-xs shadow-md transition-all cursor-pointer"
                 >
                   {editLocSubmitting ? 'Saving...' : 'Save Configuration'}
                 </button>

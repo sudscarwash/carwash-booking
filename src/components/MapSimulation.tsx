@@ -629,7 +629,7 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
       });
 
       const popupContent = `
-        <div style="min-width: 270px; max-width: 360px; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 2px;">
+        <div style="min-width: 210px; max-width: min(340px, 80vw); font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 2px;">
           <!-- Header with Initials badge and FULL car wash name with right padding so close button NEVER overlaps -->
           <div style="display: flex; align-items: flex-start; gap: 10px; margin-bottom: 8px; padding-right: 32px;">
             <div style="width: 38px; height: 38px; border-radius: 11px; background: linear-gradient(135deg, #0284c7, #2563eb); color: #ffffff; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 14px; flex-shrink: 0; box-shadow: 0 3px 8px rgba(2, 132, 199, 0.35);">
@@ -697,7 +697,7 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
         .addTo(leafletMapRef.current)
         .bindPopup(popupContent, {
           maxWidth: 380,
-          minWidth: 270,
+          minWidth: 210,
           autoPan: true,
           autoPanPaddingTopLeft: [20, 75],
           autoPanPaddingBottomRight: [20, 20],
@@ -910,13 +910,13 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
 
   const element = (
     <div className={`flex flex-col bg-slate-50 rounded-2xl border border-slate-200/80 p-2 sm:p-3 shadow-xs h-full min-h-[250px] ${
-      isMaximized ? 'fixed inset-4 bg-white z-[100] border-slate-300 shadow-2xl m-auto max-w-6xl max-h-[85vh]' : 'w-full'
+      isMaximized ? 'fixed inset-2 sm:inset-4 bg-white z-[100] border-slate-300 shadow-2xl m-auto max-w-6xl max-h-[92vh] sm:max-h-[85vh]' : 'w-full'
     }`} id="interactive-map-root">
       
       {/* Single-Row Unified Sleek Top Bar (Height ~38px, High Contrast, Always Visible) */}
       <div className="flex items-center gap-1.5 mb-2 relative z-30 flex-wrap sm:flex-nowrap">
         {/* Search Input & Areas Dropdown */}
-        <div className="relative flex-1 min-w-[180px]">
+        <div className="relative flex-1 min-w-[160px] w-full sm:w-auto sm:min-w-[180px]">
           <div className="relative flex items-center">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
             <input
@@ -1352,7 +1352,7 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
         </div>
 
         {/* Sleek Floating Action Controls (Bottom-Right, Compact, Non-Obtrusive) */}
-        <div className="absolute bottom-2.5 right-2.5 flex items-center gap-1.5 border border-slate-200/90 bg-white/95 backdrop-blur-md p-1 rounded-full shadow-lg z-20 pointer-events-auto">
+        <div className="absolute bottom-2.5 right-2.5 max-w-[calc(100%-1.25rem)] overflow-x-auto scrollbar-none flex items-center gap-1.5 border border-slate-200/90 bg-white/95 backdrop-blur-md p-1 rounded-full shadow-lg z-20 pointer-events-auto">
           {/* Button 1: Live GPS */}
           <button
             type="button"

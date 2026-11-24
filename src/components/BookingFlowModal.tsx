@@ -642,8 +642,8 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
       <div className="bg-white w-full max-w-3xl h-full sm:h-auto sm:max-h-[90vh] sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-slate-100">
         
         {/* TOP HEADER & NAVIGATION BAR */}
-        <div className="bg-slate-900 text-white px-4 sm:px-6 py-4 border-b border-slate-800 flex items-center justify-between shrink-0 sticky top-0 z-20">
-          <div className="flex items-center gap-3">
+        <div className="bg-slate-900 text-white px-3 sm:px-6 py-3.5 sm:py-4 border-b border-slate-800 flex items-center justify-between gap-2 shrink-0 sticky top-0 z-20">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
             {currentStep > 1 && !successBooking && (
               <button
                 type="button"
@@ -651,7 +651,7 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                   setErrorMessage(null);
                   setCurrentStep((prev) => (prev - 1) as any);
                 }}
-                className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl transition-all flex items-center gap-1 text-xs font-bold cursor-pointer"
+                className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl transition-all flex items-center gap-1 text-xs font-bold cursor-pointer shrink-0"
                 title="Go to previous step"
               >
                 <ArrowLeft className="w-4 h-4" />
@@ -666,7 +666,7 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                 e.currentTarget.src = autoshineLogo;
               }}
             />
-            <div>
+            <div className="min-w-0 flex-1">
               <h3 className="font-extrabold text-sm sm:text-base text-white leading-snug break-words">{location.name}</h3>
               <p className="text-[11px] text-sky-300 font-medium flex items-start gap-1 mt-0.5">
                 <MapPin className="w-3.5 h-3.5 text-sky-400 shrink-0 mt-0.5" />
@@ -678,7 +678,7 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="px-3 py-1.5 bg-slate-800 hover:bg-rose-600 text-slate-300 hover:text-white rounded-xl transition-all cursor-pointer flex items-center gap-1 text-xs font-bold border border-slate-700"
+            className="px-2.5 sm:px-3 py-1.5 bg-slate-800 hover:bg-rose-600 text-slate-300 hover:text-white rounded-xl transition-all cursor-pointer flex items-center gap-1 text-xs font-bold border border-slate-700 shrink-0"
             title="Exit booking modal"
           >
             <span>Exit</span>
@@ -688,16 +688,16 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
 
         {/* STEP PROGRESS BREADCRUMB - INTERACTIVE */}
         {!successBooking && (
-          <div className="bg-slate-50 border-b border-slate-200 px-4 sm:px-6 py-2.5 flex items-center justify-between text-xs font-bold text-slate-500 shrink-0">
+          <div className="bg-slate-50 border-b border-slate-200 px-3 sm:px-6 py-2.5 flex items-center justify-between gap-1.5 text-[11px] sm:text-xs font-bold text-slate-500 shrink-0 overflow-x-auto scrollbar-none">
             <button
               type="button"
               onClick={() => {
                 setErrorMessage(null);
                 setCurrentStep(1);
               }}
-              className={`flex items-center gap-1.5 transition-all cursor-pointer hover:text-sky-600 ${currentStep === 1 ? 'text-sky-600 font-black' : currentStep > 1 ? 'text-emerald-600' : ''}`}
+              className={`flex items-center gap-1.5 transition-all cursor-pointer hover:text-sky-600 whitespace-nowrap shrink-0 ${currentStep === 1 ? 'text-sky-600 font-black' : currentStep > 1 ? 'text-emerald-600' : ''}`}
             >
-              <span className={`w-5 h-5 rounded-full text-[10px] flex items-center justify-center font-extrabold ${currentStep === 1 ? 'bg-sky-600 text-white' : currentStep > 1 ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
+              <span className={`w-5 h-5 rounded-full text-[10px] flex items-center justify-center font-extrabold shrink-0 ${currentStep === 1 ? 'bg-sky-600 text-white' : currentStep > 1 ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
                 {currentStep > 1 ? '✓' : '1'}
               </span>
               <span>1. Services & Add-ons</span>
@@ -714,9 +714,9 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                   setCurrentStep(2);
                 }
               }}
-              className={`flex items-center gap-1.5 transition-all ${selectedItems.length > 0 ? 'cursor-pointer hover:text-sky-600' : 'cursor-not-allowed opacity-50'} ${currentStep === 2 ? 'text-sky-600 font-black' : currentStep > 2 ? 'text-emerald-600' : ''}`}
+              className={`flex items-center gap-1.5 transition-all whitespace-nowrap shrink-0 ${selectedItems.length > 0 ? 'cursor-pointer hover:text-sky-600' : 'cursor-not-allowed opacity-50'} ${currentStep === 2 ? 'text-sky-600 font-black' : currentStep > 2 ? 'text-emerald-600' : ''}`}
             >
-              <span className={`w-5 h-5 rounded-full text-[10px] flex items-center justify-center font-extrabold ${currentStep === 2 ? 'bg-sky-600 text-white' : currentStep > 2 ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
+              <span className={`w-5 h-5 rounded-full text-[10px] flex items-center justify-center font-extrabold shrink-0 ${currentStep === 2 ? 'bg-sky-600 text-white' : currentStep > 2 ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
                 {currentStep > 2 ? '✓' : '2'}
               </span>
               <span>2. Date & Time</span>
@@ -733,9 +733,9 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                   setCurrentStep(3);
                 }
               }}
-              className={`flex items-center gap-1.5 transition-all ${selectedItems.length > 0 && selectedSlot ? 'cursor-pointer hover:text-sky-600' : 'cursor-not-allowed opacity-50'} ${currentStep === 3 ? 'text-sky-600 font-black' : ''}`}
+              className={`flex items-center gap-1.5 transition-all whitespace-nowrap shrink-0 ${selectedItems.length > 0 && selectedSlot ? 'cursor-pointer hover:text-sky-600' : 'cursor-not-allowed opacity-50'} ${currentStep === 3 ? 'text-sky-600 font-black' : ''}`}
             >
-              <span className={`w-5 h-5 rounded-full text-[10px] flex items-center justify-center font-extrabold ${currentStep === 3 ? 'bg-sky-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
+              <span className={`w-5 h-5 rounded-full text-[10px] flex items-center justify-center font-extrabold shrink-0 ${currentStep === 3 ? 'bg-sky-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
                 3
               </span>
               <span>3. Review & Book</span>
@@ -764,21 +764,21 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
               </div>
 
               <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-left space-y-3 max-w-md mx-auto text-xs">
-                <div className="flex justify-between border-b border-slate-200 pb-2">
-                  <span className="text-slate-500 font-medium">Car Wash Place:</span>
-                  <span className="font-extrabold text-slate-800">{successBooking.locationName}</span>
+                <div className="flex justify-between gap-2 border-b border-slate-200 pb-2">
+                  <span className="text-slate-500 font-medium shrink-0">Car Wash Place:</span>
+                  <span className="font-extrabold text-slate-800 text-right break-words">{successBooking.locationName}</span>
                 </div>
-                <div className="flex justify-between border-b border-slate-200 pb-2">
-                  <span className="text-slate-500 font-medium">Selected Service:</span>
-                  <span className="font-extrabold text-slate-800">{successBooking.serviceName || 'Standard Car Wash'}</span>
+                <div className="flex justify-between gap-2 border-b border-slate-200 pb-2">
+                  <span className="text-slate-500 font-medium shrink-0">Selected Service:</span>
+                  <span className="font-extrabold text-slate-800 text-right break-words">{successBooking.serviceName || 'Standard Car Wash'}</span>
                 </div>
-                <div className="flex justify-between border-b border-slate-200 pb-2">
-                  <span className="text-slate-500 font-medium">Date & Time:</span>
-                  <span className="font-extrabold text-sky-600">{successBooking.date} @ {successBooking.timeSlot}</span>
+                <div className="flex justify-between gap-2 border-b border-slate-200 pb-2">
+                  <span className="text-slate-500 font-medium shrink-0">Date & Time:</span>
+                  <span className="font-extrabold text-sky-600 text-right">{successBooking.date} @ {successBooking.timeSlot}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500 font-medium">Total Amount:</span>
-                  <span className="font-black text-slate-800 text-sm">BND ${(successBooking.price || 0).toFixed(2)}</span>
+                <div className="flex justify-between gap-2">
+                  <span className="text-slate-500 font-medium shrink-0">Total Amount:</span>
+                  <span className="font-black text-slate-800 text-sm text-right">BND ${(successBooking.price || 0).toFixed(2)}</span>
                 </div>
               </div>
 
@@ -961,7 +961,7 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                                 : 'border-slate-200 hover:border-sky-300'
                             }`}
                           >
-                            <div className="flex items-start justify-between gap-3">
+                            <div className="flex flex-col min-[400px]:flex-row items-stretch min-[400px]:items-start justify-between gap-3">
                               <div className="flex items-start gap-3 flex-1 min-w-0">
                                 {/* Checkbox Indicator */}
                                 <div className={`w-5 h-5 rounded-lg border flex items-center justify-center shrink-0 mt-0.5 transition-all ${
@@ -1033,7 +1033,7 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                                 </div>
                               </div>
 
-                              <div className="flex flex-col items-end shrink-0 gap-1.5">
+                              <div className="flex flex-row min-[400px]:flex-col items-center min-[400px]:items-end justify-between shrink-0 gap-1.5 pt-2 min-[400px]:pt-0 border-t min-[400px]:border-t-0 border-slate-100">
                                 <span className="font-black text-sky-600 text-base sm:text-lg">
                                   BND ${(svc.price || 0).toFixed(2)}
                                 </span>
@@ -1173,7 +1173,7 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
 
                   {/* Date Picker */}
                   <div className="space-y-2">
-                    <label className="block text-xs font-black text-slate-700 uppercase tracking-wider flex items-center justify-between">
+                    <label className="text-xs font-black text-slate-700 uppercase tracking-wider flex flex-wrap items-center justify-between gap-1.5">
                       <span>1. Select Appointment Date</span>
                       <span className="text-[11px] text-sky-600 font-bold">Local Brunei Time (UTC+8)</span>
                     </label>
@@ -1289,7 +1289,7 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
 
                   {/* Time Slot Picker */}
                   <div className="space-y-3">
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                       <label className="block text-xs font-black text-slate-700 uppercase tracking-wider">
                         2. Choose Available Time Slot
                       </label>
@@ -1298,7 +1298,7 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                       <button
                         type="button"
                         onClick={() => setShowMapModal(true)}
-                        className="text-xs text-sky-600 hover:text-sky-700 font-bold flex items-center gap-1 bg-sky-50 px-2.5 py-1 rounded-lg border border-sky-100 hover:bg-sky-100 transition-colors cursor-pointer"
+                        className="text-xs text-sky-600 hover:text-sky-700 font-bold flex items-center gap-1 bg-sky-50 px-2.5 py-1 rounded-lg border border-sky-100 hover:bg-sky-100 transition-colors cursor-pointer shrink-0"
                       >
                         <Navigation className="w-3.5 h-3.5 text-sky-500" />
                         View Location Map
@@ -1306,7 +1306,7 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                     </div>
 
                     {selectedSlot && (
-                      <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center justify-between text-xs text-emerald-800 font-bold">
+                      <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2 text-xs text-emerald-800 font-bold">
                         <span className="flex items-center gap-1.5">
                           <Check className="w-4 h-4 text-emerald-600 shrink-0" />
                           <span>
@@ -1550,9 +1550,9 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
               {currentStep === 3 && (
                 <form onSubmit={handleSubmitBooking} className="space-y-5 animate-fade-in">
                   <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-4">
-                    <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                    <div className="flex flex-wrap items-center justify-between gap-1.5 border-b border-slate-200 pb-2">
                       <h3 className="font-extrabold text-slate-800 text-xs uppercase tracking-wider flex items-center gap-2">
-                        <ShieldCheck className="w-4 h-4 text-sky-500" />
+                        <ShieldCheck className="w-4 h-4 text-sky-500 shrink-0" />
                         Appointment Summary
                       </h3>
                       <button
@@ -1583,7 +1583,7 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
 
                     {/* Breakdown of selected items */}
                     <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2">
-                      <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+                      <div className="flex flex-wrap items-center justify-between gap-1.5 border-b border-slate-100 pb-1.5">
                         <span className="text-[10px] text-slate-500 font-extrabold uppercase tracking-wider">
                           Selected Items ({selectedItems.length})
                         </span>
@@ -1623,7 +1623,7 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
 
                   {/* Vehicle Details & Customer Notes */}
                   <div className="space-y-3">
-                    <label className="block text-xs font-black text-slate-700 uppercase tracking-wider flex items-center justify-between">
+                    <label className="text-xs font-black text-slate-700 uppercase tracking-wider flex flex-wrap items-center justify-between gap-1.5">
                       <span className="flex items-center gap-1">
                         Vehicle Plate Number <span className="text-red-500 font-bold text-sm">*</span>
                       </span>
@@ -1708,7 +1708,7 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
 
                   {/* Payment Method Selector */}
                   <div className="space-y-2">
-                    <label className="block text-xs font-black text-slate-700 uppercase tracking-wider flex items-center justify-between">
+                    <label className="text-xs font-black text-slate-700 uppercase tracking-wider flex flex-wrap items-center justify-between gap-1.5">
                       <span>Payment Method</span>
                       <span className="text-[10px] text-emerald-600 font-bold">Pay at Counter</span>
                     </label>

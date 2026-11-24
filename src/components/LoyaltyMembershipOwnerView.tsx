@@ -642,53 +642,53 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
       <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none border-b border-slate-200">
         <button
           onClick={() => setActiveTab('config')}
-          className={`px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 cursor-pointer ${
+          className={`px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap shrink-0 ${
             activeTab === 'config'
               ? 'bg-indigo-600 text-white shadow-md'
               : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
           }`}
         >
-          <Settings className="h-4 w-4" /> Programme Settings
+          <Settings className="h-4 w-4 shrink-0" /> Programme Settings
         </button>
         <button
           onClick={() => setActiveTab('rules')}
-          className={`px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 cursor-pointer ${
+          className={`px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap shrink-0 ${
             activeTab === 'rules'
               ? 'bg-indigo-600 text-white shadow-md'
               : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
           }`}
         >
-          <Coins className="h-4 w-4" /> Points Rules
+          <Coins className="h-4 w-4 shrink-0" /> Points Rules
         </button>
         <button
           onClick={() => setActiveTab('rewards')}
-          className={`px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 cursor-pointer ${
+          className={`px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap shrink-0 ${
             activeTab === 'rewards'
               ? 'bg-indigo-600 text-white shadow-md'
               : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
           }`}
         >
-          <Gift className="h-4 w-4" /> Rewards Catalog ({rewards.length})
+          <Gift className="h-4 w-4 shrink-0" /> Rewards Catalog ({rewards.length})
         </button>
         <button
           onClick={() => setActiveTab('members')}
-          className={`px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 cursor-pointer ${
+          className={`px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap shrink-0 ${
             activeTab === 'members'
               ? 'bg-indigo-600 text-white shadow-md'
               : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
           }`}
         >
-          <Users className="h-4 w-4" /> Members ({members.length})
+          <Users className="h-4 w-4 shrink-0" /> Members ({members.length})
         </button>
         <button
           onClick={() => setActiveTab('redemptions')}
-          className={`px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 cursor-pointer ${
+          className={`px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap shrink-0 ${
             activeTab === 'redemptions'
               ? 'bg-indigo-600 text-white shadow-md'
               : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
           }`}
         >
-          <Award className="h-4 w-4" /> Redemptions ({redemptions.length})
+          <Award className="h-4 w-4 shrink-0" /> Redemptions ({redemptions.length})
           {pendingVoucherTotal > 0 && (
             <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-amber-400 text-amber-950 font-black">
               {pendingVoucherTotal}
@@ -697,23 +697,23 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
         </button>
         <button
           onClick={() => setActiveTab('counter')}
-          className={`px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 cursor-pointer ${
+          className={`px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap shrink-0 ${
             activeTab === 'counter'
               ? 'bg-indigo-600 text-white shadow-md'
               : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
           }`}
         >
-          <QrCode className="h-4 w-4" /> Counter Desk
+          <QrCode className="h-4 w-4 shrink-0" /> Counter Desk
         </button>
         <button
           onClick={() => setActiveTab('poster')}
-          className={`px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 cursor-pointer ${
+          className={`px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap shrink-0 ${
             activeTab === 'poster'
               ? 'bg-indigo-600 text-white shadow-md'
               : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
           }`}
         >
-          <Printer className="h-4 w-4" /> Counter QR Poster
+          <Printer className="h-4 w-4 shrink-0" /> Counter QR Poster
         </button>
       </div>
 
@@ -990,7 +990,7 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
               <p className="text-xs text-slate-400">Total {members.length} registered loyalty accounts</p>
             </div>
 
-            <div className="relative min-w-[240px]">
+            <div className="relative w-full sm:w-auto sm:min-w-[240px]">
               <input
                 type="text"
                 value={memberSearch}
@@ -1094,11 +1094,11 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
           {/* Filter Bar & Search */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pt-1">
             {/* Status Filter Pills */}
-            <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-2xl border border-slate-200 self-start">
+            <div className="flex flex-wrap sm:flex-nowrap items-center gap-1.5 bg-slate-100 p-1 rounded-2xl border border-slate-200 self-start max-w-full">
               <button
                 type="button"
                 onClick={() => setRedemptionStatusFilter('ALL')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                   redemptionStatusFilter === 'ALL'
                     ? 'bg-white text-slate-900 shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
@@ -1109,25 +1109,25 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
               <button
                 type="button"
                 onClick={() => setRedemptionStatusFilter('PENDING')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                   redemptionStatusFilter === 'PENDING'
                     ? 'bg-amber-500 text-white shadow-xs'
                     : 'text-amber-700 hover:bg-amber-100/60'
                 }`}
               >
-                <Clock className="w-3.5 h-3.5" />
+                <Clock className="w-3.5 h-3.5 shrink-0" />
                 Ready to Claim ({pendingVoucherTotal})
               </button>
               <button
                 type="button"
                 onClick={() => setRedemptionStatusFilter('REDEEMED')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                   redemptionStatusFilter === 'REDEEMED'
                     ? 'bg-emerald-600 text-white shadow-xs'
                     : 'text-emerald-700 hover:bg-emerald-100/60'
                 }`}
               >
-                <Check className="w-3.5 h-3.5" />
+                <Check className="w-3.5 h-3.5 shrink-0" />
                 Redeemed ({redeemedVoucherTotal})
               </button>
             </div>
@@ -1454,7 +1454,7 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
                       type="text"
                       readOnly
                       value={joinUrl}
-                      className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono text-slate-700 select-all"
+                      className="min-w-0 flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono text-slate-700 select-all"
                     />
                     <button
                       type="button"
@@ -1463,7 +1463,7 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
                         setCopiedLink(true);
                         setTimeout(() => setCopiedLink(false), 2000);
                       }}
-                      className="p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl cursor-pointer transition-colors"
+                      className="p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl cursor-pointer transition-colors shrink-0"
                       title="Copy Link"
                       id="btn-copy-join-link"
                     >
@@ -1529,20 +1529,20 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
                   <p className="text-xs text-slate-500">Scan Below to Join &amp; Earn Free Detailing Washes</p>
                 </div>
 
-                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 inline-flex flex-col items-center justify-center shadow-inner min-w-[240px] min-h-[240px] mx-auto">
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 inline-flex flex-col items-center justify-center shadow-inner w-full max-w-[240px] sm:min-w-[240px] min-h-[200px] sm:min-h-[240px] mx-auto">
                   {posterQrUrl ? (
                     <img
                       src={posterQrUrl}
                       alt="Counter Join QR Standee"
-                      className="w-56 h-56 rounded-xl mx-auto block shadow-xs transition-opacity duration-200"
+                      className="w-44 h-44 sm:w-56 sm:h-56 rounded-xl mx-auto block shadow-xs transition-opacity duration-200"
                     />
                   ) : isGeneratingQr ? (
-                    <div className="w-56 h-56 flex flex-col items-center justify-center gap-2 text-slate-400">
+                    <div className="w-44 h-44 sm:w-56 sm:h-56 flex flex-col items-center justify-center gap-2 text-slate-400">
                       <RefreshCw className="w-8 h-8 animate-spin text-indigo-600" />
                       <span className="text-xs font-bold text-slate-600">Generating Standee QR...</span>
                     </div>
                   ) : (
-                    <div className="w-56 h-56 flex flex-col items-center justify-center gap-2 text-slate-400 p-4 text-center">
+                    <div className="w-44 h-44 sm:w-56 sm:h-56 flex flex-col items-center justify-center gap-2 text-slate-400 p-4 text-center">
                       <AlertCircle className="w-8 h-8 text-amber-500" />
                       <span className="text-xs font-bold text-slate-700">QR Generation Pending</span>
                       <button
@@ -1569,22 +1569,22 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
 
       {/* Modal: Add/Edit Reward */}
       {showRewardModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
-            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-              <h3 className="font-bold text-slate-800 text-base">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50">
+          <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-slate-200 flex flex-col max-h-[90vh] overflow-hidden">
+            <div className="shrink-0 flex justify-between items-center px-5 sm:px-6 pt-5 pb-3 border-b border-slate-100 bg-white">
+              <h3 className="font-bold text-slate-800 text-base truncate pr-2">
                 {editingReward ? 'Edit Reward' : 'Add New Reward'}
               </h3>
               <button
                 type="button"
                 onClick={() => setShowRewardModal(false)}
-                className="p-1 hover:bg-slate-100 rounded-lg text-slate-400"
+                className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 shrink-0"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveReward} className="space-y-4 text-xs">
+            <form onSubmit={handleSaveReward} className="flex-1 min-h-0 overflow-y-auto p-5 sm:p-6 space-y-4 text-xs overscroll-contain">
               <div>
                 <label className="block font-bold text-slate-700 uppercase mb-1">Reward Title</label>
                 <input
@@ -1608,7 +1608,7 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 uppercase mb-1">Points Cost</label>
                   <input
@@ -1654,7 +1654,7 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-3 pt-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                 <div>
                   <label className="block font-bold text-slate-700 uppercase mb-1">
                     Max Per Customer
@@ -1691,12 +1691,12 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
                   type="checkbox"
                   checked={rewardIsActive}
                   onChange={(e) => setRewardIsActive(e.target.checked)}
-                  className="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                  className="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4 shrink-0"
                 />
                 <span className="font-semibold">Active &amp; Visible to Customers in Catalog</span>
               </label>
 
-              <div className="flex items-center gap-2 pt-2">
+              <div className="flex flex-wrap items-center gap-2 pt-2">
                 {editingReward && (
                   <button
                     type="button"
@@ -1731,8 +1731,8 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
 
       {/* In-App Delete Confirmation Modal (Prevents browser popup issues in iframe) */}
       {rewardToDelete && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-5 sm:p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center shrink-0">
                 <Trash2 className="w-5 h-5 text-rose-600" />
@@ -1745,7 +1745,7 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
             <p className="text-xs text-slate-600 leading-relaxed">
               Are you sure you want to permanently delete <span className="font-bold text-slate-900">"{rewardToDelete.title}"</span> from your catalog?
             </p>
-            <div className="flex items-center gap-2 pt-2">
+            <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => setRewardToDelete(null)}
@@ -1769,7 +1769,7 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
       {/* Floating In-App Toast Banner */}
       {toastBanner && (
         <div
-          className={`fixed top-20 right-4 z-[9999] px-4 py-3 rounded-2xl shadow-2xl border flex items-center gap-2 text-xs font-bold animate-bounce ${
+          className={`fixed top-20 left-4 right-4 sm:left-auto sm:right-4 z-[9999] px-4 py-3 rounded-2xl shadow-2xl border flex items-center gap-2 text-xs font-bold animate-bounce ${
             toastBanner.type === 'error'
               ? 'bg-rose-900 text-rose-100 border-rose-700'
               : 'bg-slate-900 text-emerald-300 border-slate-700'
@@ -1782,37 +1782,37 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
 
       {/* Modal: View Member Activity Ledger */}
       {selectedMemberLedger && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[85vh] flex flex-col">
-            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-              <div>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50">
+          <div className="bg-white rounded-3xl max-w-lg w-full shadow-2xl border border-slate-200 max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="shrink-0 flex justify-between items-center px-5 sm:px-6 pt-5 pb-3 border-b border-slate-100 bg-white">
+              <div className="min-w-0 pr-2">
                 <h3 className="font-bold text-slate-800 text-base">Points Activity Ledger</h3>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-slate-400 truncate">
                   {selectedMemberLedger.member.customerName || 'Customer'} • Member #{selectedMemberLedger.member.membershipNumber}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setSelectedMemberLedger(null)}
-                className="p-1 hover:bg-slate-100 rounded-lg text-slate-400"
+                className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 shrink-0"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto divide-y divide-slate-100 pr-1">
+            <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-100 px-5 sm:px-6 py-3">
               {selectedMemberLedger.ledger.length === 0 ? (
                 <div className="py-8 text-center text-slate-400 italic text-xs">No transactions recorded yet.</div>
               ) : (
                 selectedMemberLedger.ledger.map((item) => (
-                  <div key={item.id} className="py-2.5 flex items-center justify-between text-xs">
-                    <div>
-                      <p className="font-semibold text-slate-800">{item.description}</p>
+                  <div key={item.id} className="py-2.5 flex items-center justify-between gap-2 text-xs">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-slate-800 break-words">{item.description}</p>
                       <p className="text-[10px] text-slate-400 font-mono">
                         {new Date(item.createdAt).toLocaleString()} • Post-balance: {item.balanceAfter} pts
                       </p>
                     </div>
-                    <span className={`font-mono font-bold ${item.pointsDelta > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    <span className={`font-mono font-bold shrink-0 ${item.pointsDelta > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                       {item.pointsDelta > 0 ? `+${item.pointsDelta}` : item.pointsDelta} pts
                     </span>
                   </div>
@@ -1820,7 +1820,7 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
               )}
             </div>
 
-            <div className="pt-2 border-t border-slate-100 flex justify-end">
+            <div className="shrink-0 px-5 sm:px-6 py-3 border-t border-slate-100 flex justify-end bg-white">
               <button
                 type="button"
                 onClick={() => setSelectedMemberLedger(null)}
@@ -1835,74 +1835,76 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
 
       {/* Modal: Audited Points Adjustment */}
       {adjustingMember && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 text-xs">
-            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-              <h3 className="font-bold text-slate-800 text-base">Audited Points Adjustment</h3>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50">
+          <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-slate-200 flex flex-col max-h-[90vh] overflow-hidden text-xs">
+            <div className="shrink-0 flex justify-between items-center px-5 sm:px-6 pt-5 pb-3 border-b border-slate-100 bg-white">
+              <h3 className="font-bold text-slate-800 text-base truncate pr-2">Audited Points Adjustment</h3>
               <button
                 type="button"
                 onClick={() => setAdjustingMember(null)}
-                className="p-1 hover:bg-slate-100 rounded-lg text-slate-400"
+                className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 shrink-0"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-1">
-              <p className="text-slate-600">
-                Member: <strong className="text-slate-900">{adjustingMember.customerName || adjustingMember.membershipNumber}</strong>
-              </p>
-              <p className="text-slate-600">
-                Current Balance: <strong className="font-mono text-indigo-700">{Number(adjustingMember?.pointsBalance ?? 0).toLocaleString()} pts</strong>
-              </p>
+            <div className="flex-1 min-h-0 overflow-y-auto p-5 sm:p-6 space-y-4 overscroll-contain">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-1">
+                <p className="text-slate-600">
+                  Member: <strong className="text-slate-900">{adjustingMember.customerName || adjustingMember.membershipNumber}</strong>
+                </p>
+                <p className="text-slate-600">
+                  Current Balance: <strong className="font-mono text-indigo-700">{Number(adjustingMember?.pointsBalance ?? 0).toLocaleString()} pts</strong>
+                </p>
+              </div>
+
+              <form onSubmit={handleAdjustPointsSubmit} className="space-y-3">
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase mb-1">
+                    Points Delta (e.g. +50 or -30)
+                  </label>
+                  <input
+                    type="number"
+                    value={adjustPointsDelta}
+                    onChange={(e) => setAdjustPointsDelta(e.target.value)}
+                    placeholder="+50 or -30"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase mb-1">
+                    Mandatory Audit Reason Note
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={adjustReason}
+                    onChange={(e) => setAdjustReason(e.target.value)}
+                    placeholder="e.g. Courtesy compensation for waiting time, or manual bay correction"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    required
+                  />
+                </div>
+
+                <div className="flex flex-col-reverse sm:flex-row gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setAdjustingMember(null)}
+                    className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isAdjusting}
+                    className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-md cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    {isAdjusting ? <RefreshCw className="h-4 w-4 animate-spin" /> : 'Confirm Adjustment'}
+                  </button>
+                </div>
+              </form>
             </div>
-
-            <form onSubmit={handleAdjustPointsSubmit} className="space-y-3">
-              <div>
-                <label className="block font-bold text-slate-700 uppercase mb-1">
-                  Points Delta (e.g. +50 or -30)
-                </label>
-                <input
-                  type="number"
-                  value={adjustPointsDelta}
-                  onChange={(e) => setAdjustPointsDelta(e.target.value)}
-                  placeholder="+50 or -30"
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 uppercase mb-1">
-                  Mandatory Audit Reason Note
-                </label>
-                <textarea
-                  rows={3}
-                  value={adjustReason}
-                  onChange={(e) => setAdjustReason(e.target.value)}
-                  placeholder="e.g. Courtesy compensation for waiting time, or manual bay correction"
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  required
-                />
-              </div>
-
-              <div className="flex gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setAdjustingMember(null)}
-                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isAdjusting}
-                  className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-md cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  {isAdjusting ? <RefreshCw className="h-4 w-4 animate-spin" /> : 'Confirm Adjustment'}
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}

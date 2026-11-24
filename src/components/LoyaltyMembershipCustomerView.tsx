@@ -498,7 +498,7 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
 
           {/* Membership Selector or Join Prompt */}
           {activeValidMemberships.length > 0 && (
-            <div className="bg-white/10 backdrop-blur-md border border-white/20 p-3 rounded-2xl flex flex-col gap-2 min-w-[240px]">
+            <div className="bg-white/10 backdrop-blur-md border border-white/20 p-3 rounded-2xl flex flex-col gap-2 w-full md:w-auto sm:min-w-[240px]">
               <span className="text-[11px] uppercase font-bold text-slate-300 tracking-wider">Active Club Card</span>
               <select
                 value={selectedMembership?.id || ''}
@@ -512,7 +512,7 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
                     fetchLedger(found.id);
                   }
                 }}
-                className="bg-slate-900/90 text-white font-bold text-sm px-3 py-2 rounded-xl border border-white/20 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                className="w-full max-w-full bg-slate-900/90 text-white font-bold text-sm px-3 py-2 rounded-xl border border-white/20 focus:outline-none focus:ring-2 focus:ring-indigo-400"
               >
                 {activeValidMemberships.map((m) => (
                   <option key={m.id} value={m.id}>
@@ -532,43 +532,43 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
           <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none border-b border-slate-200">
             <button
               onClick={() => setActiveSubTab('card')}
-              className={`px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 cursor-pointer ${
+              className={`px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap shrink-0 ${
                 activeSubTab === 'card'
                   ? 'bg-indigo-600 text-white shadow-md'
                   : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
               }`}
             >
-              <CreditCard className="h-4 w-4" /> Digital Member Card
+              <CreditCard className="h-4 w-4 shrink-0" /> Digital Member Card
             </button>
             <button
               onClick={() => setActiveSubTab('rewards')}
-              className={`px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 cursor-pointer ${
+              className={`px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap shrink-0 ${
                 activeSubTab === 'rewards'
                   ? 'bg-indigo-600 text-white shadow-md'
                   : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
               }`}
             >
-              <Gift className="h-4 w-4" /> Rewards Catalog ({rewards.length})
+              <Gift className="h-4 w-4 shrink-0" /> Rewards Catalog ({rewards.length})
             </button>
             <button
               onClick={() => setActiveSubTab('vouchers')}
-              className={`px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 cursor-pointer ${
+              className={`px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap shrink-0 ${
                 activeSubTab === 'vouchers'
                   ? 'bg-indigo-600 text-white shadow-md'
                   : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
               }`}
             >
-              <Award className="h-4 w-4" /> My Vouchers ({redemptions.length})
+              <Award className="h-4 w-4 shrink-0" /> My Vouchers ({redemptions.length})
             </button>
             <button
               onClick={() => setActiveSubTab('activity')}
-              className={`px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 cursor-pointer ${
+              className={`px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap shrink-0 ${
                 activeSubTab === 'activity'
                   ? 'bg-indigo-600 text-white shadow-md'
                   : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
               }`}
             >
-              <Clock className="h-4 w-4" /> Points Activity ({ledger.length})
+              <Clock className="h-4 w-4 shrink-0" /> Points Activity ({ledger.length})
             </button>
           </div>
 
@@ -577,27 +577,27 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               {/* Virtual Membership Card */}
               <div className="lg:col-span-7">
-                <div className="relative rounded-3xl p-6 sm:p-8 text-white shadow-2xl overflow-hidden bg-gradient-to-br from-indigo-700 via-indigo-900 to-slate-950 border border-indigo-500/30">
+                <div className="relative rounded-3xl p-5 sm:p-8 text-white shadow-2xl overflow-hidden bg-gradient-to-br from-indigo-700 via-indigo-900 to-slate-950 border border-indigo-500/30">
                   <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-indigo-400/20 rounded-full blur-2xl pointer-events-none" />
                   
-                  <div className="relative z-10 flex items-start justify-between pb-8">
-                    <div>
+                  <div className="relative z-10 flex flex-wrap items-start justify-between gap-2 pb-6 sm:pb-8">
+                    <div className="min-w-0">
                       <span className="text-[10px] font-extrabold uppercase tracking-widest text-indigo-300 block mb-1">
                         Official Loyalty Pass
                       </span>
-                      <h3 className="text-xl sm:text-2xl font-black tracking-tight">
+                      <h3 className="text-xl sm:text-2xl font-black tracking-tight break-words">
                         {selectedMembership.carWashName || 'Autoshine BN Partner'}
                       </h3>
                       <p className="text-xs text-indigo-200 mt-0.5">
                         {config?.programmeName || 'VIP Rewards Club'}
                       </p>
                     </div>
-                    <span className="px-3 py-1 bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 rounded-full text-xs font-black tracking-wider uppercase">
+                    <span className="px-3 py-1 bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 rounded-full text-xs font-black tracking-wider uppercase shrink-0">
                       ● Active Member
                     </span>
                   </div>
 
-                  <div className="relative z-10 py-4 border-y border-white/10 flex items-center justify-between">
+                  <div className="relative z-10 py-4 border-y border-white/10 flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="text-[11px] uppercase font-bold text-indigo-200 block">Available Points</span>
@@ -626,14 +626,14 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
                       </div>
                     </div>
 
-                    <div className="text-right">
+                    <div className="text-left sm:text-right min-w-0">
                       <span className="text-[11px] uppercase font-bold text-indigo-200 block">Member Number</span>
                       <div className="flex items-center gap-1.5 mt-1 font-mono font-bold text-sm tracking-wider bg-black/30 px-2.5 py-1 rounded-lg border border-white/10">
-                        <span>{selectedMembership.membershipNumber}</span>
+                        <span className="break-all">{selectedMembership.membershipNumber}</span>
                         <button
                           type="button"
                           onClick={() => handleCopyCode(selectedMembership.membershipNumber)}
-                          className="hover:text-amber-300 transition-colors"
+                          className="hover:text-amber-300 transition-colors shrink-0"
                           title="Copy member code"
                         >
                           {copiedCode === selectedMembership.membershipNumber ? (
@@ -666,7 +666,7 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
                 </div>
 
                 {/* Card Options / Leave Programme Footer */}
-                <div className="mt-3 flex items-center justify-between px-2 text-xs">
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 px-2 text-xs">
                   <span className="text-slate-400 text-[11px]">
                     Membership ID: <strong className="font-mono text-slate-600">{selectedMembership.membershipNumber}</strong>
                   </span>
@@ -914,10 +914,10 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
                             </span>
                           </div>
 
-                          <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-2xl flex items-center justify-between">
-                            <div>
+                          <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-2xl flex flex-wrap items-center justify-between gap-2">
+                            <div className="min-w-0">
                               <span className="text-[10px] uppercase font-bold text-slate-400 block">Voucher Code</span>
-                              <span className="font-mono font-black text-sm text-slate-800 tracking-wider">
+                              <span className="font-mono font-black text-sm text-slate-800 tracking-wider break-all">
                                 {voucher.redemptionCode}
                               </span>
                             </div>
@@ -925,7 +925,7 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
                             <button
                               type="button"
                               onClick={() => handleCopyCode(voucher.redemptionCode)}
-                              className="p-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors"
+                              className="p-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors shrink-0"
                               title="Copy code"
                             >
                               {copiedCode === voucher.redemptionCode ? (
@@ -981,22 +981,22 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
                   {ledger.map((item) => {
                     const isPositive = item.pointsDelta > 0;
                     return (
-                      <div key={item.id} className="py-3 flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-3">
-                          <span className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black ${
+                      <div key={item.id} className="py-3 flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <span className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black shrink-0 ${
                             isPositive ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
                           }`}>
                             {isPositive ? '+' : '-'}
                           </span>
-                          <div>
-                            <p className="text-xs font-bold text-slate-800">{item.description}</p>
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-slate-800 break-words">{item.description}</p>
                             <p className="text-[10px] text-slate-400 font-mono">
                               {new Date(item.createdAt).toLocaleString()} • Balance after: {item.balanceAfter} pts
                             </p>
                           </div>
                         </div>
 
-                        <span className={`font-mono font-black text-sm ${
+                        <span className={`font-mono font-black text-sm shrink-0 ${
                           isPositive ? 'text-emerald-600' : 'text-rose-600'
                         }`}>
                           {isPositive ? `+${item.pointsDelta}` : item.pointsDelta} PTS
@@ -1204,8 +1204,8 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
 
       {/* Modal: Confirm Reward Redemption */}
       {redeemingReward && selectedMembership && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 text-center">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50">
+          <div className="bg-white rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-slate-200 space-y-4 text-center max-h-[90vh] overflow-y-auto overscroll-contain">
             <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 mx-auto flex items-center justify-center">
               <Gift className="h-6 w-6" />
             </div>
@@ -1240,7 +1240,7 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
               </div>
             )}
 
-            <div className="flex gap-2 pt-2">
+            <div className="flex flex-col-reverse sm:flex-row gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => setRedeemingReward(null)}
@@ -1269,8 +1269,8 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
 
       {/* Modal: Redemption Success Voucher Ready */}
       {redemptionSuccessVoucher && (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4 text-center">
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-5 sm:p-6 shadow-2xl border border-slate-200 space-y-4 text-center max-h-[90vh] overflow-y-auto overscroll-contain">
             <div className="w-14 h-14 mx-auto rounded-2xl bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-600 shadow-sm">
               <CheckCircle className="w-8 h-8" />
             </div>
@@ -1290,13 +1290,13 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
             <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
               <span className="text-[10px] uppercase font-bold text-slate-400 block">Voucher Code</span>
               <div className="flex items-center justify-center gap-2">
-                <span className="font-mono font-black text-xl text-slate-900 tracking-wider">
+                <span className="font-mono font-black text-lg sm:text-xl text-slate-900 tracking-wider break-all">
                   {redemptionSuccessVoucher.redemptionCode}
                 </span>
                 <button
                   type="button"
                   onClick={() => handleCopyCode(redemptionSuccessVoucher.redemptionCode)}
-                  className="p-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors"
+                  className="p-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors shrink-0"
                   title="Copy code"
                 >
                   {copiedCode === redemptionSuccessVoucher.redemptionCode ? (
@@ -1337,126 +1337,130 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
 
       {/* Modal: Display Member or Voucher QR Code */}
       {qrModalData && (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4 text-center">
-            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-              <h3 className="font-bold text-slate-800 text-sm">{qrModalData.title}</h3>
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50">
+          <div className="bg-white rounded-3xl max-w-sm w-full shadow-2xl border border-slate-200 flex flex-col max-h-[90vh] overflow-hidden text-center">
+            <div className="shrink-0 flex justify-between items-center px-5 sm:px-6 pt-5 pb-3 border-b border-slate-100 bg-white">
+              <h3 className="font-bold text-slate-800 text-sm truncate pr-2">{qrModalData.title}</h3>
               <button
                 type="button"
                 onClick={() => setQrModalData(null)}
-                className="p-1 hover:bg-slate-100 rounded-lg text-slate-400"
+                className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 shrink-0"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <p className="text-xs text-slate-500 leading-relaxed">{qrModalData.subtitle}</p>
+            <div className="flex-1 min-h-0 overflow-y-auto p-5 sm:p-6 space-y-4 overscroll-contain">
+              <p className="text-xs text-slate-500 leading-relaxed">{qrModalData.subtitle}</p>
 
-            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex justify-center">
-              <img src={qrModalData.qrUrl} alt="QR Code" className="w-56 h-56 rounded-xl shadow-xs" />
-            </div>
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex justify-center">
+                <img src={qrModalData.qrUrl} alt="QR Code" className="w-44 h-44 sm:w-56 sm:h-56 rounded-xl shadow-xs" />
+              </div>
 
-            <div className="bg-slate-100 p-2.5 rounded-xl font-mono font-black text-sm text-slate-800 tracking-wider flex items-center justify-center gap-2">
-              <span>{qrModalData.code}</span>
+              <div className="bg-slate-100 p-2.5 rounded-xl font-mono font-black text-sm text-slate-800 tracking-wider flex items-center justify-center gap-2">
+                <span className="break-all">{qrModalData.code}</span>
+                <button
+                  type="button"
+                  onClick={() => handleCopyCode(qrModalData.code)}
+                  className="hover:text-indigo-600 shrink-0"
+                  title="Copy code"
+                >
+                  {copiedCode === qrModalData.code ? (
+                    <Check className="h-4 w-4 text-emerald-600" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
+
               <button
                 type="button"
-                onClick={() => handleCopyCode(qrModalData.code)}
-                className="hover:text-indigo-600"
-                title="Copy code"
+                onClick={() => setQrModalData(null)}
+                className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl cursor-pointer"
               >
-                {copiedCode === qrModalData.code ? (
-                  <Check className="h-4 w-4 text-emerald-600" />
-                ) : (
-                  <Copy className="h-4 w-4" />
-                )}
+                Done
               </button>
             </div>
-
-            <button
-              type="button"
-              onClick={() => setQrModalData(null)}
-              className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl cursor-pointer"
-            >
-              Done
-            </button>
           </div>
         </div>
       )}
 
       {/* Modal: Join Programme Opt-in Flow */}
       {selectedJoinCarWash && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
-            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-indigo-600" />
-                <h3 className="font-bold text-slate-800 text-base">Join Loyalty Programme</h3>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50">
+          <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-slate-200 flex flex-col max-h-[90vh] overflow-hidden">
+            <div className="shrink-0 flex justify-between items-center px-5 sm:px-6 pt-5 pb-3 border-b border-slate-100 bg-white">
+              <div className="flex items-center gap-2 min-w-0">
+                <Sparkles className="h-5 w-5 text-indigo-600 shrink-0" />
+                <h3 className="font-bold text-slate-800 text-base truncate">Join Loyalty Programme</h3>
               </div>
               <button
                 type="button"
                 onClick={() => setSelectedJoinCarWash(null)}
-                className="p-1 hover:bg-slate-100 rounded-lg text-slate-400"
+                className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 shrink-0"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div>
-              <h4 className="font-bold text-slate-900 text-base">{selectedJoinCarWash.name}</h4>
-              <p className="text-xs text-slate-500 mt-0.5">{selectedJoinCarWash.address}</p>
-            </div>
-
-            <div className="p-4 bg-indigo-50/60 border border-indigo-100 rounded-2xl text-xs text-slate-600 space-y-2">
-              <p className="font-bold text-indigo-950">Programme Membership Terms:</p>
-              <ul className="list-disc pl-4 space-y-1 text-[11px] text-slate-600">
-                <li>Earn points on all completed online bay bookings and counter washes.</li>
-                <li>Redeem points anytime for free washes, waxes, and detailing discounts.</li>
-                <li>Points are tied to this car wash partner and your registered customer profile.</li>
-                <li>You can leave the loyalty programme at any time from your dashboard.</li>
-              </ul>
-            </div>
-
-            <label className="flex items-start gap-2.5 text-xs text-slate-700 cursor-pointer pt-1">
-              <input
-                type="checkbox"
-                checked={joinConsent}
-                onChange={(e) => setJoinConsent(e.target.checked)}
-                className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4"
-              />
-              <span>
-                I agree to enroll in {selectedJoinCarWash.name}&apos;s customer rewards programme and accept the terms.
-              </span>
-            </label>
-
-            {joinError && (
-              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
-                <AlertCircle className="h-4 w-4 shrink-0" />
-                <span>{joinError}</span>
+            <div className="flex-1 min-h-0 overflow-y-auto p-5 sm:p-6 space-y-4 overscroll-contain">
+              <div>
+                <h4 className="font-bold text-slate-900 text-base">{selectedJoinCarWash.name}</h4>
+                <p className="text-xs text-slate-500 mt-0.5">{selectedJoinCarWash.address}</p>
               </div>
-            )}
 
-            <div className="flex gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setSelectedJoinCarWash(null)}
-                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={!joinConsent || isJoining}
-                onClick={handleJoinClub}
-                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-300 text-white font-bold text-xs rounded-xl shadow-md cursor-pointer flex items-center justify-center gap-1.5"
-              >
-                {isJoining ? (
-                  <>
-                    <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Enrolling...
-                  </>
-                ) : (
-                  'Activate Membership Card'
-                )}
-              </button>
+              <div className="p-4 bg-indigo-50/60 border border-indigo-100 rounded-2xl text-xs text-slate-600 space-y-2">
+                <p className="font-bold text-indigo-950">Programme Membership Terms:</p>
+                <ul className="list-disc pl-4 space-y-1 text-[11px] text-slate-600">
+                  <li>Earn points on all completed online bay bookings and counter washes.</li>
+                  <li>Redeem points anytime for free washes, waxes, and detailing discounts.</li>
+                  <li>Points are tied to this car wash partner and your registered customer profile.</li>
+                  <li>You can leave the loyalty programme at any time from your dashboard.</li>
+                </ul>
+              </div>
+
+              <label className="flex items-start gap-2.5 text-xs text-slate-700 cursor-pointer pt-1">
+                <input
+                  type="checkbox"
+                  checked={joinConsent}
+                  onChange={(e) => setJoinConsent(e.target.checked)}
+                  className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4 shrink-0"
+                />
+                <span>
+                  I agree to enroll in {selectedJoinCarWash.name}&apos;s customer rewards programme and accept the terms.
+                </span>
+              </label>
+
+              {joinError && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>{joinError}</span>
+                </div>
+              )}
+
+              <div className="flex flex-col-reverse sm:flex-row gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedJoinCarWash(null)}
+                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={!joinConsent || isJoining}
+                  onClick={handleJoinClub}
+                  className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-300 text-white font-bold text-xs rounded-xl shadow-md cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  {isJoining ? (
+                    <>
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Enrolling...
+                    </>
+                  ) : (
+                    'Activate Membership Card'
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1464,15 +1468,15 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
 
       {/* Leave Club Confirmation Modal */}
       {showLeaveModal && selectedMembership && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-xs p-4 animate-fade-in">
-          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-200 overflow-hidden p-6 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-xs p-2 sm:p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-200 max-h-[90vh] overflow-y-auto p-5 sm:p-6 space-y-4">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
                 <LogOut className="w-6 h-6" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <h3 className="font-extrabold text-slate-900 text-base">Leave Loyalty Programme?</h3>
-                <p className="text-xs text-slate-500">{selectedMembership.carWashName || 'Car Wash Rewards'}</p>
+                <p className="text-xs text-slate-500 truncate">{selectedMembership.carWashName || 'Car Wash Rewards'}</p>
               </div>
             </div>
 
@@ -1480,7 +1484,7 @@ export const LoyaltyMembershipCustomerView: React.FC<LoyaltyMembershipCustomerVi
               Did you accidentally join or do you no longer want to be on this membership? You can leave at any time. Your points history and transactions remain safely saved in our system if you ever choose to re-join later.
             </p>
 
-            <div className="flex gap-2.5 pt-2">
+            <div className="flex flex-col-reverse sm:flex-row gap-2.5 pt-2">
               <button
                 type="button"
                 onClick={() => setShowLeaveModal(false)}

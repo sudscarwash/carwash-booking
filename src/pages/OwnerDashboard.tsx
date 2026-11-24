@@ -2075,15 +2075,15 @@ export const OwnerDashboard: React.FC = () => {
         </div>
 
         {/* Business Selector Toggle */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-500 font-bold uppercase tracking-wider">Business Focus:</span>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2 w-full sm:w-auto">
+          <span className="text-xs text-slate-500 font-bold uppercase tracking-wider shrink-0">Business Focus:</span>
           <select
             value={selectedBusiness?.id || ''}
             onChange={(e) => {
               const b = ownerLocations.find((loc) => loc.id === e.target.value);
               if (b) setSelectedBusiness(b);
             }}
-            className="bg-white border border-slate-200 text-slate-700 text-sm font-semibold rounded-xl px-3 py-1.5 outline-none focus:border-indigo-500 shadow-xs"
+            className="w-full sm:w-auto max-w-full min-w-0 bg-white border border-slate-200 text-slate-700 text-sm font-semibold rounded-xl px-3 py-1.5 outline-none focus:border-indigo-500 shadow-xs"
             id="owner-business-selector"
           >
             {ownerLocations.map((loc) => (
@@ -2106,12 +2106,12 @@ export const OwnerDashboard: React.FC = () => {
                 <div className="p-2.5 bg-red-100 rounded-2xl text-red-700 shrink-0">
                   <AlertTriangle className="h-6 w-6" />
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
                     <h3 className="text-sm sm:text-base font-black text-red-950 uppercase tracking-wide">
                       Account Suspended
                     </h3>
-                    <span className="text-[10px] font-black px-2 py-0.5 bg-red-200 text-red-900 rounded-full font-mono">
+                    <span className="text-[10px] font-black px-2 py-0.5 bg-red-200 text-red-900 rounded-full font-mono shrink-0">
                       Access Expired
                     </span>
                   </div>
@@ -2139,12 +2139,12 @@ export const OwnerDashboard: React.FC = () => {
                 <div className="p-2.5 bg-amber-100 rounded-2xl text-amber-700 shrink-0">
                   <Clock className="h-6 w-6" />
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
                     <h3 className="text-sm sm:text-base font-extrabold text-amber-950">
                       Subscription Expiring Soon
                     </h3>
-                    <span className="text-[10px] font-black px-2 py-0.5 bg-amber-200 text-amber-900 rounded-full font-mono">
+                    <span className="text-[10px] font-black px-2 py-0.5 bg-amber-200 text-amber-900 rounded-full font-mono shrink-0">
                       {subscriptionTimeline.daysLeft} Day{subscriptionTimeline.daysLeft === 1 ? '' : 's'} Remaining
                     </span>
                   </div>
@@ -2165,18 +2165,18 @@ export const OwnerDashboard: React.FC = () => {
           {/* Normal State (> 7 days left): Subtle message */}
           {subscriptionTimeline.state === 'normal' && (
             <div
-              className="bg-emerald-50/70 border border-emerald-200/80 rounded-2xl px-4 py-2.5 text-xs text-emerald-900 flex items-center justify-between shadow-2xs animate-fade-in"
+              className="bg-emerald-50/70 border border-emerald-200/80 rounded-2xl px-4 py-2.5 text-xs text-emerald-900 flex flex-wrap items-center justify-between gap-2 shadow-2xs animate-fade-in"
               id="owner-subscription-banner-normal"
             >
-              <div className="flex items-center gap-2 font-medium">
+              <div className="flex items-center gap-2 font-medium min-w-0">
                 <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" />
-                <span>
+                <span className="break-words">
                   {subscriptionTimeline.isPermanent
                     ? 'Account Access: Permanent (No Expiry)'
                     : `Account Access Active until ${subscriptionTimeline.formattedDate}`}
                 </span>
               </div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-100/70 px-2.5 py-0.5 rounded-full font-mono">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-100/70 px-2.5 py-0.5 rounded-full font-mono shrink-0">
                 Subscription Active
               </span>
             </div>
@@ -2332,17 +2332,17 @@ export const OwnerDashboard: React.FC = () => {
                 <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 bg-sky-500/20 border border-sky-400/30 text-sky-400">
                   <QrCode className="w-6 h-6" />
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
                     <h4 className="font-bold text-base text-white">
                       Direct Booking Link &amp; QR Active
                     </h4>
-                    <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full border bg-emerald-500/20 text-emerald-300 border-emerald-400/30">
+                    <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full border bg-emerald-500/20 text-emerald-300 border-emerald-400/30 shrink-0">
                       Live
                     </span>
                   </div>
-                  <p className="text-xs mt-1 text-slate-300">
-                    Customers can book instantly without app download or login at <code className="bg-white/10 px-1.5 py-0.5 rounded text-sky-300 font-mono">/wash/{selectedBusiness.slug || selectedBusiness.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || selectedBusiness.id}</code>
+                  <p className="text-xs mt-1 text-slate-300 break-words">
+                    Customers can book instantly without app download or login at <code className="bg-white/10 px-1.5 py-0.5 rounded text-sky-300 font-mono break-all">/wash/{selectedBusiness.slug || selectedBusiness.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || selectedBusiness.id}</code>
                   </p>
                 </div>
               </div>
@@ -2590,7 +2590,7 @@ export const OwnerDashboard: React.FC = () => {
               {/* Timeframe selector & Month/Week Pickers */}
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
                 {/* View Mode Segmented Control */}
-                <div className="grid grid-cols-3 sm:flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 text-xs font-bold w-full sm:w-auto">
+                <div className="grid grid-cols-2 sm:flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 text-xs font-bold w-full sm:w-auto">
                   <button
                     type="button"
                     onClick={() => setAccountingTimeframe('WEEKLY')}
@@ -2702,7 +2702,7 @@ export const OwnerDashboard: React.FC = () => {
 
                 {/* Week Navigator & Picker when WEEKLY */}
                 {accountingTimeframe === 'WEEKLY' && (
-                  <div className="flex items-center justify-between sm:justify-start gap-1.5 bg-white px-2.5 py-1.5 rounded-xl border border-indigo-200 text-xs font-bold text-slate-800 shadow-2xs w-full sm:w-auto">
+                  <div className="flex flex-wrap sm:flex-nowrap items-center justify-between sm:justify-start gap-1.5 bg-white px-2.5 py-1.5 rounded-xl border border-indigo-200 text-xs font-bold text-slate-800 shadow-2xs w-full sm:w-auto">
                     <button
                       type="button"
                       onClick={handlePrevWeek}
@@ -2711,18 +2711,18 @@ export const OwnerDashboard: React.FC = () => {
                     >
                       <ChevronLeft className="w-4 h-4" />
                     </button>
-                    <div className="flex items-center justify-center gap-1.5 flex-1 sm:flex-none min-w-0">
+                    <div className="flex flex-wrap sm:flex-nowrap items-center justify-center gap-1.5 flex-1 sm:flex-none min-w-0">
                       <Calendar className="w-3.5 h-3.5 text-indigo-600 shrink-0 hidden sm:block" />
                       <span className="font-black text-indigo-950 text-[11px] sm:text-xs truncate">
                         {accWeekInfo.rangeFormatted}
                       </span>
-                      <div className="flex items-center gap-1 bg-slate-100 hover:bg-indigo-50 border border-slate-200 rounded-lg px-2 py-0.5 text-slate-800 shrink-0">
+                      <div className="flex items-center gap-1 bg-slate-100 hover:bg-indigo-50 border border-slate-200 rounded-lg px-2 py-0.5 text-slate-800 shrink-0 max-w-full">
                         <span className="text-[10px] font-bold text-slate-500 hidden sm:inline">Jump to:</span>
                         <input
                           type="date"
                           value={selectedAccountingWeekRefDate}
                           onChange={(e) => e.target.value && setSelectedAccountingWeekRefDate(e.target.value)}
-                          className="bg-transparent text-[11px] font-bold text-slate-800 focus:outline-none cursor-pointer p-0"
+                          className="bg-transparent text-[11px] font-bold text-slate-800 focus:outline-none cursor-pointer p-0 max-w-[115px] sm:max-w-none"
                           title="Select any date to jump to that week"
                         />
                       </div>
@@ -3151,7 +3151,7 @@ export const OwnerDashboard: React.FC = () => {
                         </div>
 
                         {/* Badges row: Source & Payment */}
-                        <div className="flex items-center justify-between text-[11px] pt-0.5">
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] pt-0.5">
                           <div>
                             {bk.bookingSource === 'WALK_IN' ? (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 text-[10px] font-extrabold border border-emerald-200/80">
@@ -3168,7 +3168,7 @@ export const OwnerDashboard: React.FC = () => {
                             )}
                           </div>
 
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             {bk.paymentBank && bk.paymentBank.trim().length > 0 && bk.paymentBank.toUpperCase() !== 'CASH' ? (
                               <span className="font-bold text-sky-800 bg-sky-50 border border-sky-200/60 px-2 py-0.5 rounded text-[10px] flex items-center gap-1">
                                 <span>📱</span> Pay on Site ({bk.paymentBank}){bk.txnReference ? ` • #${bk.txnReference}` : ''}
@@ -4339,7 +4339,7 @@ export const OwnerDashboard: React.FC = () => {
                             const isAddon = svc.type === 'addon';
                             const isAvailable = svc.isAvailable !== false;
                             return (
-                              <div key={svc.id} className="bg-white border border-slate-200/80 p-3 rounded-xl flex items-center justify-between gap-4">
+                              <div key={svc.id} className="bg-white border border-slate-200/80 p-3 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4">
                                 <div className="min-w-0 flex-1">
                                   <div className="flex items-center gap-1.5 flex-wrap">
                                     <span className="font-bold text-slate-700 text-xs">{svc.name}</span>
@@ -4372,30 +4372,32 @@ export const OwnerDashboard: React.FC = () => {
                                     <span className="text-[10px] text-emerald-600 font-medium mt-0.5 block">Physical Product (0 Bay Slots)</span>
                                   )}
                                 </div>
-                                <div className="flex items-center gap-2.5 shrink-0">
+                                <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2 sm:gap-2.5 shrink-0">
                                   <span className="inline-flex items-center gap-1 font-bold text-[10px] text-amber-800 bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded-md shadow-2xs">
                                     <Sparkles className="w-3 h-3 text-amber-500 fill-amber-400" />
                                     +{svc.points !== undefined ? svc.points : Math.max(10, Math.round(svc.price))} VIP pts
                                   </span>
-                                  <span className="font-extrabold text-xs text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg">BND ${svc.price.toFixed(2)}</span>
-                                  <button
-                                    type="button"
-                                    onClick={async () => {
-                                      const updatedList = editServices.filter((s) => s.id !== svc.id);
-                                      setEditServices(updatedList);
-                                      if (selectedBusiness) {
-                                        await updateLocationConfig(selectedBusiness.id, {
-                                          ...selectedBusiness,
-                                          services: updatedList,
-                                        });
-                                        showNotification(`"${svc.name}" removed and database updated!`, 'info');
-                                      }
-                                    }}
-                                    className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-                                    title="Delete item"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-extrabold text-xs text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg">BND ${svc.price.toFixed(2)}</span>
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        const updatedList = editServices.filter((s) => s.id !== svc.id);
+                                        setEditServices(updatedList);
+                                        if (selectedBusiness) {
+                                          await updateLocationConfig(selectedBusiness.id, {
+                                            ...selectedBusiness,
+                                            services: updatedList,
+                                          });
+                                          showNotification(`"${svc.name}" removed and database updated!`, 'info');
+                                        }
+                                      }}
+                                      className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                                      title="Delete item"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
                                 </div>
                               </div>
                             );
@@ -4411,7 +4413,7 @@ export const OwnerDashboard: React.FC = () => {
                       {/* Item Type Toggle */}
                       <div>
                         <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Item Category / Type</label>
-                        <div className="grid grid-cols-3 gap-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                           <button
                             type="button"
                             onClick={() => {
@@ -4696,12 +4698,12 @@ export const OwnerDashboard: React.FC = () => {
           {/* Security & Credentials Card */}
           <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm relative overflow-hidden" id="owner-security-settings-card">
             <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/5 rounded-bl-full pointer-events-none" />
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-slate-100 text-slate-700 rounded-xl">
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-4 border-b border-slate-100">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="p-2 bg-slate-100 text-slate-700 rounded-xl shrink-0">
                   <Lock className="h-4 w-4 text-slate-600" />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <h3 className="font-bold text-slate-800 text-sm sm:text-base">Security & Credentials</h3>
                   <p className="text-[10px] text-slate-400 font-mono uppercase">Manage owner account authentication</p>
                 </div>
@@ -4712,7 +4714,7 @@ export const OwnerDashboard: React.FC = () => {
                   setChangePasswordError('');
                   setChangePasswordSuccess('');
                 }}
-                className="px-4 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 hover:border-slate-300 rounded-xl text-xs font-bold text-slate-700 transition-all flex items-center gap-1.5 cursor-pointer"
+                className="px-4 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 hover:border-slate-300 rounded-xl text-xs font-bold text-slate-700 transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
                 id="owner-toggle-change-password-section-btn"
               >
                 <Key className="h-3.5 w-3.5 text-slate-500" />
@@ -4893,8 +4895,8 @@ export const OwnerDashboard: React.FC = () => {
       {activeTab === 'overview' && (
         <div className="max-w-3xl mx-auto space-y-6 animate-fade-in mt-6">
           {/* Employee Management list */}
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+          <div className="bg-white border border-slate-200 rounded-3xl p-4 sm:p-6 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-4 border-b border-slate-100">
               <div>
                 <h3 className="font-bold text-slate-800 text-base">Operator Employees</h3>
                 <p className="text-xs text-slate-400">Assigned operator accounts</p>
@@ -5049,13 +5051,13 @@ export const OwnerDashboard: React.FC = () => {
           </div>
 
           {/* Bookings Operations Control */}
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-6">
+          <div className="bg-white border border-slate-200 rounded-3xl p-4 sm:p-6 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-4 border-b border-slate-100 mb-6">
               <div>
                 <h3 className="font-bold text-slate-800 text-lg">Active Cleaning Bookings</h3>
                 <p className="text-xs text-slate-400 mt-0.5">Approve, update status or review details</p>
               </div>
-              <span className="text-xs bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full font-bold">
+              <span className="text-xs bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full font-bold shrink-0">
                 {filteredBookings.length} total
               </span>
             </div>
@@ -5083,7 +5085,7 @@ export const OwnerDashboard: React.FC = () => {
                     >
                     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-50 pb-2.5">
                       <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <strong className="text-slate-800 text-xs sm:text-sm block">{bk.customerName}</strong>
                           {bk.bookingSource && (
                             <span className="text-[9px] px-1.5 py-0.5 rounded font-mono font-bold bg-slate-100 text-slate-500">
@@ -5125,7 +5127,7 @@ export const OwnerDashboard: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span className="text-[11px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-lg font-mono font-semibold">
                           {bk.date} @ {bk.timeSlot.split(' - ')[0]}
                         </span>
@@ -5177,7 +5179,7 @@ export const OwnerDashboard: React.FC = () => {
                         )}
                       </div>
                     ) : (
-                      <div className="text-xs bg-emerald-50/50 border border-emerald-100 p-2.5 rounded-xl flex items-center justify-between gap-2">
+                      <div className="text-xs bg-emerald-50/50 border border-emerald-100 p-2.5 rounded-xl flex flex-wrap items-center justify-between gap-2">
                         <div>
                           <span className="font-bold text-[10px] text-emerald-600 uppercase tracking-wider block mb-0.5">Payment Settlement Method:</span>
                           <span className="font-bold text-emerald-900 flex items-center gap-1.5">
@@ -5525,9 +5527,9 @@ export const OwnerDashboard: React.FC = () => {
             </div>
 
             {/* Daily Timetable & Slot Breakdown (5 cols) */}
-            <div className="lg:col-span-5 bg-white border border-slate-200/80 rounded-3xl p-5 shadow-xs space-y-4 flex flex-col">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <div>
+            <div className="lg:col-span-5 bg-white border border-slate-200/80 rounded-3xl p-4 sm:p-5 shadow-xs space-y-4 flex flex-col">
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                <div className="min-w-0">
                   <span className="text-[10px] font-extrabold text-indigo-600 uppercase tracking-wider block">Selected Date Breakdown</span>
                   <h3 className="font-extrabold text-slate-800 text-sm sm:text-base">
                     {(() => {
@@ -5541,7 +5543,7 @@ export const OwnerDashboard: React.FC = () => {
                   </h3>
                 </div>
 
-                <div className="flex items-center gap-1.5">
+                <div className="flex flex-wrap items-center gap-1.5 shrink-0">
                   {(() => {
                     const selectedDateHoliday = getBusinessHolidays().find((h: any) => h.date === selectedCalendarDate);
                     return selectedDateHoliday ? (
@@ -5551,7 +5553,7 @@ export const OwnerDashboard: React.FC = () => {
                           const idx = getBusinessHolidays().findIndex((h: any) => h.date === selectedCalendarDate);
                           openEditHolidayModal(selectedDateHoliday, idx);
                         }}
-                        className="px-2.5 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-800 text-xs font-extrabold rounded-xl border border-rose-200 transition-all cursor-pointer flex items-center gap-1"
+                        className="px-2.5 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-800 text-xs font-extrabold rounded-xl border border-rose-200 transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap"
                         title="Edit holiday settings for this date"
                       >
                         <span>🌴 Edit Holiday</span>
@@ -5560,7 +5562,7 @@ export const OwnerDashboard: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => openAddHolidayModal(selectedCalendarDate)}
-                        className="px-2 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold rounded-xl border border-rose-200 transition-all cursor-pointer flex items-center gap-1"
+                        className="px-2 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold rounded-xl border border-rose-200 transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap"
                         title="Set this date as a holiday or closure"
                       >
                         <span>🌴 Set Holiday</span>
@@ -5574,7 +5576,7 @@ export const OwnerDashboard: React.FC = () => {
                       setMbDate(selectedCalendarDate);
                       setShowManualBookingModal(true);
                     }}
-                    className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-xl border border-indigo-100 transition-all cursor-pointer flex items-center gap-1"
+                    className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-xl border border-indigo-100 transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>+ Book</span>
@@ -5689,10 +5691,10 @@ export const OwnerDashboard: React.FC = () => {
 
                         {/* Customer & Vehicle Info */}
                         <div className="bg-white p-2.5 rounded-xl border border-slate-200/80 space-y-1">
-                          <div className="flex items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
                             <span className="font-bold text-slate-800 text-xs truncate">{bk.customerName}</span>
                             {bk.customerPhone && bk.customerPhone.trim() !== '' && bk.customerPhone.trim().toUpperCase() !== 'NA' && bk.customerPhone.trim().toUpperCase() !== 'N/A' ? (
-                              <div className="flex items-center gap-1.5 font-mono">
+                              <div className="flex flex-wrap items-center gap-1.5 font-mono">
                                 <span className="text-[11px] text-slate-700 font-bold flex items-center gap-1">
                                   <Phone className="w-3 h-3 text-emerald-600 shrink-0" />
                                   <span className="text-[9px] text-slate-400 font-sans uppercase font-bold">Phone:</span>
@@ -5723,9 +5725,9 @@ export const OwnerDashboard: React.FC = () => {
                             </div>
                           )}
 
-                          <div className="flex items-center justify-between gap-2 text-[11px] pt-1 border-t border-slate-100">
-                            <span className="text-slate-500 font-bold">Service: <strong className="text-indigo-700">{bk.serviceName || 'Standard Wash'}</strong></span>
-                            <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] pt-1 border-t border-slate-100">
+                            <span className="text-slate-500 font-bold min-w-0">Service: <strong className="text-indigo-700">{bk.serviceName || 'Standard Wash'}</strong></span>
+                            <div className="flex items-center gap-2 shrink-0">
                               <button
                                 type="button"
                                 onClick={() => {
@@ -6150,11 +6152,11 @@ export const OwnerDashboard: React.FC = () => {
                   return (
                     <div
                       key={r.id}
-                      className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs transition-shadow hover:shadow-sm"
+                      className="bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-5 shadow-xs transition-shadow hover:shadow-sm"
                     >
                       {/* Top Review Metadata */}
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
                           <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-indigo-500 to-indigo-700 text-white font-black text-xs flex items-center justify-center uppercase shadow-2xs">
                             {r.customerName ? r.customerName.charAt(0) : 'C'}
                           </div>
@@ -6212,12 +6214,12 @@ export const OwnerDashboard: React.FC = () => {
                       {/* Owner Response Section */}
                       {r.ownerReply && !isReplying && (
                         <div className="mt-4 pl-3 sm:pl-4 border-l-2 border-indigo-400 bg-indigo-50/50 p-3.5 rounded-r-xl border-y border-r border-indigo-100">
-                          <div className="flex items-center justify-between gap-2 mb-1.5">
+                          <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
                             <span className="text-[11px] font-bold text-indigo-900 flex items-center gap-1.5">
-                              <CornerDownRight className="w-3.5 h-3.5 text-indigo-600" />
+                              <CornerDownRight className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
                               Response from {selectedBusiness?.name || 'Business Owner'}
                             </span>
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
                               {r.ownerReplyAt && (
                                 <span className="text-[10px] text-slate-400">
                                   {new Date(r.ownerReplyAt).toLocaleDateString(undefined, {
@@ -6254,7 +6256,7 @@ export const OwnerDashboard: React.FC = () => {
 
                       {/* Unreplied Action Bar */}
                       {!r.ownerReply && !isReplying && (
-                        <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                        <div className="mt-4 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
                           <span className="text-[11px] text-slate-400 flex items-center gap-1">
                             <Info className="w-3.5 h-3.5 text-slate-400" />
                             Replying shows customers you value their experience.
@@ -6345,19 +6347,19 @@ export const OwnerDashboard: React.FC = () => {
       )}
 
       {showEmployeeModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-50 overflow-y-auto animate-fade-in">
-          <div className="relative my-auto bg-white rounded-2xl max-w-sm w-full border border-slate-200 shadow-2xl p-5 sm:p-6 text-left max-h-[85vh] overflow-y-auto overscroll-contain">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-6 z-50 animate-fade-in">
+          <div className="bg-white rounded-2xl max-w-sm w-full border border-slate-200 shadow-2xl flex flex-col max-h-[90vh] overflow-hidden text-left">
+            <div className="shrink-0 flex items-center justify-between px-5 sm:px-6 pt-5 pb-3 border-b border-slate-100 bg-white">
               <h3 className="font-bold text-slate-800 text-base">Onboard Operator Staff</h3>
               <button
                 onClick={() => setShowEmployeeModal(false)}
-                className="p-1 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 cursor-pointer"
+                className="p-1.5 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 cursor-pointer shrink-0"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <form onSubmit={handleAddEmployee} className="mt-4 space-y-4 text-xs sm:text-sm">
+            <form onSubmit={handleAddEmployee} className="flex-1 min-h-0 overflow-y-auto px-5 sm:px-6 py-4 space-y-4 text-xs sm:text-sm overscroll-contain">
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Employee Name</label>
                 <input
@@ -6428,13 +6430,13 @@ export const OwnerDashboard: React.FC = () => {
 
       {/* Edit Employee modal */}
       {editingEmployee && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-50 overflow-y-auto animate-fade-in">
-          <div className="relative my-auto bg-white rounded-2xl max-w-sm w-full border border-slate-200 shadow-2xl p-5 sm:p-6 text-left max-h-[85vh] overflow-y-auto overscroll-contain">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-6 z-50 animate-fade-in">
+          <div className="bg-white rounded-2xl max-w-sm w-full border border-slate-200 shadow-2xl flex flex-col max-h-[90vh] overflow-hidden text-left">
+            <div className="shrink-0 flex items-center justify-between px-5 sm:px-6 pt-5 pb-3 border-b border-slate-100 bg-white">
               <h3 className="font-bold text-slate-800 text-base">Edit Operator Staff</h3>
               <button
                 onClick={() => setEditingEmployee(null)}
-                className="p-1 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 cursor-pointer"
+                className="p-1.5 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 cursor-pointer shrink-0"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -6453,7 +6455,7 @@ export const OwnerDashboard: React.FC = () => {
                   setEditingEmployee(null);
                 }
               }}
-              className="mt-4 space-y-4 text-xs sm:text-sm"
+              className="flex-1 min-h-0 overflow-y-auto px-5 sm:px-6 py-4 space-y-4 text-xs sm:text-sm overscroll-contain"
             >
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Employee Name</label>
@@ -6494,19 +6496,19 @@ export const OwnerDashboard: React.FC = () => {
                 </select>
               </div>
 
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="submit"
-                  className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer"
-                >
-                  Save Changes
-                </button>
+              <div className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-3 pt-2">
                 <button
                   type="button"
                   onClick={() => setEditingEmployee(null)}
                   className="px-4 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-bold rounded-xl cursor-pointer"
                 >
                   Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer"
+                >
+                  Save Changes
                 </button>
               </div>
             </form>
@@ -6516,16 +6518,16 @@ export const OwnerDashboard: React.FC = () => {
 
       {/* 📞🚗 Manual Phone & Walk-In Booking Modal */}
       {showManualBookingModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 md:p-6 z-50 overflow-y-auto overscroll-y-contain animate-fade-in">
-          <div className="relative my-auto bg-white rounded-3xl max-w-xl w-full border border-slate-200 shadow-2xl flex flex-col max-h-[85vh] md:max-h-[80vh] overflow-hidden text-left my-auto">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 md:p-6 z-50 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-xl w-full border border-slate-200 shadow-2xl flex flex-col max-h-[92vh] sm:max-h-[85vh] md:max-h-[80vh] overflow-hidden text-left">
             {/* Modal Header */}
-            <div className="shrink-0 p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-white z-10">
-              <div>
+            <div className="shrink-0 p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between gap-3 bg-white z-10">
+              <div className="min-w-0">
                 <h3 className="font-black text-slate-900 text-base sm:text-lg flex items-center gap-2">
-                  <Plus className="w-5 h-5 text-indigo-600" />
-                  Record Phone / Walk-in Booking
+                  <Plus className="w-5 h-5 text-indigo-600 shrink-0" />
+                  <span className="truncate">Record Phone / Walk-in Booking</span>
                 </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-xs text-slate-500 mt-0.5 truncate">
                   Log customer slot for <span className="font-bold text-slate-800">{selectedBusiness?.name || 'Selected Location'}</span>
                 </p>
               </div>
@@ -6533,20 +6535,20 @@ export const OwnerDashboard: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setShowManualBookingModal(false)}
-                className="p-1.5 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 cursor-pointer transition-colors"
+                className="p-1.5 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 cursor-pointer transition-colors shrink-0"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
             {/* Scrollable Form Body */}
-            <form onSubmit={handleManualBookingSubmit} className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 space-y-4 text-xs overscroll-contain touch-pan-y">
+            <form id="owner-manual-booking-form" onSubmit={handleManualBookingSubmit} className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 space-y-4 text-xs overscroll-contain touch-pan-y">
               {/* Booking Source Toggle */}
               <div>
                 <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
                   Booking Source Category
                 </label>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 min-[380px]:grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={() => setMbSource('PHONE')}
@@ -6556,7 +6558,7 @@ export const OwnerDashboard: React.FC = () => {
                         : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700'
                     }`}
                   >
-                    <Phone className="w-4 h-4" />
+                    <Phone className="w-4 h-4 shrink-0" />
                     <span>📞 Phone Call</span>
                   </button>
                   <button
@@ -6568,7 +6570,7 @@ export const OwnerDashboard: React.FC = () => {
                         : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700'
                     }`}
                   >
-                    <Car className="w-4 h-4" />
+                    <Car className="w-4 h-4 shrink-0" />
                     <span>🚗 Walk-In Customer</span>
                   </button>
                 </div>
@@ -6650,7 +6652,7 @@ export const OwnerDashboard: React.FC = () => {
 
               {/* Time Slot Selection */}
               <div>
-                <div className="flex items-center justify-between mb-1.5">
+                <div className="flex flex-wrap items-center justify-between gap-1.5 mb-1.5">
                   <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider">
                     Time Slot Selection *
                   </label>
@@ -6666,10 +6668,10 @@ export const OwnerDashboard: React.FC = () => {
 
                 <div className="space-y-2">
                   {/* Selection Summary Header */}
-                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 flex items-center justify-between text-xs">
-                    <div>
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <div className="min-w-0">
                       <span className="text-[10px] text-slate-400 font-bold uppercase block">Selected Time Slot</span>
-                      <strong className={`font-mono text-xs sm:text-sm ${mbSelectedSlots.length > 0 ? 'text-indigo-700 font-extrabold' : 'text-slate-600'}`}>
+                      <strong className={`font-mono text-xs sm:text-sm break-words ${mbSelectedSlots.length > 0 ? 'text-indigo-700 font-extrabold' : 'text-slate-600'}`}>
                         {getFormattedSlotSummary(mbSelectedSlots)}
                       </strong>
                     </div>
@@ -6677,7 +6679,7 @@ export const OwnerDashboard: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => setMbSelectedSlots([])}
-                        className="text-[10px] font-bold text-slate-500 hover:text-red-600 px-2 py-1 bg-white border border-slate-200 rounded-lg shadow-2xs hover:bg-red-50 transition-colors cursor-pointer"
+                        className="text-[10px] font-bold text-slate-500 hover:text-red-600 px-2 py-1 bg-white border border-slate-200 rounded-lg shadow-2xs hover:bg-red-50 transition-colors cursor-pointer shrink-0"
                       >
                         Clear
                       </button>
@@ -6794,9 +6796,9 @@ export const OwnerDashboard: React.FC = () => {
                     </div>
                   )}
 
-                  <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-xs font-extrabold">
+                  <div className="pt-2 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs font-extrabold">
                     <span className="text-slate-500">Calculated Charge Total:</span>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2">
                       <span className="text-xs text-slate-400 font-normal">
                         (or override price manually)
                       </span>
@@ -6830,11 +6832,11 @@ export const OwnerDashboard: React.FC = () => {
 
               {/* On-Site Settlement Method */}
               <div>
-                <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1.5 flex items-center justify-between">
+                <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1.5 flex flex-wrap items-center justify-between gap-1">
                   <span>Payment Settlement Method</span>
                   <span className="text-[10px] text-slate-400 font-normal lowercase">(collected at counter)</span>
                 </label>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 min-[360px]:grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={() => setMbPaymentMode('Cash')}
@@ -6899,24 +6901,26 @@ export const OwnerDashboard: React.FC = () => {
                 />
               </div>
 
-              {/* Sticky Submit Bar inside form */}
-              <div className="pt-3 sticky bottom-0 bg-white/95 backdrop-blur-xs border-t border-slate-100 flex gap-2 pb-1 z-10">
-                <button
-                  type="submit"
-                  disabled={mbIsSubmitting}
-                  className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-extrabold text-xs sm:text-sm shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  {mbIsSubmitting ? 'Logging...' : 'Save Manual Booking Record'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowManualBookingModal(false)}
-                  className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer"
-                >
-                  Cancel
-                </button>
-              </div>
             </form>
+
+            {/* Sticky Modal Footer */}
+            <div className="shrink-0 p-3.5 sm:p-4 bg-white border-t border-slate-100 flex flex-col-reverse sm:flex-row gap-2 z-10">
+              <button
+                type="button"
+                onClick={() => setShowManualBookingModal(false)}
+                className="px-4 py-2.5 sm:py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="owner-manual-booking-form"
+                disabled={mbIsSubmitting}
+                className="flex-1 py-2.5 sm:py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-extrabold text-xs sm:text-sm shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                {mbIsSubmitting ? 'Logging...' : 'Save Manual Booking Record'}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -6958,16 +6962,16 @@ export const OwnerDashboard: React.FC = () => {
 
       {/* 🌴 Holiday & Schedule Overrides Management Modal */}
       {showHolidayModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-50 overflow-y-auto animate-fade-in">
-          <div className="relative my-auto bg-white rounded-3xl max-w-lg w-full border border-slate-200 shadow-2xl p-5 sm:p-7 text-left max-h-[90vh] overflow-y-auto overscroll-contain">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <span className="text-2xl">🌴</span>
-                <div>
-                  <h3 className="font-extrabold text-slate-900 text-base sm:text-lg">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-6 z-50 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-lg w-full border border-slate-200 shadow-2xl flex flex-col max-h-[90vh] overflow-hidden text-left">
+            <div className="shrink-0 flex items-center justify-between gap-2 px-5 sm:px-7 pt-5 pb-3 border-b border-slate-100 bg-white">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-2xl shrink-0">🌴</span>
+                <div className="min-w-0">
+                  <h3 className="font-extrabold text-slate-900 text-base sm:text-lg truncate">
                     {editingHolidayIndex !== null ? 'Edit Holiday / Closure' : 'Set Business Holiday / Closure'}
                   </h3>
-                  <p className="text-slate-500 text-xs mt-0.5">
+                  <p className="text-slate-500 text-xs mt-0.5 line-clamp-2">
                     Block appointment slots for public holidays, half-days, or maintenance.
                   </p>
                 </div>
@@ -6975,13 +6979,13 @@ export const OwnerDashboard: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setShowHolidayModal(false)}
-                className="p-1.5 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                className="p-1.5 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors cursor-pointer shrink-0"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveHoliday} className="mt-4 space-y-4">
+            <form onSubmit={handleSaveHoliday} className="flex-1 min-h-0 overflow-y-auto px-5 sm:px-7 py-4 space-y-4 overscroll-contain">
               {/* Date Picker */}
               <div>
                 <label className="block text-xs font-black uppercase text-slate-700 tracking-wider mb-1">
@@ -7077,7 +7081,7 @@ export const OwnerDashboard: React.FC = () => {
                   <span className="text-[10px] font-black uppercase text-indigo-700 tracking-wider block">
                     Define Closed Hours Range (Customers blocked during this time)
                   </span>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 min-[360px]:grid-cols-2 gap-2">
                     <div>
                       <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Closed From</label>
                       <input
@@ -7125,7 +7129,7 @@ export const OwnerDashboard: React.FC = () => {
               </div>
 
               {/* Action Buttons */}
-              <div className="pt-2 flex items-center justify-between gap-2 border-t border-slate-100">
+              <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100">
                 {editingHolidayIndex !== null ? (
                   <button
                     type="button"
@@ -7137,9 +7141,9 @@ export const OwnerDashboard: React.FC = () => {
                   >
                     Delete Closure
                   </button>
-                ) : <div />}
+                ) : <div className="hidden sm:block" />}
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2 ml-auto">
                   <button
                     type="button"
                     onClick={() => setShowHolidayModal(false)}
@@ -7163,14 +7167,25 @@ export const OwnerDashboard: React.FC = () => {
 
       {/* Owner Account Deletion Confirmation Modal */}
       {showOwnerDeleteModal && (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in" id="owner-delete-account-overlay">
-          <div className="bg-white rounded-3xl max-w-md w-full border border-slate-100 shadow-2xl overflow-hidden p-6 space-y-6" id="owner-delete-account-modal">
-            <div className="flex items-center gap-3 text-rose-600">
-              <div className="p-2 bg-rose-50 rounded-xl">
-                <AlertTriangle className="h-5 w-5 animate-bounce" />
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 z-50 animate-fade-in" id="owner-delete-account-overlay">
+          <div className="bg-white rounded-3xl max-w-md w-full border border-slate-100 shadow-2xl flex flex-col max-h-[90vh] overflow-hidden" id="owner-delete-account-modal">
+            <div className="shrink-0 flex items-center justify-between gap-3 px-5 sm:px-6 pt-5 pb-3 border-b border-slate-100 text-rose-600">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="p-2 bg-rose-50 rounded-xl shrink-0">
+                  <AlertTriangle className="h-5 w-5 animate-bounce" />
+                </div>
+                <h3 className="text-base sm:text-lg font-black tracking-tight text-slate-800 truncate">Confirm Owner Account Deletion</h3>
               </div>
-              <h3 className="text-base sm:text-lg font-black tracking-tight text-slate-800">Confirm Owner Account Deletion</h3>
+              <button
+                type="button"
+                onClick={() => setShowOwnerDeleteModal(false)}
+                className="p-1.5 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 cursor-pointer shrink-0"
+                disabled={isDeletingOwnerAccount}
+              >
+                <X className="h-5 w-5" />
+              </button>
             </div>
+            <div className="flex-1 min-h-0 overflow-y-auto p-5 sm:p-6 space-y-5 overscroll-contain">
             
             <p className="text-xs text-slate-500 leading-relaxed font-medium">
               Are you sure you want to permanently delete your owner account? This will erase your personal login credentials and administrative profile. <strong className="text-rose-600">This action cannot be undone.</strong>
@@ -7245,7 +7260,7 @@ export const OwnerDashboard: React.FC = () => {
               </label>
             </div>
 
-            <div className="flex items-center gap-3 justify-end pt-2">
+            <div className="flex flex-col-reverse sm:flex-row sm:items-center gap-2.5 sm:gap-3 justify-end pt-2">
               <button
                 type="button"
                 onClick={() => setShowOwnerDeleteModal(false)}
@@ -7278,11 +7293,12 @@ export const OwnerDashboard: React.FC = () => {
                     setIsDeletingOwnerAccount(false);
                   }
                 }}
-                className="py-2.5 px-5 bg-rose-600 hover:bg-rose-700 disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none border border-transparent disabled:border-slate-200 text-white rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shadow-md shadow-rose-600/10"
+                className="py-2.5 px-5 bg-rose-600 hover:bg-rose-700 disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none border border-transparent disabled:border-slate-200 text-white rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 shadow-md shadow-rose-600/10"
                 disabled={isDeletingOwnerAccount || !ownerAgreeToDelete || !ownerDeletePassword.trim()}
               >
                 {isDeletingOwnerAccount ? 'Authenticating & Deleting...' : 'Yes, Delete Account'}
               </button>
+            </div>
             </div>
           </div>
         </div>

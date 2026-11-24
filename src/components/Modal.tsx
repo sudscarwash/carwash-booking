@@ -103,7 +103,7 @@ export const Modal: React.FC<ModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 overflow-y-auto animate-fade-in"
+      className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-6 overflow-y-auto animate-fade-in"
       id={id ? `${id}-backdrop` : undefined}
       onClick={(e) => {
         if (!disableBackdropClick && e.target === e.currentTarget) {
@@ -112,13 +112,13 @@ export const Modal: React.FC<ModalProps> = ({
       }}
     >
       <div
-        className={`bg-white rounded-3xl w-full ${widthClass} shadow-2xl border border-slate-100 flex flex-col overflow-hidden my-auto max-h-[90vh] ${className}`}
+        className={`bg-white rounded-2xl sm:rounded-3xl w-full ${widthClass} shadow-2xl border border-slate-100 flex flex-col overflow-hidden my-auto max-h-[92vh] sm:max-h-[90vh] ${className}`}
         id={id}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         {!hideHeader && (title || showCloseButton) && (
-          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/70 shrink-0">
+          <div className="px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/70 shrink-0">
             <div className="flex items-center gap-2.5 min-w-0 pr-2">
               {icon && <div className="shrink-0 text-sky-600">{icon}</div>}
               <div className="min-w-0">
@@ -150,13 +150,13 @@ export const Modal: React.FC<ModalProps> = ({
         )}
 
         {/* Modal Body */}
-        <div className="p-5 sm:p-6 overflow-y-auto flex-1">
+        <div className="p-4 sm:p-6 overflow-y-auto flex-1 min-h-0 overscroll-contain">
           {children}
         </div>
 
         {/* Optional Footer */}
         {footer && (
-          <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-100 shrink-0">
+          <div className="px-4 sm:px-5 py-3 sm:py-3.5 bg-slate-50 border-t border-slate-100 shrink-0">
             {footer}
           </div>
         )}

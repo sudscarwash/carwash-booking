@@ -210,24 +210,24 @@ export const CarWashOperationsModal: React.FC<CarWashOperationsModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in"
       id="carwash-operations-modal-backdrop"
     >
       <div
-        className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-3xl overflow-hidden flex flex-col my-8 max-h-[92vh]"
+        className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-slate-200 w-full max-w-3xl overflow-hidden flex flex-col max-h-[92vh]"
         id="carwash-operations-modal"
       >
         {/* Modal Header */}
-        <div className="px-6 py-5 border-b border-slate-150 flex items-center justify-between bg-slate-50/70">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-indigo-50 border border-indigo-200/80 flex items-center justify-center text-indigo-600">
+        <div className="px-4 sm:px-6 py-4 border-b border-slate-150 flex items-start sm:items-center justify-between gap-2 bg-slate-50/70 shrink-0">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-indigo-50 border border-indigo-200/80 flex items-center justify-center text-indigo-600 shrink-0">
               <Sliders className="w-5 h-5" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base font-black text-slate-900">{carWash.name}</h2>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-sm sm:text-base font-black text-slate-900 truncate">{carWash.name}</h2>
                 <span
-                  className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase tracking-wider ${
+                  className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase tracking-wider shrink-0 ${
                     ownerQrCodeEnabled
                       ? 'bg-emerald-100 text-emerald-800'
                       : 'bg-amber-100 text-amber-800'
@@ -243,7 +243,7 @@ export const CarWashOperationsModal: React.FC<CarWashOperationsModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 transition-colors cursor-pointer"
+            className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 transition-colors cursor-pointer shrink-0"
             id="close-operations-modal-btn"
           >
             <X className="w-5 h-5" />
@@ -267,10 +267,10 @@ export const CarWashOperationsModal: React.FC<CarWashOperationsModalProps> = ({
         )}
 
         {/* Tab Navigation */}
-        <div className="flex border-b border-slate-150 px-6 bg-white shrink-0 overflow-x-auto">
+        <div className="flex border-b border-slate-150 px-3 sm:px-6 bg-white shrink-0 overflow-x-auto scrollbar-none">
           <button
             onClick={() => setActiveTab('access')}
-            className={`py-3 px-3.5 text-xs font-bold border-b-2 flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap ${
+            className={`py-3 px-3 sm:px-3.5 text-xs font-bold border-b-2 flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
               activeTab === 'access'
                 ? 'border-indigo-600 text-indigo-700'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -319,20 +319,20 @@ export const CarWashOperationsModal: React.FC<CarWashOperationsModalProps> = ({
         </div>
 
         {/* Tab Content Body */}
-        <div className="p-6 overflow-y-auto flex-1 space-y-6">
+        <div className="p-4 sm:p-6 overflow-y-auto flex-1 min-h-0 overscroll-contain space-y-5 sm:space-y-6">
           {/* TAB 1: ACCESS & PARAMETERS */}
           {activeTab === 'access' && (
-            <div className="space-y-6">
+            <div className="space-y-5 sm:space-y-6">
               {/* OWNER QR CODE ACCESS TOGGLE */}
               <div
-                className={`p-5 rounded-2xl border transition-all ${
+                className={`p-4 sm:p-5 rounded-2xl border transition-all ${
                   ownerQrCodeEnabled
                     ? 'bg-emerald-50/70 border-emerald-200'
                     : 'bg-amber-50/70 border-amber-200'
                 }`}
               >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-start gap-3">
+                <div className="flex flex-col sm:flex-row items-start justify-between gap-3 sm:gap-4">
+                  <div className="flex items-start gap-3 min-w-0">
                     <div
                       className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
                         ownerQrCodeEnabled
@@ -342,8 +342,8 @@ export const CarWashOperationsModal: React.FC<CarWashOperationsModalProps> = ({
                     >
                       {ownerQrCodeEnabled ? <QrCode className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
                     </div>
-                    <div>
-                      <div className="flex items-center gap-2">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
                         <h3 className="text-sm font-extrabold text-slate-900">
                           Owner QR Code Access & Posters
                         </h3>
@@ -382,14 +382,14 @@ export const CarWashOperationsModal: React.FC<CarWashOperationsModalProps> = ({
 
               {/* LOYALTY & MEMBERSHIP FEATURE TOGGLE (Admin / Special Control) */}
               <div
-                className={`p-5 rounded-2xl border transition-all ${
+                className={`p-4 sm:p-5 rounded-2xl border transition-all ${
                   membershipEnabled
                     ? 'bg-indigo-50/70 border-indigo-200'
                     : 'bg-slate-50 border-slate-200'
                 }`}
               >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-start gap-3">
+                <div className="flex flex-col sm:flex-row items-start justify-between gap-3 sm:gap-4">
+                  <div className="flex items-start gap-3 min-w-0">
                     <div
                       className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
                         membershipEnabled
@@ -399,8 +399,8 @@ export const CarWashOperationsModal: React.FC<CarWashOperationsModalProps> = ({
                     >
                       <Award className="w-5 h-5" />
                     </div>
-                    <div>
-                      <div className="flex items-center gap-2">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
                         <h3 className="text-sm font-extrabold text-slate-900">
                           Customer Loyalty &amp; Membership Programme
                         </h3>
@@ -438,8 +438,8 @@ export const CarWashOperationsModal: React.FC<CarWashOperationsModalProps> = ({
               </div>
 
               {/* Station Active Status */}
-              <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-200/80 rounded-2xl">
-                <div>
+              <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-slate-50 border border-slate-200/80 rounded-2xl">
+                <div className="min-w-0">
                   <h4 className="text-xs font-bold text-slate-800">Public Station Status</h4>
                   <p className="text-[11px] text-slate-500">
                     Controls whether this station is publicly visible on Brunei customer booking maps.
@@ -565,8 +565,8 @@ export const CarWashOperationsModal: React.FC<CarWashOperationsModalProps> = ({
           {/* TAB 2: SERVICES CATALOG */}
           {activeTab === 'services' && (
             <div className="space-y-5">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-150">
-                <div>
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-150">
+                <div className="min-w-0">
                   <h3 className="text-sm font-extrabold text-slate-800">Operational Wash Services & Packages</h3>
                   <p className="text-xs text-slate-500">Configure bookable packages, pricing in BND, and durations.</p>
                 </div>
@@ -699,10 +699,10 @@ export const CarWashOperationsModal: React.FC<CarWashOperationsModalProps> = ({
                   {services.map((svc) => (
                     <div
                       key={svc.id}
-                      className="flex items-center justify-between p-3.5 bg-white border border-slate-200/90 rounded-2xl hover:border-slate-300 transition-colors"
+                      className="flex flex-wrap items-center justify-between gap-2.5 p-3.5 bg-white border border-slate-200/90 rounded-2xl hover:border-slate-300 transition-colors"
                     >
-                      <div className="space-y-0.5">
-                        <div className="flex items-center gap-2">
+                      <div className="space-y-0.5 min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
                           <span className="font-extrabold text-slate-800 text-xs">{svc.name}</span>
                           {svc.vehicleType && (
                             <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-bold">
@@ -715,7 +715,7 @@ export const CarWashOperationsModal: React.FC<CarWashOperationsModalProps> = ({
                         )}
                       </div>
 
-                      <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-3 shrink-0">
                         <div className="text-right">
                           <span className="font-mono font-black text-slate-900 text-sm">
                             BND ${Number(svc.price).toFixed(2)}
@@ -771,7 +771,7 @@ export const CarWashOperationsModal: React.FC<CarWashOperationsModalProps> = ({
                         </div>
 
                         {dayConf.isOpen ? (
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                             <span className="text-xs text-slate-500 font-medium">Open:</span>
                             <input
                               type="time"
@@ -818,8 +818,8 @@ export const CarWashOperationsModal: React.FC<CarWashOperationsModalProps> = ({
 
               {/* BIBD Account */}
               <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-4 space-y-3">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
-                  <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-200/60">
+                  <div className="flex items-center gap-2 min-w-0">
                     <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center font-black text-xs">
                       BIBD
                     </div>
@@ -867,8 +867,8 @@ export const CarWashOperationsModal: React.FC<CarWashOperationsModalProps> = ({
 
               {/* Baiduri Account */}
               <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-4 space-y-3">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
-                  <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-200/60">
+                  <div className="flex items-center gap-2 min-w-0">
                     <div className="w-7 h-7 rounded-lg bg-sky-100 text-sky-800 flex items-center justify-center font-black text-xs">
                       BAI
                     </div>
@@ -918,10 +918,10 @@ export const CarWashOperationsModal: React.FC<CarWashOperationsModalProps> = ({
         </div>
 
         {/* Modal Footer Actions */}
-        <div className="px-6 py-4 border-t border-slate-150 flex items-center justify-between bg-slate-50/80">
+        <div className="px-4 sm:px-6 py-3.5 sm:py-4 border-t border-slate-150 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-slate-50/80 shrink-0">
           <div className="text-xs text-slate-500 flex items-center gap-1.5">
             <span
-              className={`w-2 h-2 rounded-full ${
+              className={`w-2 h-2 rounded-full shrink-0 ${
                 ownerQrCodeEnabled ? 'bg-emerald-500' : 'bg-amber-500'
               }`}
             />
@@ -933,12 +933,12 @@ export const CarWashOperationsModal: React.FC<CarWashOperationsModalProps> = ({
             </span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center gap-2">
             <button
               type="button"
               onClick={onClose}
               disabled={isSaving}
-              className="px-4 py-2 text-xs font-bold text-slate-600 hover:text-slate-800 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer"
+              className="w-full sm:w-auto px-4 py-2 text-xs font-bold text-slate-600 hover:text-slate-800 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer text-center"
               id="cancel-operations-modal-btn"
             >
               Cancel
@@ -947,7 +947,7 @@ export const CarWashOperationsModal: React.FC<CarWashOperationsModalProps> = ({
               type="button"
               onClick={handleSave}
               disabled={isSaving}
-              className="px-5 py-2 text-xs font-extrabold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-xs transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              className="w-full sm:w-auto px-5 py-2 text-xs font-extrabold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               id="save-operations-modal-btn"
             >
               {isSaving ? (
