@@ -688,7 +688,7 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
 
         {/* STEP PROGRESS BREADCRUMB - INTERACTIVE */}
         {!successBooking && (
-          <div className="bg-slate-50 border-b border-slate-200 px-3 sm:px-6 py-2.5 flex items-center justify-between gap-1.5 text-[11px] sm:text-xs font-bold text-slate-500 shrink-0 overflow-x-auto scrollbar-none">
+          <div className="bg-slate-50 border-b border-slate-200 px-3 sm:px-6 py-2.5 flex flex-wrap sm:flex-nowrap items-center justify-between gap-1.5 text-[11px] sm:text-xs font-bold text-slate-500 shrink-0">
             <button
               type="button"
               onClick={() => {
@@ -871,7 +871,7 @@ export const BookingFlowModal: React.FC<BookingFlowModalProps> = ({
                       <p className="text-xs text-slate-400">You can select a main wash service plus optional add-ons (e.g. headlight polish, tyre wax)</p>
                     </div>
 
-                    <div className="flex border border-slate-200 p-0.5 rounded-xl bg-slate-100 shrink-0 text-xs font-bold overflow-x-auto">
+                    <div className="flex flex-wrap border border-slate-200 p-0.5 rounded-xl bg-slate-100 shrink-0 text-xs font-bold gap-0.5">
                       <button
                         type="button"
                         onClick={() => setItemTabFilter('all')}

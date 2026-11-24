@@ -22,6 +22,7 @@ import { QRCodeManager } from '../components/QRCodeManager.js';
 import { LoyaltyMembershipOwnerView } from '../components/LoyaltyMembershipOwnerView.js';
 import { FEATURES } from '../config/features.js';
 import { useModalBack, useTabBack } from '../utils/useBackHandler.js';
+import { HorizontalScrollNav } from '../components/HorizontalScrollNav.js';
 
 const getTodayDateString = () => {
   const d = new Date();
@@ -2205,7 +2206,13 @@ export const OwnerDashboard: React.FC = () => {
       )}
 
       {/* Responsive Bottom Navigation Bar - All operational tabs always accessible */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-150 shadow-[0_-8px_30px_rgba(0,0,0,0.06)] px-2 sm:px-4 py-2 flex items-center overflow-x-auto no-scrollbar justify-start sm:justify-around md:sticky md:top-4 md:bottom-auto md:left-auto md:right-auto md:z-30 md:bg-slate-50/90 md:border md:border-slate-200/60 md:shadow-xs md:rounded-2xl md:py-2 md:px-3 md:w-max md:mx-auto md:mb-6 md:gap-1.5 animate-fade-in">
+      <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-150 shadow-[0_-8px_30px_rgba(0,0,0,0.06)] px-2 sm:px-4 py-2 md:sticky md:top-4 md:bottom-auto md:left-auto md:right-auto md:z-30 md:bg-slate-50/90 md:border md:border-slate-200/60 md:shadow-xs md:rounded-2xl md:py-2 md:px-3 md:w-max md:max-w-full md:mx-auto md:mb-6 animate-fade-in">
+        <HorizontalScrollNav
+          tone="white"
+          ariaLabel="Owner dashboard navigation"
+          className="w-full md:w-auto"
+          scrollClassName="flex items-center justify-start sm:justify-around md:justify-center md:gap-1.5"
+        >
         <button
           type="button"
           onClick={() => setActiveTab('overview')}
@@ -2321,6 +2328,7 @@ export const OwnerDashboard: React.FC = () => {
           <Sliders className="h-5 w-5 md:h-4 md:w-4" />
           <span className="text-[10px] md:text-xs font-semibold">Operations</span>
         </button>
+        </HorizontalScrollNav>
       </div>
 
       {activeTab === 'overview' && (
@@ -2740,7 +2748,11 @@ export const OwnerDashboard: React.FC = () => {
               </div>
 
               {/* Status and Category Filter Pills (Scrollable on Mobile) */}
-              <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+              <HorizontalScrollNav
+                tone="slate"
+                ariaLabel="Accounting filters"
+                scrollClassName="flex items-center gap-2 pb-1 sm:pb-0"
+              >
                 <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 text-xs font-bold shrink-0">
                   <button
                     type="button"
@@ -2791,7 +2803,7 @@ export const OwnerDashboard: React.FC = () => {
                     Products
                   </button>
                 </div>
-              </div>
+              </HorizontalScrollNav>
             </div>
 
             {/* KPI Summary Banner (2-column grid on mobile) */}
@@ -3314,7 +3326,11 @@ export const OwnerDashboard: React.FC = () => {
               </div>
 
               {/* A-Z Index Letter Row */}
-              <div className="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap pb-2 pt-1 max-w-full touch-pan-x scrollbar-thin">
+              <HorizontalScrollNav
+                tone="slate"
+                ariaLabel="Customer directory alphabetical filter"
+                scrollClassName="flex items-center gap-1.5 whitespace-nowrap pb-2 pt-1"
+              >
                 {['ALL', '#', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')].map((letter) => {
                   const countForLetter = letter === 'ALL'
                     ? allCustomersList.length
@@ -3350,7 +3366,7 @@ export const OwnerDashboard: React.FC = () => {
                     </button>
                   );
                 })}
-              </div>
+              </HorizontalScrollNav>
             </div>
 
             {/* Customers Cards Grid */}
@@ -6020,7 +6036,12 @@ export const OwnerDashboard: React.FC = () => {
           {/* Filtering and Search Toolbar */}
           <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200/80">
             {/* Status Pills */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0">
+            <HorizontalScrollNav
+              tone="white"
+              ariaLabel="Review status filters"
+              className="flex-1 min-w-0"
+              scrollClassName="flex items-center gap-1.5 pb-1 md:pb-0"
+            >
               <button
                 type="button"
                 onClick={() => setReviewStatusFilter('ALL')}
@@ -6057,7 +6078,7 @@ export const OwnerDashboard: React.FC = () => {
               >
                 Replied ({ownerReviews.filter((r) => !!r.ownerReply).length})
               </button>
-            </div>
+            </HorizontalScrollNav>
 
             {/* Right: Star Filter & Search */}
             <div className="flex items-center gap-2">

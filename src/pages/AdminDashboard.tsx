@@ -18,6 +18,7 @@ import { isValidEmail } from '../lib/validation.js';
 import { FEATURES } from '../config/features.js';
 import { useModalBack, useTabBack } from '../utils/useBackHandler.js';
 import { CarWashOperationsModal } from '../components/CarWashOperationsModal.js';
+import { HorizontalScrollNav } from '../components/HorizontalScrollNav.js';
 
 export const AdminDashboard: React.FC = () => {
   const {
@@ -903,7 +904,12 @@ export const AdminDashboard: React.FC = () => {
       </div>
 
       {/* Sub Tabs Selection - Responsive Mobile Horizontal Scroll */}
-      <div className="border-b border-slate-200 flex items-center gap-1.5 sm:gap-4 text-xs sm:text-sm font-semibold overflow-x-auto no-scrollbar scrollbar-none py-1 -mx-3 px-3 sm:mx-0 sm:px-0 touch-pan-x">
+      <HorizontalScrollNav
+        tone="slate"
+        ariaLabel="Admin dashboard sections"
+        className="border-b border-slate-200 -mx-3 px-3 sm:mx-0 sm:px-0"
+        scrollClassName="flex items-center gap-1.5 sm:gap-4 text-xs sm:text-sm font-semibold py-1"
+      >
         <button
           onClick={() => setActiveSubTab('users')}
           className={`pb-3 pt-1.5 px-2.5 sm:px-1 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap ${
@@ -1017,7 +1023,7 @@ export const AdminDashboard: React.FC = () => {
             <span>Review Moderation</span>
           </button>
         )}
-      </div>
+      </HorizontalScrollNav>
 
       {/* Sub Tab: Users - System Marketplace Directory */}
       {activeSubTab === 'users' && (() => {
@@ -1113,7 +1119,12 @@ export const AdminDashboard: React.FC = () => {
               </div>
 
               {/* Role Filter buttons */}
-              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar scrollbar-none pb-1 text-xs font-bold pt-1">
+              <HorizontalScrollNav
+                tone="slate"
+                ariaLabel="Filter users by role"
+                className="pt-1"
+                scrollClassName="flex items-center gap-1.5 pb-1 text-xs font-bold"
+              >
                 <span className="text-slate-400 uppercase tracking-wider text-[10px] mr-1 shrink-0">Role:</span>
                 {['ALL', Role.OWNER, Role.CUSTOMER, Role.EMPLOYEE, Role.SPECIAL, Role.ADMIN].map((r) => (
                   <button
@@ -1132,7 +1143,7 @@ export const AdminDashboard: React.FC = () => {
                     {r === 'ALL' ? 'All Roles' : r === Role.OWNER ? '🚗 Carwash Owners' : r}
                   </button>
                 ))}
-              </div>
+              </HorizontalScrollNav>
             </div>
 
             {/* Users Directory Table */}

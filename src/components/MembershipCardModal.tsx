@@ -3,10 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { CustomerMembership, MembershipPointsLedger, MembershipReward, MembershipRedemption } from '../types';
 import { useApp } from '../context/AppContext';
-import { Award, QrCode, X, Calendar, ArrowUpRight, ArrowDownLeft, Shield, Gift, RefreshCw, AlertTriangle, CheckCircle, ExternalLink, Sparkles } from 'lucide-react';
+import { Award, QrCode, X, Calendar, ArrowUpRight, ArrowDownLeft, Shield, Gift, RefreshCw, AlertTriangle, CheckCircle, ExternalLink, Sparkles, Search, ChevronDown } from 'lucide-react';
 import QRCode from 'qrcode';
 
 interface MembershipCardModalProps {
@@ -38,6 +38,37 @@ export const MembershipCardModal: React.FC<MembershipCardModalProps> = ({
   const [isRedeeming, setIsRedeeming] = useState(false);
   const [redeemedVoucher, setRedeemedVoucher] = useState<MembershipRedemption | null>(null);
   const [voucherQrUrl, setVoucherQrUrl] = useState<string>('');
+
+  // Reward discovery controls
+  const [rewardSearch, setRewardSearch] = useState('');
+  const [rewardCategory, setRewardCategory] = useState<'ALL' | 'REDEEMABLE' | 'FREE_SERVICE' | 'FREE_ADDON' | 'DISCOUNT' | 'CUSTOM'>('ALL');
+  const [rewardSort, setRewardSort] = useState<'POINTS_ASC' | 'POINTS_DESC' | 'ALPHA_ASC'>('POINTS_ASC');
+  const [showAllModalRewards, setShowAllModalRewards] = useState(false);
+
+  const filteredModalRewards = useMemo(() => {
+    const balance = Number(membership?.pointsBalance ?? 0);
+    const q = rewardSearch.trim().toLowerCase();
+    const list = rewards.filter((r) => {
+      if (q) {
+        const matchTitle = (r.title || '').toLowerCase().includes(q);
+        const matchDesc = (r.description || '').toLowerCase().includes(q);
+        const matchType = (r.rewardType || '').toLowerCase().replace('_', ' ').includes(q);
+        if (!matchTitle && !matchDesc && !matchType) return false;
+      }
+      if (rewardCategory === 'REDEEMABLE') return balance >= Number(r.pointsCost ?? 0);
+      if (rewardCategory === 'FREE_SERVICE') return r.rewardType === 'FREE_SERVICE';
+      if (rewardCategory === 'FREE_ADDON') return r.rewardType === 'FREE_ADDON';
+      if (rewardCategory === 'DISCOUNT') return r.rewardType === 'DISCOUNT_PERCENT' || r.rewardType === 'FIXED_DISCOUNT';
+      if (rewardCategory === 'CUSTOM') return r.rewardType === 'CUSTOM';
+      return true;
+    });
+
+    return [...list].sort((a, b) => {
+      if (rewardSort === 'POINTS_DESC') return Number(b.pointsCost || 0) - Number(a.pointsCost || 0);
+      if (rewardSort === 'ALPHA_ASC') return (a.title || '').localeCompare(b.title || '');
+      return Number(a.pointsCost || 0) - Number(b.pointsCost || 0);
+    });
+  }, [rewards, rewardSearch, rewardCategory, rewardSort, membership?.pointsBalance]);
 
   // Generate Member QR Code
   useEffect(() => {
@@ -168,35 +199,48 @@ export const MembershipCardModal: React.FC<MembershipCardModalProps> = ({
             </div>
           </div>
 
-          {/* Sub Navigation */}
-          <div className="flex gap-2 mt-4 sm:mt-5 border-t border-white/10 pt-3.5 sm:pt-4 overflow-x-auto pb-1 scrollbar-none">
+          {/* Sub Navigation - All sections visible without hidden horizontal overflow */}
+          <div
+            role="tablist"
+            aria-label="Loyalty card sections"
+            className="grid grid-cols-3 sm:flex sm:flex-wrap gap-1.5 sm:gap-2 mt-4 sm:mt-5 border-t border-white/10 pt-3.5 sm:pt-4"
+          >
             <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'card'}
               onClick={() => setActiveTab('card')}
-              className={`px-3 sm:px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+              className={`px-2 sm:px-3.5 py-2 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-bold transition-all cursor-pointer text-center flex items-center justify-center leading-tight ${
                 activeTab === 'card'
-                  ? 'bg-white text-slate-950 shadow-md'
-                  : 'text-white/70 hover:text-white hover:bg-white/10'
+                  ? 'bg-white text-slate-950 shadow-md ring-2 ring-white/30'
+                  : 'bg-white/5 sm:bg-transparent text-white/80 hover:text-white hover:bg-white/10'
               }`}
             >
               Member Card &amp; QR
             </button>
             <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'rewards'}
               onClick={() => setActiveTab('rewards')}
-              className={`px-3 sm:px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
+              className={`px-2 sm:px-3.5 py-2 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 text-center leading-tight ${
                 activeTab === 'rewards'
-                  ? 'bg-white text-slate-950 shadow-md'
-                  : 'text-white/70 hover:text-white hover:bg-white/10'
+                  ? 'bg-white text-slate-950 shadow-md ring-2 ring-white/30'
+                  : 'bg-white/5 sm:bg-transparent text-white/80 hover:text-white hover:bg-white/10'
               }`}
             >
-              <Gift className="w-3.5 h-3.5 shrink-0" />
-              <span>Redeem Rewards ({rewards.length})</span>
+              <Gift className="w-3.5 h-3.5 shrink-0 hidden min-[400px]:inline" />
+              <span>Rewards ({rewards.length})</span>
             </button>
             <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'history'}
               onClick={() => setActiveTab('history')}
-              className={`px-3 sm:px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+              className={`px-2 sm:px-3.5 py-2 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-bold transition-all cursor-pointer text-center flex items-center justify-center leading-tight ${
                 activeTab === 'history'
-                  ? 'bg-white text-slate-950 shadow-md'
-                  : 'text-white/70 hover:text-white hover:bg-white/10'
+                  ? 'bg-white text-slate-950 shadow-md ring-2 ring-white/30'
+                  : 'bg-white/5 sm:bg-transparent text-white/80 hover:text-white hover:bg-white/10'
               }`}
             >
               Points Ledger
@@ -380,6 +424,74 @@ export const MembershipCardModal: React.FC<MembershipCardModalProps> = ({
                 </div>
               )}
 
+              {/* Rewards Search, Category Filter & Sort */}
+              {!rewardsLoading && rewards.length > 0 && (
+                <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 space-y-2.5">
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="relative flex-1">
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={rewardSearch}
+                        onChange={(e) => {
+                          setRewardSearch(e.target.value);
+                          setShowAllModalRewards(false);
+                        }}
+                        placeholder="Search rewards by name or type..."
+                        className="w-full pl-8 pr-7 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      />
+                      {rewardSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setRewardSearch('')}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                          aria-label="Clear reward search"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                    <select
+                      value={rewardSort}
+                      onChange={(e) => setRewardSort(e.target.value as any)}
+                      aria-label="Sort rewards"
+                      className="bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-500"
+                    >
+                      <option value="POINTS_ASC">Points: Low → High</option>
+                      <option value="POINTS_DESC">Points: High → Low</option>
+                      <option value="ALPHA_ASC">Name: A → Z</option>
+                    </select>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {[
+                      { id: 'ALL', label: `All (${rewards.length})` },
+                      { id: 'REDEEMABLE', label: 'Ready to Redeem' },
+                      { id: 'FREE_SERVICE', label: 'Free Washes' },
+                      { id: 'FREE_ADDON', label: 'Add-ons' },
+                      { id: 'DISCOUNT', label: 'Discounts' },
+                      { id: 'CUSTOM', label: 'Perks' },
+                    ].map((cat) => (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => {
+                          setRewardCategory(cat.id as any);
+                          setShowAllModalRewards(false);
+                        }}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors cursor-pointer ${
+                          rewardCategory === cat.id
+                            ? 'bg-indigo-600 text-white shadow-2xs'
+                            : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        {cat.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Rewards List */}
               {rewardsLoading ? (
                 <div className="py-12 text-center text-slate-400 text-xs">
@@ -391,9 +503,28 @@ export const MembershipCardModal: React.FC<MembershipCardModalProps> = ({
                   <p className="text-xs font-bold text-slate-600">No active rewards available right now.</p>
                   <p className="text-[11px] text-slate-400">The owner hasn't published reward catalog items yet.</p>
                 </div>
+              ) : filteredModalRewards.length === 0 ? (
+                <div className="py-8 text-center bg-slate-50 border border-dashed border-slate-200 rounded-2xl space-y-2">
+                  <p className="text-xs font-bold text-slate-600">No rewards match your current search or filter.</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRewardSearch('');
+                      setRewardCategory('ALL');
+                    }}
+                    className="text-xs font-bold text-indigo-600 hover:underline cursor-pointer"
+                  >
+                    Reset Filters
+                  </button>
+                </div>
               ) : (
                 <div className="space-y-3">
-                  {rewards.map((reward) => {
+                  <div className="flex items-center justify-between text-[11px] text-slate-500 font-semibold px-1">
+                    <span>
+                      Showing {showAllModalRewards ? filteredModalRewards.length : Math.min(4, filteredModalRewards.length)} of {filteredModalRewards.length} reward{filteredModalRewards.length === 1 ? '' : 's'}
+                    </span>
+                  </div>
+                  {(showAllModalRewards ? filteredModalRewards : filteredModalRewards.slice(0, 4)).map((reward) => {
                     const canAfford = Number(membership?.pointsBalance ?? 0) >= Number(reward?.pointsCost ?? 0);
                     return (
                       <div
@@ -435,6 +566,21 @@ export const MembershipCardModal: React.FC<MembershipCardModalProps> = ({
                       </div>
                     );
                   })}
+
+                  {filteredModalRewards.length > 4 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllModalRewards((prev) => !prev)}
+                      className="w-full py-2.5 px-4 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-extrabold transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <span>
+                        {showAllModalRewards
+                          ? 'Show Fewer Rewards'
+                          : `View All Rewards (+${filteredModalRewards.length - 4} more)`}
+                      </span>
+                      <ChevronDown className={`w-4 h-4 transition-transform ${showAllModalRewards ? 'rotate-180' : ''}`} />
+                    </button>
+                  )}
                 </div>
               )}
 

@@ -73,3 +73,16 @@
 .leaflet-popup-tip {
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
 }
+
+/* Hide native scrollbars on custom horizontal swipe/scroll navs */
+.no-scrollbar,
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar,
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+

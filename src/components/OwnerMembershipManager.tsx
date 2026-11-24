@@ -8,6 +8,7 @@ import { CarWash, CarWashMembershipConfig, MembershipPointsRule, MembershipRewar
 import { useApp } from '../context/AppContext';
 import { Award, Gift, Sliders, Users, QrCode, Plus, Check, Edit2, Search, ArrowUpRight, ArrowDownLeft, AlertCircle, RefreshCw, Sparkles, CheckCircle, ShieldAlert } from 'lucide-react';
 import QRCode from 'qrcode';
+import { HorizontalScrollNav } from './HorizontalScrollNav';
 
 interface OwnerMembershipManagerProps {
   carWash: CarWash;
@@ -377,7 +378,12 @@ export const OwnerMembershipManager: React.FC<OwnerMembershipManagerProps> = ({
         </div>
 
         {/* Tab Buttons */}
-        <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0">
+        <HorizontalScrollNav
+          tone="white"
+          ariaLabel="Membership manager tabs"
+          className="w-full md:w-auto"
+          scrollClassName="flex items-center gap-1 pb-1 sm:pb-0"
+        >
           <button
             onClick={() => setActiveTab('overview')}
             className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
@@ -438,7 +444,7 @@ export const OwnerMembershipManager: React.FC<OwnerMembershipManagerProps> = ({
           >
             Redemptions
           </button>
-        </div>
+        </HorizontalScrollNav>
       </div>
 
       {/* TAB 1: OVERVIEW & METRICS */}

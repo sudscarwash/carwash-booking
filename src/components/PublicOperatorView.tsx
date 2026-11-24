@@ -667,7 +667,7 @@ export const PublicOperatorView: React.FC<PublicOperatorViewProps> = ({
 
             {/* Sticky Category Filter Chips on Mobile */}
             <div className="sticky top-14 sm:top-16 z-20 -mx-3 sm:mx-0 px-3 sm:px-0 py-1 sm:py-0 bg-slate-50/95 sm:bg-transparent backdrop-blur-md sm:backdrop-blur-none">
-              <div className="flex items-center gap-1.5 p-1 bg-slate-100/90 rounded-2xl overflow-x-auto text-xs font-bold scrollbar-none shadow-2xs sm:shadow-none">
+              <div className="flex flex-wrap items-center gap-1.5 p-1 bg-slate-100/90 rounded-2xl text-xs font-bold shadow-2xs sm:shadow-none">
                 <button
                   type="button"
                   onClick={() => setActiveCategory('all')}

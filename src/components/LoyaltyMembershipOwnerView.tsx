@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import QRCode from 'qrcode';
+import { HorizontalScrollNav } from './HorizontalScrollNav.js';
 import { 
   Award, 
   Gift, 
@@ -639,7 +640,12 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
       </div>
 
       {/* Navigation Sub-Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none border-b border-slate-200">
+      <HorizontalScrollNav
+        tone="slate"
+        ariaLabel="Loyalty management sections"
+        className="border-b border-slate-200 pb-1"
+        scrollClassName="flex items-center gap-2 pb-1"
+      >
         <button
           onClick={() => setActiveTab('config')}
           className={`px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap shrink-0 ${
@@ -715,7 +721,7 @@ export const LoyaltyMembershipOwnerView: React.FC<LoyaltyMembershipOwnerViewProp
         >
           <Printer className="h-4 w-4 shrink-0" /> Counter QR Poster
         </button>
-      </div>
+      </HorizontalScrollNav>
 
       {/* TAB 1: PROGRAMME SETTINGS */}
       {activeTab === 'config' && (

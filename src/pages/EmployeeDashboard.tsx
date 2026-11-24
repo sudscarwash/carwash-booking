@@ -18,6 +18,7 @@ import { SettlementConfirmationModal } from '../components/SettlementConfirmatio
 import { TransferProviderSelector } from '../components/TransferProviderSelector.js';
 import { LoyaltyMembershipEmployeeView } from '../components/LoyaltyMembershipEmployeeView.js';
 import { useModalBack, useTabBack } from '../utils/useBackHandler.js';
+import { HorizontalScrollNav } from '../components/HorizontalScrollNav.js';
 
 const getTodayDateString = () => new Date().toISOString().split('T')[0];
 
@@ -646,11 +647,16 @@ export const EmployeeDashboard: React.FC = () => {
               </div>
 
               {/* Filter Tabs for Queue Status */}
-              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-3 mb-4 -mx-1 px-1">
+              <HorizontalScrollNav
+                tone="white"
+                ariaLabel="Wash Queue status filters"
+                className="mb-4 -mx-1 px-1"
+                scrollClassName="flex items-center gap-1.5 pb-2"
+              >
                 <button
                   type="button"
                   onClick={() => setQueueStatusFilter('ACTIVE')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
                     queueStatusFilter === 'ACTIVE'
                       ? 'bg-amber-500 text-white shadow-xs'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -667,7 +673,7 @@ export const EmployeeDashboard: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setQueueStatusFilter('IN_PROGRESS')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
                     queueStatusFilter === 'IN_PROGRESS'
                       ? 'bg-sky-600 text-white shadow-xs'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -680,7 +686,7 @@ export const EmployeeDashboard: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setQueueStatusFilter('PENDING')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
                     queueStatusFilter === 'PENDING'
                       ? 'bg-amber-600 text-white shadow-xs'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -692,7 +698,7 @@ export const EmployeeDashboard: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setQueueStatusFilter('COMPLETED')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
                     queueStatusFilter === 'COMPLETED'
                       ? 'bg-emerald-600 text-white shadow-xs'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -704,7 +710,7 @@ export const EmployeeDashboard: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setQueueStatusFilter('ALL')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer shrink-0 ${
                     queueStatusFilter === 'ALL'
                       ? 'bg-slate-800 text-white shadow-xs'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -712,7 +718,7 @@ export const EmployeeDashboard: React.FC = () => {
                 >
                   <span>All Records ({queueCounts.all})</span>
                 </button>
-              </div>
+              </HorizontalScrollNav>
 
               {displayedQueueBookings.length === 0 ? (
                 filteredBookings.length === 0 ? (

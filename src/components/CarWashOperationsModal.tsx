@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { CarWash, WashService, WeeklySchedule } from '../types';
 import { useApp } from '../context/AppContext';
+import { HorizontalScrollNav } from './HorizontalScrollNav';
 
 interface CarWashOperationsModalProps {
   carWash: CarWash;
@@ -267,7 +268,12 @@ export const CarWashOperationsModal: React.FC<CarWashOperationsModalProps> = ({
         )}
 
         {/* Tab Navigation */}
-        <div className="flex border-b border-slate-150 px-3 sm:px-6 bg-white shrink-0 overflow-x-auto scrollbar-none">
+        <HorizontalScrollNav
+          tone="white"
+          ariaLabel="Car wash operations sections"
+          className="border-b border-slate-150 px-3 sm:px-6 bg-white shrink-0"
+          scrollClassName="flex items-center"
+        >
           <button
             onClick={() => setActiveTab('access')}
             className={`py-3 px-3 sm:px-3.5 text-xs font-bold border-b-2 flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
@@ -316,7 +322,7 @@ export const CarWashOperationsModal: React.FC<CarWashOperationsModalProps> = ({
             <CreditCard className="w-4 h-4" />
             <span>Banking & Payments</span>
           </button>
-        </div>
+        </HorizontalScrollNav>
 
         {/* Tab Content Body */}
         <div className="p-4 sm:p-6 overflow-y-auto flex-1 min-h-0 overscroll-contain space-y-5 sm:space-y-6">

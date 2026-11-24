@@ -13,6 +13,7 @@ import { TermsAndConditionsContent } from '../components/TermsAndConditionsConte
 import { LoyaltyMembershipCustomerView } from '../components/LoyaltyMembershipCustomerView.js';
 import { FEATURES } from '../config/features.js';
 import { useModalBack, useTabBack } from '../utils/useBackHandler.js';
+import { HorizontalScrollNav } from '../components/HorizontalScrollNav.js';
 import { Search, Calendar, Clock, MapPin, History, CheckCircle, AlertTriangle, X, ChevronRight, ChevronLeft, ChevronDown, Sliders, Info, Sparkles, Navigation, User, Edit3, Check, Instagram, Landmark, Lock, Key, FileText, Maximize2, Filter, Star, DoorClosed, Car, Award, Gift, Eye, EyeOff } from 'lucide-react';
 import { CarWash, Booking, BookingStatus, TimeSlotItem } from '../types.js';
 import { evaluateProximity, calculateHaversineDistanceMeters } from '../utils/haversine.js';
@@ -1095,7 +1096,11 @@ export const CustomerDashboard: React.FC = () => {
                       )}
                     </div>
 
-                    <div className="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap pb-2 pt-1 max-w-full touch-pan-x scrollbar-thin">
+                    <HorizontalScrollNav
+                      tone="white"
+                      ariaLabel="Car wash alphabetical filter"
+                      scrollClassName="flex items-center gap-1.5 whitespace-nowrap pb-2 pt-1"
+                    >
                       {['ALL', '#', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')].map((letter) => {
                         const countForLetter = letter === 'ALL'
                           ? locations.length
@@ -1128,7 +1133,7 @@ export const CustomerDashboard: React.FC = () => {
                           </button>
                         );
                       })}
-                    </div>
+                    </HorizontalScrollNav>
                   </div>
                 </div>
               )}
